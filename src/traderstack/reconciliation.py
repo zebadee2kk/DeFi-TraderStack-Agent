@@ -62,10 +62,10 @@ class HummingbotPortfolioReconciler:
 
     def _extract_nav(self, payload: object) -> float:
         if not isinstance(payload, dict):
-            raise ValueError("unexpected Hummingbot portfolio response")
+            raise TypeError("unexpected Hummingbot portfolio response")
         account = payload.get(self.account_name)
         if not isinstance(account, dict):
-            raise ValueError("Hummingbot response missing configured account")
+            raise TypeError("Hummingbot response missing configured account")
         connector = account.get(self.connector_name)
         if connector is None:
             raise ValueError("Hummingbot response missing configured connector")
@@ -75,15 +75,15 @@ class HummingbotPortfolioReconciler:
         elif isinstance(connector, list):
             balances = connector
         else:
-            raise ValueError("unexpected Hummingbot connector balance response")
+            raise TypeError("unexpected Hummingbot connector balance response")
 
         total = 0.0
         for balance in balances:
             if not isinstance(balance, dict):
-                raise ValueError("unexpected Hummingbot balance item")
+                raise TypeError("unexpected Hummingbot balance item")
             value = balance.get("value")
             if not isinstance(value, int | float):
-                raise ValueError("Hummingbot balance item missing numeric value")
+                raise TypeError("Hummingbot balance item missing numeric value")
             total += float(value)
         if total < 0:
             raise ValueError("Hummingbot portfolio NAV cannot be negative")
