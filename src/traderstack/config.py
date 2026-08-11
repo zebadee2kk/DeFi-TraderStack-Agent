@@ -9,8 +9,8 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     log_level: str = "INFO"
-    database_url: str
-    redis_url: str
+    database_url: str = "postgresql+asyncpg://traderstack:traderstack@localhost:5432/traderstack"
+    redis_url: str = "redis://localhost:6379/0"
     trading_mode: Literal["paper", "shadow", "live"] = "paper"
     paper_starting_nav_usd: float = 10_000
     mvp_assets: str = "BTC,ETH,SOL"
