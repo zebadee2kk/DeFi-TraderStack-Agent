@@ -42,7 +42,13 @@ def parse_kraken_ticker(message: dict[str, object]) -> MarketTick | None:
     bid = row.get("bid")
     ask = row.get("ask")
     last = row.get("last")
-    if not isinstance(symbol, str) or not all(isinstance(x, (int, float)) for x in (bid, ask, last)):
+    if not isinstance(symbol, str):
+        return None
+    if not isinstance(bid, (int, float)):
+        return None
+    if not isinstance(ask, (int, float)):
+        return None
+    if not isinstance(last, (int, float)):
         return None
     return MarketTick(
         source=MarketSource.KRAKEN,
