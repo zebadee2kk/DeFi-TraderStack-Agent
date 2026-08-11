@@ -1,8 +1,7 @@
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from dataclasses import dataclass, field
 
 from prometheus_client import Counter, Gauge
-
 
 cycles_total = Counter(
     "traderstack_cycles_total",
