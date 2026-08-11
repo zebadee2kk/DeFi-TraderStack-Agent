@@ -2,10 +2,12 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from traderstack.health import RuntimeHealth
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.runtime import PaperRuntime, RuntimeResult
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
+PortfolioHandler = Callable[[InMemoryPortfolioBook], Awaitable[None]]
 
 
 @dataclass
@@ -17,6 +19,8 @@ class ContinuousPaperService:
     cycle_interval_seconds: float = 5.0
     error_backoff_seconds: float = 5.0
     on_result: ResultHandler | None = None
+    on_portfolio: PortfolioHandler | None = None
+    health: RuntimeHealth = field(default_factory=RuntimeHealth)
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
 
     def stop(self) -> None:
@@ -30,6 +34,9 @@ class ContinuousPaperService:
                 if self._stop_event.is_set():
                     break
                 await self._run_symbol_safely(symbol)
+                if not self.health.healthy:
+                    self.stop()
+                    break
             if not self._stop_event.is_set():
                 await self._sleep_or_stop(self.cycle_interval_seconds)
 
@@ -58,9 +65,13 @@ class ContinuousPaperService:
                 )
             if self.on_result is not None:
                 await self.on_result(result)
+            if self.on_portfolio is not None:
+                await self.on_portfolio(self.portfolio)
+            self.health.record_success(symbol)
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - process boundary backs off on provider/runtime failures.
+        except Exception as exc:  # noqa: BLE001 - service boundary records and backs off.
+            self.health.record_error(symbol, exc)
             await self._sleep_or_stop(self.error_backoff_seconds)
 
     async def _sleep_or_stop(self, seconds: float) -> None:

@@ -25,7 +25,10 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_started}
-    command: ["python", "-m", "traderstack"]
+    command: ["traderstack-paper", "--persistent-events", "--checkpoint-path", "/app/var/state/portfolio.json", "--audit-path", "/app/var/audit/runtime.jsonl"]
+    ports: ["9108:9108"]
+    volumes: ["app_state:/app/var"]
+    restart: unless-stopped
     profiles: ["app"]
 
   prometheus:
@@ -42,3 +45,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  app_state:

@@ -1,6 +1,22 @@
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel, Field
+
 from traderstack.models import PortfolioSnapshot, Side
+
+
+class PositionState(BaseModel):
+    quantity: float = Field(ge=0)
+    average_cost_usd: float = Field(ge=0)
+
+
+class PortfolioState(BaseModel):
+    starting_nav_usd: float = Field(gt=0)
+    cash_usd: float
+    peak_nav_usd: float = Field(gt=0)
+    realized_pnl_usd: float = 0.0
+    positions: dict[str, PositionState] = Field(default_factory=dict)
+    marks_usd: dict[str, float] = Field(default_factory=dict)
 
 
 @dataclass
@@ -25,6 +41,41 @@ class InMemoryPortfolioBook:
             self.cash_usd = self.starting_nav_usd
         if self.peak_nav_usd is None:
             self.peak_nav_usd = self.starting_nav_usd
+
+    @classmethod
+    def from_state(cls, state: PortfolioState) -> "InMemoryPortfolioBook":
+        return cls(
+            starting_nav_usd=state.starting_nav_usd,
+            cash_usd=state.cash_usd,
+            peak_nav_usd=state.peak_nav_usd,
+            realized_pnl_usd=state.realized_pnl_usd,
+            positions={
+                asset.upper(): Position(
+                    quantity=position.quantity,
+                    average_cost_usd=position.average_cost_usd,
+                )
+                for asset, position in state.positions.items()
+            },
+            marks_usd={asset.upper(): price for asset, price in state.marks_usd.items()},
+        )
+
+    def state(self) -> PortfolioState:
+        assert self.cash_usd is not None
+        assert self.peak_nav_usd is not None
+        return PortfolioState(
+            starting_nav_usd=self.starting_nav_usd,
+            cash_usd=self.cash_usd,
+            peak_nav_usd=self.peak_nav_usd,
+            realized_pnl_usd=self.realized_pnl_usd,
+            positions={
+                asset: PositionState(
+                    quantity=position.quantity,
+                    average_cost_usd=position.average_cost_usd,
+                )
+                for asset, position in self.positions.items()
+            },
+            marks_usd=self.marks_usd.copy(),
+        )
 
     def mark(self, asset: str, price_usd: float) -> None:
         if price_usd <= 0:
