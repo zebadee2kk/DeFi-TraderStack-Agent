@@ -1,9 +1,14 @@
 import argparse
 import asyncio
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from prometheus_client import start_http_server
+
 from traderstack.audit import JsonlAuditSink
+from traderstack.checkpoint import JsonPortfolioCheckpointStore
 from traderstack.config import Settings
+from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
 from traderstack.market.adapters import (
     CoinGeckoPriceProvider,
@@ -13,15 +18,24 @@ from traderstack.market.adapters import (
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.risk import RiskEngine
-from traderstack.runtime import PaperRuntime
+from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
+
+ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the guarded continuous paper trading service")
     parser.add_argument("--submit", action="store_true", help="submit approved paper orders")
     parser.add_argument("--audit-path", default="var/audit/runtime.jsonl")
+    parser.add_argument("--checkpoint-path", default="var/state/portfolio.json")
     parser.add_argument("--cycle-seconds", type=float, default=5.0)
+    parser.add_argument("--metrics-port", type=int, default=9108)
+    parser.add_argument(
+        "--persistent-events",
+        action="store_true",
+        help="also persist runtime events to PostgreSQL and publish them to Redis",
+    )
     return parser
 
 
@@ -29,8 +43,10 @@ def build_service(
     settings: Settings,
     *,
     submit: bool,
-    audit_path: Path,
     cycle_seconds: float,
+    portfolio: InMemoryPortfolioBook,
+    on_result: ResultHandler,
+    checkpoint_store: JsonPortfolioCheckpointStore,
 ) -> ContinuousPaperService:
     if settings.trading_mode != "paper":
         raise RuntimeError("continuous paper service requires TRADING_MODE=paper")
@@ -54,33 +70,54 @@ def build_service(
     )
     runtime = PaperRuntime(
         venue=KrakenTickerProvider(),
-        references=(
-            CoinGeckoPriceProvider(),
-            CoinMarketCapPriceProvider(),
-        ),
+        references=(CoinGeckoPriceProvider(), CoinMarketCapPriceProvider()),
         pipeline=pipeline,
         executor=executor,
     )
     symbols = tuple(f"{asset}/USD" for asset in settings.assets)
     return ContinuousPaperService(
         runtime=runtime,
-        portfolio=InMemoryPortfolioBook(settings.paper_starting_nav_usd),
+        portfolio=portfolio,
         symbols=symbols,
         submit=submit,
         cycle_interval_seconds=cycle_seconds,
-        on_result=JsonlAuditSink(audit_path),
+        on_result=on_result,
+        on_portfolio=checkpoint_store.save,
     )
 
 
 async def _main_async(args: argparse.Namespace) -> None:
     settings = Settings()
+    checkpoint_store = JsonPortfolioCheckpointStore(Path(args.checkpoint_path))
+    portfolio = await checkpoint_store.load()
+    if portfolio is None:
+        portfolio = InMemoryPortfolioBook(settings.paper_starting_nav_usd)
+
+    sinks: list[ResultHandler] = [JsonlAuditSink(Path(args.audit_path))]
+    postgres: PostgresRuntimeEventStore | None = None
+    redis: RedisRuntimePublisher | None = None
+    if args.persistent_events:
+        postgres = PostgresRuntimeEventStore(settings.database_url)
+        await postgres.initialize()
+        redis = RedisRuntimePublisher(settings.redis_url)
+        sinks.extend((postgres, redis))
+
+    start_http_server(args.metrics_port)
     service = build_service(
         settings,
         submit=args.submit,
-        audit_path=Path(args.audit_path),
         cycle_seconds=args.cycle_seconds,
+        portfolio=portfolio,
+        on_result=FanoutResultSink(tuple(sinks)),
+        checkpoint_store=checkpoint_store,
     )
-    await service.run()
+    try:
+        await service.run()
+    finally:
+        if postgres is not None:
+            await postgres.close()
+        if redis is not None:
+            await redis.close()
 
 
 def main() -> None:
