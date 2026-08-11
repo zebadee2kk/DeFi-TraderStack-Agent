@@ -2,7 +2,6 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from traderstack.models import Side
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.runtime import PaperRuntime, RuntimeResult
 
@@ -42,9 +41,13 @@ class ContinuousPaperService:
                 self.portfolio.snapshot(),
                 submit=self.submit,
             )
-            self.portfolio.mark(result.pipeline.feature_vector.asset, result.tick.last) if (
-                result.pipeline.feature_vector is not None
-            ) else self.portfolio.mark(symbol.split("/", 1)[0], result.tick.last)
+            asset = (
+                result.pipeline.feature_vector.asset
+                if result.pipeline.feature_vector is not None
+                else symbol.split("/", 1)[0].upper()
+            )
+            self.portfolio.mark(asset, result.tick.last)
+
             if result.execution_receipt is not None and result.pipeline.paper_order is not None:
                 receipt = result.execution_receipt
                 fill_price = receipt.price or result.tick.last
