@@ -5,7 +5,7 @@ from traderstack.market.models import MarketTick, ReferencePrice
 
 
 class VenueMarketDataProvider(Protocol):
-    async def stream_ticks(self, symbols: tuple[str, ...]) -> AsyncIterator[MarketTick]: ...
+    def stream_ticks(self, symbols: tuple[str, ...]) -> AsyncIterator[MarketTick]: ...
 
 
 class ReferencePriceProvider(Protocol):
