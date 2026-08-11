@@ -62,8 +62,6 @@ class PaperRuntime:
         )
 
     async def _next_tick(self, symbol: str) -> MarketTick:
-        stream = self.venue.stream_ticks((symbol,))
-        try:
-            return await anext(stream)
-        finally:
-            await stream.aclose()
+        async for tick in self.venue.stream_ticks((symbol,)):
+            return tick
+        raise RuntimeError("venue stream ended before producing a tick")
