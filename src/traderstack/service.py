@@ -1,10 +1,9 @@
 import asyncio
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Awaitable, Callable
 
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.runtime import PaperRuntime, RuntimeResult
-
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
 
@@ -61,7 +60,7 @@ class ContinuousPaperService:
                 await self.on_result(result)
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001 - process boundary backs off on provider/runtime failures.
             await self._sleep_or_stop(self.error_backoff_seconds)
 
     async def _sleep_or_stop(self, seconds: float) -> None:
