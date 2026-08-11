@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "defi-traderstack-agent"
+version = "0.1.0"
+description = "Event-driven agentic crypto research, risk and execution platform"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.8",
+  "pydantic-settings>=2.4",
+  "httpx>=0.27",
+  "structlog>=24.1",
+  "sqlalchemy>=2.0",
+  "asyncpg>=0.29",
+  "redis>=5.0",
+  "prometheus-client>=0.20",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/traderstack"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
