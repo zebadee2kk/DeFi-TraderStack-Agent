@@ -1,6 +1,6 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
 
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.runtime import PaperRuntime, RuntimeResult
