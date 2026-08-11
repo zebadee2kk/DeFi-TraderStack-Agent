@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from traderstack.execution.hummingbot import HummingbotOrderReceipt
+from traderstack.execution.ledger import ExecutionLedger, OrderLifecycleState
 from traderstack.market.models import MarketSource, MarketTick
 from traderstack.models import Side
 from traderstack.pipeline import PaperOrderIntent, PipelineResult
@@ -22,7 +23,7 @@ class FakeRuntime:
 
 
 @pytest.mark.asyncio
-async def test_service_applies_execution_receipt_to_portfolio() -> None:
+async def test_service_registers_submission_without_treating_it_as_fill() -> None:
     tick = MarketTick(
         source=MarketSource.KRAKEN,
         symbol="BTC/USD",
@@ -37,10 +38,7 @@ async def test_service_applies_execution_receipt_to_portfolio() -> None:
         side=Side.BUY,
         notional_usd=1_000,
     )
-    pipeline = PipelineResult(
-        accepted_market_data=True,
-        paper_order=order,
-    )
+    pipeline = PipelineResult(accepted_market_data=True, paper_order=order)
     receipt = HummingbotOrderReceipt(
         order_id="paper-1",
         account_name="paper_account",
@@ -60,11 +58,13 @@ async def test_service_applies_execution_receipt_to_portfolio() -> None:
     )
     runtime = FakeRuntime(result)
     book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    ledger = ExecutionLedger()
     service = ContinuousPaperService(
         runtime=runtime,  # type: ignore[arg-type]
         portfolio=book,
         symbols=("BTC/USD",),
         submit=True,
+        execution_ledger=ledger,
         error_backoff_seconds=0,
     )
 
@@ -72,8 +72,10 @@ async def test_service_applies_execution_receipt_to_portfolio() -> None:
 
     snapshot = book.snapshot()
     assert runtime.calls == [("BTC/USD", True)]
-    assert snapshot.cash_usd == pytest.approx(9_000)
-    assert snapshot.asset_exposure_usd["BTC"] == pytest.approx(1_000)
+    assert snapshot.cash_usd == pytest.approx(10_000)
+    assert snapshot.asset_exposure_usd == {}
+    assert ledger.orders["paper-1"].state is OrderLifecycleState.SUBMITTED
+    assert ledger.orders["paper-1"].filled_quantity == 0
 
 
 @pytest.mark.asyncio
