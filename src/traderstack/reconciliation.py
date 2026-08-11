@@ -70,10 +70,11 @@ class HummingbotPortfolioReconciler:
         if connector is None:
             raise ValueError("Hummingbot response missing configured connector")
 
+        balances: list[object]
         if isinstance(connector, dict):
-            balances = connector.values()
+            balances = list(connector.values())
         elif isinstance(connector, list):
-            balances = connector
+            balances = list(connector)
         else:
             raise TypeError("unexpected Hummingbot connector balance response")
 
