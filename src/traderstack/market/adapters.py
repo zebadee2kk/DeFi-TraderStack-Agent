@@ -1,12 +1,11 @@
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-import json
 
 import httpx
 import websockets
 
 from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
-
 
 COINGECKO_IDS = {"BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana"}
 
