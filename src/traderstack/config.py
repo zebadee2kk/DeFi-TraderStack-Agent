@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://traderstack:traderstack@localhost:5432/traderstack"
     redis_url: str = "redis://localhost:6379/0"
     hummingbot_api_url: str = "http://localhost:8000"
+    hummingbot_api_username: str | None = None
+    hummingbot_api_password: SecretStr | None = None
+    hummingbot_account_name: str = "paper_account"
+    hummingbot_connector_name: str = "kraken_paper_trade"
     trading_mode: Literal["paper", "shadow", "live"] = "paper"
     paper_starting_nav_usd: float = 10_000
     mvp_assets: str = "BTC,ETH,SOL"
