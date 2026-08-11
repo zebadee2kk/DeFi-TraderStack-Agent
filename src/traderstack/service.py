@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
 from traderstack.health import RuntimeHealth
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.runtime import PaperRuntime, RuntimeResult
@@ -20,6 +21,7 @@ class ContinuousPaperService:
     error_backoff_seconds: float = 5.0
     on_result: ResultHandler | None = None
     on_portfolio: PortfolioHandler | None = None
+    execution_ledger: ExecutionLedger | None = None
     health: RuntimeHealth = field(default_factory=RuntimeHealth)
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
 
@@ -54,15 +56,23 @@ class ContinuousPaperService:
             )
             self.portfolio.mark(asset, result.tick.last)
 
-            if result.execution_receipt is not None and result.pipeline.paper_order is not None:
+            if (
+                result.execution_receipt is not None
+                and result.pipeline.paper_order is not None
+                and self.execution_ledger is not None
+            ):
                 receipt = result.execution_receipt
-                fill_price = receipt.price or result.tick.last
-                self.portfolio.apply_fill(
-                    result.pipeline.paper_order.asset,
-                    result.pipeline.paper_order.side,
-                    receipt.amount,
-                    fill_price,
+                intent = result.pipeline.paper_order
+                self.execution_ledger.register_order(
+                    ExecutionOrder(
+                        order_id=receipt.order_id,
+                        decision_id=intent.decision_id,
+                        asset=intent.asset,
+                        side=intent.side,
+                        requested_quantity=receipt.amount,
+                    )
                 )
+
             if self.on_result is not None:
                 await self.on_result(result)
             if self.on_portfolio is not None:
