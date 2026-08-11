@@ -5,11 +5,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from redis.asyncio import Redis
-from sqlalchemy import JSON, DateTime, Integer, MetaData, String, Table, Column, insert
+from sqlalchemy import JSON, Column, DateTime, Integer, MetaData, String, Table, insert
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from traderstack.runtime import RuntimeResult
-
 
 ResultSink = Callable[[RuntimeResult], Awaitable[None]]
 metadata = MetaData()
