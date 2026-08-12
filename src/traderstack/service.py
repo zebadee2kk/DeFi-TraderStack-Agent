@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
 from traderstack.health import RuntimeHealth
 from traderstack.portfolio import InMemoryPortfolioBook
-from traderstack.runtime import PaperRuntime, RuntimeResult
+from traderstack.runtime import RuntimeResult, TradingRuntime
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
 PortfolioHandler = Callable[[InMemoryPortfolioBook], Awaitable[None]]
@@ -13,7 +13,7 @@ PortfolioHandler = Callable[[InMemoryPortfolioBook], Awaitable[None]]
 
 @dataclass
 class ContinuousPaperService:
-    runtime: PaperRuntime
+    runtime: TradingRuntime
     portfolio: InMemoryPortfolioBook
     symbols: tuple[str, ...]
     submit: bool = False

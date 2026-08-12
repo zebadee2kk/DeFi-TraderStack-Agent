@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +18,8 @@ class PortfolioState(BaseModel):
     realized_pnl_usd: float = 0.0
     positions: dict[str, PositionState] = Field(default_factory=dict)
     marks_usd: dict[str, float] = Field(default_factory=dict)
+    daily_anchor_date: str | None = None
+    daily_anchor_nav_usd: float | None = Field(default=None, gt=0)
 
 
 @dataclass
@@ -33,6 +36,8 @@ class InMemoryPortfolioBook:
     realized_pnl_usd: float = 0.0
     positions: dict[str, Position] = field(default_factory=dict)
     marks_usd: dict[str, float] = field(default_factory=dict)
+    daily_anchor_date: str | None = None
+    daily_anchor_nav_usd: float | None = None
 
     def __post_init__(self) -> None:
         if self.starting_nav_usd <= 0:
@@ -41,6 +46,10 @@ class InMemoryPortfolioBook:
             self.cash_usd = self.starting_nav_usd
         if self.peak_nav_usd is None:
             self.peak_nav_usd = self.starting_nav_usd
+        if self.daily_anchor_date is None:
+            self.daily_anchor_date = datetime.now(UTC).date().isoformat()
+        if self.daily_anchor_nav_usd is None:
+            self.daily_anchor_nav_usd = self.nav_usd
 
     @classmethod
     def from_state(cls, state: PortfolioState) -> "InMemoryPortfolioBook":
@@ -57,6 +66,8 @@ class InMemoryPortfolioBook:
                 for asset, position in state.positions.items()
             },
             marks_usd={asset.upper(): price for asset, price in state.marks_usd.items()},
+            daily_anchor_date=state.daily_anchor_date,
+            daily_anchor_nav_usd=state.daily_anchor_nav_usd,
         )
 
     def state(self) -> PortfolioState:
@@ -67,6 +78,8 @@ class InMemoryPortfolioBook:
             cash_usd=self.cash_usd,
             peak_nav_usd=self.peak_nav_usd,
             realized_pnl_usd=self.realized_pnl_usd,
+            daily_anchor_date=self.daily_anchor_date,
+            daily_anchor_nav_usd=self.daily_anchor_nav_usd,
             positions={
                 asset: PositionState(
                     quantity=position.quantity,
@@ -122,9 +135,18 @@ class InMemoryPortfolioBook:
             position_value += position.quantity * mark
         return self.cash_usd + position_value
 
+    def roll_daily_anchor(self) -> None:
+        """Reset the daily PnL anchor when the UTC calendar day changes."""
+        today = datetime.now(UTC).date().isoformat()
+        if self.daily_anchor_date != today:
+            self.daily_anchor_date = today
+            self.daily_anchor_nav_usd = self.nav_usd
+
     def snapshot(self) -> PortfolioSnapshot:
         assert self.cash_usd is not None
         assert self.peak_nav_usd is not None
+        self.roll_daily_anchor()
+        anchor_nav = self.daily_anchor_nav_usd if self.daily_anchor_nav_usd else self.nav_usd
         exposures = {
             asset: position.quantity * self.marks_usd.get(asset, position.average_cost_usd)
             for asset, position in self.positions.items()
@@ -133,7 +155,7 @@ class InMemoryPortfolioBook:
         return PortfolioSnapshot(
             nav_usd=self.nav_usd,
             cash_usd=max(0.0, self.cash_usd),
-            daily_pnl_usd=self.nav_usd - self.starting_nav_usd,
+            daily_pnl_usd=self.nav_usd - anchor_nav,
             peak_nav_usd=self.peak_nav_usd,
             asset_exposure_usd=exposures,
         )

@@ -2,7 +2,7 @@
 
 An experimental autonomous crypto/DeFi trading research and execution platform combining quantitative signals, on-chain intelligence, market/news/social data, LLM reasoning, deterministic risk controls, and broker/DEX execution.
 
-> **Status:** Architecture and research phase. No production capital should be connected until the full backtest, forward-test, paper-trading, security, and risk-control gates are complete.
+> **Status:** Paper-trading development phase. The continuous paper service now runs a candle-driven strategy ensemble (regime classification, momentum/trend/mean-reversion consensus) behind deterministic market-data and risk gates, with optional external intelligence and constrained Claude meta-agent review (see `docs/IMPLEMENTATION-SLICE-02.md`). No production capital should be connected until the full backtest, forward-test, paper-trading, security, and risk-control gates are complete.
 
 ## Project goal
 

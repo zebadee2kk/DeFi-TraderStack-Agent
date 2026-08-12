@@ -65,3 +65,52 @@ def test_daily_loss_rejects():
     result = RiskEngine(settings()).evaluate(proposal(), portfolio(daily_pnl_usd=-250))
     assert result.decision == RiskDecision.REJECT
     assert "daily_loss_limit_reached" in result.reasons
+
+
+def test_sell_without_position_rejects():
+    result = RiskEngine(settings()).evaluate(proposal(side=Side.SELL), portfolio())
+    assert result.decision == RiskDecision.REJECT
+    assert "no_position_to_reduce" in result.reasons
+
+
+def test_sell_capped_to_existing_position():
+    book = portfolio(asset_exposure_usd={"BTC": 300})
+    result = RiskEngine(settings()).evaluate(proposal(side=Side.SELL), book)
+    assert result.decision == RiskDecision.REDUCE
+    assert result.approved_notional_usd == 300
+    assert "sell_capped_to_position" in result.reasons
+
+
+def test_sell_allowed_when_daily_loss_limit_hit():
+    book = portfolio(daily_pnl_usd=-250, asset_exposure_usd={"BTC": 500})
+    result = RiskEngine(settings()).evaluate(proposal(side=Side.SELL), book)
+    assert result.decision == RiskDecision.ALLOW
+    assert result.approved_notional_usd == 500
+
+
+def test_sell_allowed_when_position_limit_full():
+    book = portfolio(asset_exposure_usd={"BTC": 1_000})
+    result = RiskEngine(settings()).evaluate(proposal(side=Side.SELL), book)
+    assert result.decision == RiskDecision.ALLOW
+
+
+def test_buy_below_minimum_notional_rejects():
+    result = RiskEngine(settings()).evaluate(
+        proposal(requested_notional_usd=5), portfolio()
+    )
+    assert result.decision == RiskDecision.REJECT
+    assert "below_minimum_notional" in result.reasons
+
+
+def test_sell_dust_position_rejects():
+    book = portfolio(asset_exposure_usd={"BTC": 4})
+    result = RiskEngine(settings()).evaluate(proposal(side=Side.SELL), book)
+    assert result.decision == RiskDecision.REJECT
+    assert "below_minimum_notional" in result.reasons
+
+
+def test_sell_still_blocked_by_kill_switch():
+    book = portfolio(asset_exposure_usd={"BTC": 500})
+    result = RiskEngine(settings(kill_switch=True)).evaluate(proposal(side=Side.SELL), book)
+    assert result.decision == RiskDecision.REJECT
+    assert "kill_switch_enabled" in result.reasons

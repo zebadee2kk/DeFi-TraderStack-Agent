@@ -1,13 +1,17 @@
 import asyncio
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import BaseModel
 
+from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
+from traderstack.market.candle_feed import CandleFeed
 from traderstack.market.models import MarketTick, ReferencePrice
 from traderstack.market.providers import ReferencePriceProvider, VenueMarketDataProvider
 from traderstack.models import PortfolioSnapshot
 from traderstack.pipeline import PipelineResult, VerticalSlicePipeline
+from traderstack.signal_pipeline import SignalPipeline
 
 
 class RuntimeResult(BaseModel):
@@ -17,8 +21,59 @@ class RuntimeResult(BaseModel):
     execution_receipt: HummingbotOrderReceipt | None = None
 
 
+class TradingRuntime(Protocol):
+    async def run_once(
+        self,
+        symbol: str,
+        portfolio: PortfolioSnapshot,
+        *,
+        submit: bool = False,
+    ) -> RuntimeResult: ...
+
+
+async def _next_tick(venue: VenueMarketDataProvider, symbol: str) -> MarketTick:
+    async for tick in venue.stream_ticks((symbol,)):
+        return tick
+    raise RuntimeError("venue stream ended before producing a tick")
+
+
+async def _gather_references(
+    providers: tuple[ReferencePriceProvider, ...],
+    asset: str,
+) -> list[ReferencePrice]:
+    batches = await asyncio.gather(
+        *(provider.get_prices((asset,)) for provider in providers),
+        return_exceptions=True,
+    )
+    prices: list[ReferencePrice] = []
+    for batch in batches:
+        if isinstance(batch, BaseException):
+            continue
+        prices.extend(batch)
+    return prices
+
+
+async def _submit_if_approved(
+    executor: HummingbotPaperExecutor | None,
+    pipeline_result: PipelineResult,
+    execution_price_usd: float,
+    submit: bool,
+) -> HummingbotOrderReceipt | None:
+    if not submit or pipeline_result.paper_order is None:
+        return None
+    if executor is None:
+        raise RuntimeError("paper execution requested without an executor")
+    return await executor.submit(
+        pipeline_result.paper_order,
+        execution_price_usd=execution_price_usd,
+        trading_mode="paper",
+    )
+
+
 @dataclass
 class PaperRuntime:
+    """Demo runtime driving the hardcoded vertical-slice pipeline."""
+
     venue: VenueMarketDataProvider
     references: tuple[ReferencePriceProvider, ...]
     pipeline: VerticalSlicePipeline
@@ -31,28 +86,12 @@ class PaperRuntime:
         *,
         submit: bool = False,
     ) -> RuntimeResult:
-        tick = await self._next_tick(symbol)
+        tick = await _next_tick(self.venue, symbol)
         asset = symbol.split("/", 1)[0].upper()
-        reference_batches = await asyncio.gather(
-            *(provider.get_prices((asset,)) for provider in self.references),
-            return_exceptions=True,
-        )
-        prices: list[ReferencePrice] = []
-        for batch in reference_batches:
-            if isinstance(batch, BaseException):
-                continue
-            prices.extend(batch)
+        prices = await _gather_references(self.references, asset)
 
         pipeline_result = self.pipeline.process(tick, prices, portfolio)
-        receipt = None
-        if submit and pipeline_result.paper_order is not None:
-            if self.executor is None:
-                raise RuntimeError("paper execution requested without an executor")
-            receipt = await self.executor.submit(
-                pipeline_result.paper_order,
-                execution_price_usd=tick.last,
-                trading_mode="paper",
-            )
+        receipt = await _submit_if_approved(self.executor, pipeline_result, tick.last, submit)
 
         return RuntimeResult(
             tick=tick,
@@ -61,7 +100,45 @@ class PaperRuntime:
             execution_receipt=receipt,
         )
 
-    async def _next_tick(self, symbol: str) -> MarketTick:
-        async for tick in self.venue.stream_ticks((symbol,)):
-            return tick
-        raise RuntimeError("venue stream ended before producing a tick")
+
+@dataclass
+class SignalPaperRuntime:
+    """Signal-driven runtime: candle history feeds the strategy ensemble."""
+
+    venue: VenueMarketDataProvider
+    references: tuple[ReferencePriceProvider, ...]
+    candles: CandleFeed
+    pipeline: SignalPipeline
+    executor: HummingbotPaperExecutor | None = None
+
+    async def run_once(
+        self,
+        symbol: str,
+        portfolio: PortfolioSnapshot,
+        *,
+        submit: bool = False,
+    ) -> RuntimeResult:
+        tick = await _next_tick(self.venue, symbol)
+        asset = symbol.split("/", 1)[0].upper()
+        prices, candles = await asyncio.gather(
+            _gather_references(self.references, asset),
+            self._candles_safely(symbol),
+        )
+
+        pipeline_result = await self.pipeline.process(tick, candles, prices, portfolio)
+        receipt = await _submit_if_approved(self.executor, pipeline_result, tick.last, submit)
+
+        return RuntimeResult(
+            tick=tick,
+            references=prices,
+            pipeline=pipeline_result,
+            execution_receipt=receipt,
+        )
+
+    async def _candles_safely(self, symbol: str) -> tuple[Candle, ...]:
+        # An unavailable candle feed downgrades to an "insufficient history"
+        # rejection in the pipeline instead of failing the whole cycle.
+        try:
+            return await self.candles.get(symbol)
+        except Exception:  # noqa: BLE001 - provider outage is isolated at the runtime boundary.
+            return ()

@@ -1,16 +1,19 @@
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 
+from traderstack.candles import Candle
 from traderstack.config import Settings
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
+from traderstack.market.candle_feed import CandleFeed
 from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
 from traderstack.models import PortfolioSnapshot
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.risk import RiskEngine
-from traderstack.runtime import PaperRuntime
+from traderstack.runtime import PaperRuntime, SignalPaperRuntime
+from traderstack.signal_pipeline import SignalPipeline
 
 
 class FakeVenue:
@@ -116,3 +119,69 @@ async def test_runtime_only_submits_when_explicitly_requested() -> None:
     assert preview.execution_receipt is None
     assert submitted.execution_receipt is not None
     assert calls == 1
+
+
+class RisingCandleFetcher:
+    async def fetch(
+        self,
+        symbol: str,
+        resolution: str = "1h",
+        *,
+        count: int = 250,
+    ) -> tuple[Candle, ...]:
+        start = datetime.now(UTC) - timedelta(hours=61)
+        prices = [100.0 * 1.005**index for index in range(60)]
+        candles = []
+        for index, price in enumerate(prices):
+            previous = prices[index - 1] if index else price
+            candles.append(
+                Candle(
+                    symbol=symbol,
+                    interval=resolution,
+                    opened_at=start + timedelta(hours=index),
+                    open=previous,
+                    high=max(previous, price) * 1.001,
+                    low=min(previous, price) * 0.999,
+                    close=price,
+                    volume=100.0,
+                )
+            )
+        return tuple(candles)
+
+
+class BrokenCandleFetcher:
+    async def fetch(
+        self,
+        symbol: str,
+        resolution: str = "1h",
+        *,
+        count: int = 250,
+    ) -> tuple[Candle, ...]:
+        raise RuntimeError("candles unavailable")
+
+
+def signal_runtime(fetcher) -> SignalPaperRuntime:
+    return SignalPaperRuntime(
+        venue=FakeVenue(),
+        references=(GoodReference(MarketSource.COINGECKO),),
+        candles=CandleFeed(fetcher=fetcher),
+        pipeline=SignalPipeline(risk_engine=RiskEngine(Settings(kill_switch=False))),
+    )
+
+
+@pytest.mark.asyncio
+async def test_signal_runtime_produces_consensus_paper_order() -> None:
+    result = await signal_runtime(RisingCandleFetcher()).run_once("BTC/USD", portfolio())
+    assert result.pipeline.accepted_market_data is True
+    assert result.pipeline.proposal is not None
+    assert result.pipeline.proposal.strategy_id == "signal_ensemble_v1"
+    assert result.pipeline.paper_order is not None
+    assert result.execution_receipt is None
+
+
+@pytest.mark.asyncio
+async def test_signal_runtime_degrades_gracefully_without_candles() -> None:
+    result = await signal_runtime(BrokenCandleFetcher()).run_once("BTC/USD", portfolio())
+    assert result.pipeline.accepted_market_data is False
+    assert "insufficient_candle_history" in result.pipeline.rejection_reasons
+    assert result.pipeline.paper_order is None

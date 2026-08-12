@@ -24,7 +24,21 @@ class Settings(BaseSettings):
     max_position_pct: float = Field(default=0.10, gt=0, le=1)
     max_daily_loss_pct: float = Field(default=0.02, gt=0, le=1)
     max_account_drawdown_pct: float = Field(default=0.10, gt=0, le=1)
+    min_order_notional_usd: float = Field(default=10.0, ge=0)
     kill_switch: bool = True
+
+    # Signal-driven pipeline configuration.
+    base_notional_pct: float = Field(default=0.02, gt=0, le=0.10)
+    min_consensus_confidence: float = Field(default=0.35, ge=0, le=1)
+    candle_interval: str = "1h"
+    candle_count: int = Field(default=250, gt=31)
+    candle_refresh_seconds: float = Field(default=300.0, gt=0)
+
+    # External intelligence and meta-agent credentials (optional).
+    anthropic_api_key: SecretStr | None = None
+    anthropic_model: str = "claude-haiku-4-5-20251001"
+    cryptopanic_api_key: SecretStr | None = None
+    lunarcrush_api_key: SecretStr | None = None
 
     @property
     def assets(self) -> tuple[str, ...]:
