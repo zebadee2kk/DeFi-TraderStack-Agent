@@ -35,15 +35,15 @@ class KrakenCandleProvider:
         payload = response.json()
         rows = payload.get("candles") if isinstance(payload, dict) else None
         if not isinstance(rows, list):
-            raise ValueError("unexpected Kraken candle response")
+            raise TypeError("unexpected Kraken candle response")
 
         candles: list[Candle] = []
         for row in rows:
             if not isinstance(row, dict):
-                raise ValueError("unexpected Kraken candle item")
+                raise TypeError("unexpected Kraken candle item")
             timestamp = row.get("time")
             if not isinstance(timestamp, int | float):
-                raise ValueError("Kraken candle missing timestamp")
+                raise TypeError("Kraken candle missing timestamp")
             candles.append(
                 Candle(
                     symbol=symbol.upper(),
