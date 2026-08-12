@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import sqrt
 
 from pydantic import BaseModel, Field
@@ -21,7 +21,7 @@ class BacktestMetrics(BaseModel):
 
 @dataclass(frozen=True)
 class BaselineBacktester:
-    ensemble: StrategyEnsemble = StrategyEnsemble()
+    ensemble: StrategyEnsemble = field(default_factory=StrategyEnsemble)
     starting_equity: float = 10_000.0
     fee_bps: float = 10.0
     slippage_bps: float = 5.0
