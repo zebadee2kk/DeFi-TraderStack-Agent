@@ -14,7 +14,7 @@ from traderstack.features import (
 class OnChainSnapshot(BaseModel):
     asset: str
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    exchange_netflow_z: float | None = None
+    exchange_netflow_z: float | None = Field(default=None, allow_inf_nan=False)
     large_wallet_accumulation: float | None = Field(default=None, ge=-1, le=1)
     source_id: str
 
@@ -23,7 +23,7 @@ class SocialSnapshot(BaseModel):
     asset: str
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     sentiment: float | None = Field(default=None, ge=-1, le=1)
-    mention_velocity_z: float | None = None
+    mention_velocity_z: float | None = Field(default=None, allow_inf_nan=False)
     source_id: str
 
 

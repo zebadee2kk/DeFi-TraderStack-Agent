@@ -1,7 +1,11 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+# Upper bound for any USD price accepted from an external provider; a value
+# beyond this (or inf/NaN) is corrupt data, not a market move.
+MAX_PLAUSIBLE_PRICE_USD = 1e12
 
 
 class MarketSource(StrEnum):
@@ -14,9 +18,15 @@ class MarketTick(BaseModel):
     source: MarketSource
     symbol: str
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    bid: float = Field(gt=0)
-    ask: float = Field(gt=0)
-    last: float = Field(gt=0)
+    bid: float = Field(gt=0, lt=MAX_PLAUSIBLE_PRICE_USD, allow_inf_nan=False)
+    ask: float = Field(gt=0, lt=MAX_PLAUSIBLE_PRICE_USD, allow_inf_nan=False)
+    last: float = Field(gt=0, lt=MAX_PLAUSIBLE_PRICE_USD, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_quote(self) -> "MarketTick":
+        if self.ask < self.bid:
+            raise ValueError("crossed tick: ask below bid")
+        return self
 
     @property
     def mid(self) -> float:
@@ -32,7 +42,7 @@ class ReferencePrice(BaseModel):
     asset: str
     currency: str = "USD"
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    price: float = Field(gt=0)
+    price: float = Field(gt=0, lt=MAX_PLAUSIBLE_PRICE_USD, allow_inf_nan=False)
 
 
 class PriceDivergence(BaseModel):

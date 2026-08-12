@@ -79,7 +79,7 @@ async def test_service_registers_submission_without_treating_it_as_fill() -> Non
 
 
 @pytest.mark.asyncio
-async def test_service_marks_without_execution() -> None:
+async def test_service_marks_accepted_data_without_execution() -> None:
     tick = MarketTick(
         source=MarketSource.KRAKEN,
         symbol="ETH/USD",
@@ -91,7 +91,7 @@ async def test_service_marks_without_execution() -> None:
     result = RuntimeResult(
         tick=tick,
         references=[],
-        pipeline=PipelineResult(accepted_market_data=False),
+        pipeline=PipelineResult(accepted_market_data=True),
     )
     runtime = FakeRuntime(result)
     book = InMemoryPortfolioBook(starting_nav_usd=10_000)
@@ -105,6 +105,38 @@ async def test_service_marks_without_execution() -> None:
     await service._run_symbol_safely("ETH/USD")
 
     assert book.marks_usd["ETH"] == pytest.approx(1_000)
+
+
+@pytest.mark.asyncio
+async def test_service_does_not_mark_rejected_data() -> None:
+    tick = MarketTick(
+        source=MarketSource.KRAKEN,
+        symbol="ETH/USD",
+        observed_at=datetime.now(UTC),
+        bid=999,
+        ask=1_001,
+        last=1_000,
+    )
+    result = RuntimeResult(
+        tick=tick,
+        references=[],
+        pipeline=PipelineResult(
+            accepted_market_data=False,
+            rejection_reasons=["reference_price_divergence"],
+        ),
+    )
+    runtime = FakeRuntime(result)
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    service = ContinuousPaperService(
+        runtime=runtime,  # type: ignore[arg-type]
+        portfolio=book,
+        symbols=("ETH/USD",),
+        error_backoff_seconds=0,
+    )
+
+    await service._run_symbol_safely("ETH/USD")
+
+    assert "ETH" not in book.marks_usd
 
 
 class StubReconciler:
