@@ -53,6 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cycle-seconds", type=float, default=5.0)
     parser.add_argument("--metrics-port", type=int, default=9108)
     parser.add_argument(
+        "--metrics-addr",
+        default="127.0.0.1",
+        help="bind address for the Prometheus metrics endpoint (default: loopback only)",
+    )
+    parser.add_argument(
         "--pipeline",
         choices=("signal", "demo"),
         default="signal",
@@ -235,7 +240,7 @@ async def _main_async(args: argparse.Namespace) -> None:
         redis = RedisRuntimePublisher(settings.redis_url)
         sinks.extend((postgres, redis))
 
-    start_http_server(args.metrics_port)
+    start_http_server(args.metrics_port, addr=args.metrics_addr)
     service = build_service(
         settings,
         pipeline_mode=args.pipeline,

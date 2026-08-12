@@ -76,3 +76,24 @@ async def test_meta_agent_does_nothing_without_baseline_signal() -> None:
     result = await ConstrainedMetaAgent(client=client).propose(packet(None))
     assert result is None
     assert called is False
+
+
+async def test_confidence_nudge_scales_notional_down_never_up() -> None:
+    async def nudging_client(_: EvidencePacket) -> MetaAgentDecision:
+        return MetaAgentDecision(approve=True, confidence_delta=-0.1, rationale="weaker")
+
+    evidence = packet()
+    evidence = evidence.model_copy(update={"source_freshness_seconds": 3.5})
+    result = await ConstrainedMetaAgent(client=nudging_client).propose(evidence)
+    assert result is not None
+    base = evidence.strategy_signal.confidence
+    expected = evidence.requested_notional_usd * ((base - 0.1) / base)
+    assert result.requested_notional_usd == pytest.approx(expected)
+    assert result.source_freshness_seconds == pytest.approx(3.5)
+
+    async def inflating_client(_: EvidencePacket) -> MetaAgentDecision:
+        return MetaAgentDecision(approve=True, confidence_delta=0.15, rationale="stronger")
+
+    inflated = await ConstrainedMetaAgent(client=inflating_client).propose(packet())
+    assert inflated is not None
+    assert inflated.requested_notional_usd <= packet().requested_notional_usd

@@ -4,8 +4,8 @@ services:
     environment:
       POSTGRES_DB: traderstack
       POSTGRES_USER: traderstack
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-change-me}
-    ports: ["5432:5432"]
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    ports: ["127.0.0.1:5432:5432"]
     volumes: ["postgres_data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U traderstack -d traderstack"]
@@ -16,7 +16,7 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]
     volumes: ["redis_data:/data"]
 
   app:
@@ -25,8 +25,10 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_started}
-    command: ["traderstack-paper", "--persistent-events", "--checkpoint-path", "/app/var/state/portfolio.json", "--audit-path", "/app/var/audit/runtime.jsonl"]
-    ports: ["9108:9108"]
+    # Metrics bind 0.0.0.0 INSIDE the container so the prometheus service can
+    # scrape it over the compose network; the host publish stays on loopback.
+    command: ["traderstack-paper", "--persistent-events", "--checkpoint-path", "/app/var/state/portfolio.json", "--audit-path", "/app/var/audit/runtime.jsonl", "--ledger-path", "/app/var/state/ledger.json", "--metrics-addr", "0.0.0.0"]
+    ports: ["127.0.0.1:9108:9108"]
     volumes: ["app_state:/app/var"]
     restart: unless-stopped
     profiles: ["app"]
@@ -34,12 +36,12 @@ services:
   prometheus:
     image: prom/prometheus:latest
     volumes: ["./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
-    ports: ["9090:9090"]
+    ports: ["127.0.0.1:9090:9090"]
     profiles: ["observability"]
 
   grafana:
     image: grafana/grafana:latest
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:3000:3000"]
     profiles: ["observability"]
 
 volumes:

@@ -125,3 +125,10 @@ async def test_ledger_checkpoint_round_trip(tmp_path) -> None:
     restored = await store.load()
     assert restored is not None
     assert "o1" in restored.orders
+
+
+def test_metrics_bind_defaults_to_loopback() -> None:
+    from traderstack.cli import build_parser
+
+    args = build_parser().parse_args([])
+    assert args.metrics_addr == "127.0.0.1"
