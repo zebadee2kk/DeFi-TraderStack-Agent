@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
 from traderstack.market.candle_feed import CandleFeed
 from traderstack.market.models import MarketTick, ReferencePrice
-from traderstack.market.providers import ReferencePriceProvider, VenueMarketDataProvider
+from traderstack.market.providers import ReferencePriceProvider
 from traderstack.models import PortfolioSnapshot
 from traderstack.pipeline import PipelineResult, VerticalSlicePipeline
 from traderstack.signal_pipeline import SignalPipeline
@@ -30,10 +30,10 @@ class TradingRuntime(Protocol):
     ) -> RuntimeResult: ...
 
 
-async def _next_tick(venue: VenueMarketDataProvider, symbol: str) -> MarketTick:
-    async for tick in venue.stream_ticks((symbol,)):
-        return tick
-    raise RuntimeError("venue stream ended before producing a tick")
+class TickSource(Protocol):
+    """Serves the most recent market tick for a symbol (e.g. PersistentTickerFeed)."""
+
+    async def latest(self, symbol: str) -> MarketTick: ...
 
 
 async def _gather_references(
@@ -73,7 +73,7 @@ async def _submit_if_approved(
 class PaperRuntime:
     """Demo runtime driving the hardcoded vertical-slice pipeline."""
 
-    venue: VenueMarketDataProvider
+    ticks: TickSource
     references: tuple[ReferencePriceProvider, ...]
     pipeline: VerticalSlicePipeline
     executor: HummingbotPaperExecutor | None = None
@@ -85,7 +85,7 @@ class PaperRuntime:
         *,
         submit: bool = False,
     ) -> RuntimeResult:
-        tick = await _next_tick(self.venue, symbol)
+        tick = await self.ticks.latest(symbol)
         asset = symbol.split("/", 1)[0].upper()
         prices = await _gather_references(self.references, asset)
 
@@ -104,7 +104,7 @@ class PaperRuntime:
 class SignalPaperRuntime:
     """Signal-driven runtime: candle history feeds the strategy ensemble."""
 
-    venue: VenueMarketDataProvider
+    ticks: TickSource
     references: tuple[ReferencePriceProvider, ...]
     candles: CandleFeed
     pipeline: SignalPipeline
@@ -117,7 +117,7 @@ class SignalPaperRuntime:
         *,
         submit: bool = False,
     ) -> RuntimeResult:
-        tick = await _next_tick(self.venue, symbol)
+        tick = await self.ticks.latest(symbol)
         asset = symbol.split("/", 1)[0].upper()
         # CandleFeed already absorbs transient outages by serving its cache; if
         # it still raises, the history is truly unavailable and the error must
