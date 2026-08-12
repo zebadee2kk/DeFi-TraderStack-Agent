@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,7 @@ class WalkForwardReport(BaseModel):
 
 @dataclass(frozen=True)
 class WalkForwardEvaluator:
-    backtester: BaselineBacktester = BaselineBacktester()
+    backtester: BaselineBacktester = field(default_factory=BaselineBacktester)
     train_size: int = 180
     test_size: int = 60
     step_size: int = 60
