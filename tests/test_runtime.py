@@ -1,4 +1,3 @@
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -16,11 +15,13 @@ from traderstack.runtime import PaperRuntime, SignalPaperRuntime
 from traderstack.signal_pipeline import SignalPipeline
 
 
-class FakeVenue:
-    async def stream_ticks(self, symbols: tuple[str, ...]) -> AsyncIterator[MarketTick]:
-        yield MarketTick(
+class StaticTicks:
+    """Stub TickSource serving a fresh canned tick for any symbol."""
+
+    async def latest(self, symbol: str) -> MarketTick:
+        return MarketTick(
             source=MarketSource.KRAKEN,
-            symbol=symbols[0],
+            symbol=symbol,
             observed_at=datetime.now(UTC),
             bid=99.95,
             ask=100.05,
@@ -58,7 +59,7 @@ def pipeline() -> VerticalSlicePipeline:
 @pytest.mark.asyncio
 async def test_runtime_tolerates_one_failed_reference_provider() -> None:
     runtime = PaperRuntime(
-        venue=FakeVenue(),
+        ticks=StaticTicks(),
         references=(GoodReference(MarketSource.COINGECKO), BrokenReference()),
         pipeline=pipeline(),
     )
@@ -72,7 +73,7 @@ async def test_runtime_tolerates_one_failed_reference_provider() -> None:
 @pytest.mark.asyncio
 async def test_runtime_fails_closed_when_all_references_fail() -> None:
     runtime = PaperRuntime(
-        venue=FakeVenue(),
+        ticks=StaticTicks(),
         references=(BrokenReference(),),
         pipeline=pipeline(),
     )
@@ -108,7 +109,7 @@ async def test_runtime_only_submits_when_explicitly_requested() -> None:
     async with httpx.AsyncClient(base_url="http://hummingbot", transport=transport) as client:
         executor = HummingbotPaperExecutor("http://hummingbot", "user", "pass", client=client)
         runtime = PaperRuntime(
-            venue=FakeVenue(),
+            ticks=StaticTicks(),
             references=(GoodReference(MarketSource.COINGECKO),),
             pipeline=pipeline(),
             executor=executor,
@@ -162,7 +163,7 @@ class BrokenCandleFetcher:
 
 def signal_runtime(fetcher) -> SignalPaperRuntime:
     return SignalPaperRuntime(
-        venue=FakeVenue(),
+        ticks=StaticTicks(),
         references=(GoodReference(MarketSource.COINGECKO),),
         candles=CandleFeed(fetcher=fetcher),
         pipeline=SignalPipeline(risk_engine=RiskEngine(Settings(kill_switch=False))),

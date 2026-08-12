@@ -67,8 +67,38 @@ def parse_kraken_ticker(message: dict[str, object]) -> MarketTick | None:
     )
 
 
-class CoinGeckoPriceProvider:
-    def __init__(self, api_key: str | None = None, base_url: str = "https://api.coingecko.com/api/v3") -> None:
+class _PooledClientMixin:
+    """Shares one httpx.AsyncClient across calls instead of one per request.
+
+    An injected client belongs to the caller and is never closed here; the
+    lazily created fallback is owned by the provider and released by aclose().
+    """
+
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        self._client = client
+        self._owned_client: httpx.AsyncClient | None = None
+
+    def _http_client(self) -> httpx.AsyncClient:
+        if self._client is not None:
+            return self._client
+        if self._owned_client is None:
+            self._owned_client = httpx.AsyncClient(timeout=10)
+        return self._owned_client
+
+    async def aclose(self) -> None:
+        if self._owned_client is not None:
+            await self._owned_client.aclose()
+            self._owned_client = None
+
+
+class CoinGeckoPriceProvider(_PooledClientMixin):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str = "https://api.coingecko.com/api/v3",
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        super().__init__(client)
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
 
@@ -77,14 +107,13 @@ class CoinGeckoPriceProvider:
         if not ids:
             return []
         headers = {"x-cg-demo-api-key": self.api_key} if self.api_key else {}
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                f"{self.base_url}/simple/price",
-                params={"ids": ",".join(ids), "vs_currencies": "usd"},
-                headers=headers,
-            )
-            response.raise_for_status()
-            payload = response.json()
+        response = await self._http_client().get(
+            f"{self.base_url}/simple/price",
+            params={"ids": ",".join(ids), "vs_currencies": "usd"},
+            headers=headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
         now = datetime.now(UTC)
         reverse = {v: k for k, v in COINGECKO_IDS.items()}
         prices: list[ReferencePrice] = []
@@ -101,22 +130,31 @@ class CoinGeckoPriceProvider:
         return prices
 
 
-class CoinMarketCapPriceProvider:
-    def __init__(self, api_key: str | None = None, base_url: str = "https://pro-api.coinmarketcap.com") -> None:
+class CoinMarketCapPriceProvider(_PooledClientMixin):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str = "https://pro-api.coinmarketcap.com",
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        super().__init__(client)
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
 
     async def get_prices(self, assets: tuple[str, ...]) -> list[ReferencePrice]:
-        path = "/v3/cryptocurrency/quotes/latest" if self.api_key else "/public-api/v3/cryptocurrency/quotes/latest"
+        path = (
+            "/v3/cryptocurrency/quotes/latest"
+            if self.api_key
+            else "/public-api/v3/cryptocurrency/quotes/latest"
+        )
         headers = {"X-CMC_PRO_API_KEY": self.api_key} if self.api_key else {}
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                f"{self.base_url}{path}",
-                params={"symbol": ",".join(assets), "convert": "USD"},
-                headers=headers,
-            )
-            response.raise_for_status()
-            payload = response.json()
+        response = await self._http_client().get(
+            f"{self.base_url}{path}",
+            params={"symbol": ",".join(assets), "convert": "USD"},
+            headers=headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
         data = payload.get("data", {})
         now = datetime.now(UTC)
         prices: list[ReferencePrice] = []

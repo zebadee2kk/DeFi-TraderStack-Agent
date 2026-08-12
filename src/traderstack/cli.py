@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Literal
@@ -33,10 +34,18 @@ from traderstack.market.intelligence_providers import (
     LunarCrushSocialProvider,
 )
 from traderstack.market.kraken_candles import KrakenCandleProvider
+from traderstack.market.providers import ReferencePriceProvider
+from traderstack.market.ticker_feed import PersistentTickerFeed
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.risk import RiskEngine
-from traderstack.runtime import PaperRuntime, RuntimeResult, SignalPaperRuntime, TradingRuntime
+from traderstack.runtime import (
+    PaperRuntime,
+    RuntimeResult,
+    SignalPaperRuntime,
+    TickSource,
+    TradingRuntime,
+)
 from traderstack.service import ContinuousPaperService
 from traderstack.signal_pipeline import SignalPipeline
 
@@ -135,18 +144,36 @@ def build_meta_agent(settings: Settings) -> ConstrainedMetaAgent:
     return ConstrainedMetaAgent(client=client)
 
 
+def build_symbols(settings: Settings) -> tuple[str, ...]:
+    return tuple(f"{asset}/USD" for asset in settings.assets)
+
+
+def build_ticker_feed(settings: Settings) -> PersistentTickerFeed:
+    return PersistentTickerFeed(venue=KrakenTickerProvider(), symbols=build_symbols(settings))
+
+
+def build_reference_providers() -> tuple[ReferencePriceProvider, ...]:
+    return (CoinGeckoPriceProvider(), CoinMarketCapPriceProvider())
+
+
 def build_runtime(
     settings: Settings,
     *,
     pipeline_mode: PipelineMode,
     submit: bool,
     use_meta_agent: bool,
+    ticks: TickSource | None = None,
+    references: tuple[ReferencePriceProvider, ...] | None = None,
 ) -> TradingRuntime:
     executor = build_executor(settings, submit=submit)
+    if ticks is None:
+        ticks = build_ticker_feed(settings)
+    if references is None:
+        references = build_reference_providers()
     if pipeline_mode == "demo":
         return PaperRuntime(
-            venue=KrakenTickerProvider(),
-            references=(CoinGeckoPriceProvider(), CoinMarketCapPriceProvider()),
+            ticks=ticks,
+            references=references,
             pipeline=VerticalSlicePipeline(
                 risk_engine=RiskEngine(settings),
                 max_tick_age_seconds=settings.max_market_data_age_seconds,
@@ -167,8 +194,8 @@ def build_runtime(
         venue=settings.hummingbot_connector_name,
     )
     return SignalPaperRuntime(
-        venue=KrakenTickerProvider(),
-        references=(CoinGeckoPriceProvider(), CoinMarketCapPriceProvider()),
+        ticks=ticks,
+        references=references,
         candles=CandleFeed(
             fetcher=KrakenCandleProvider(),
             interval=settings.candle_interval,
@@ -192,6 +219,8 @@ def build_service(
     checkpoint_store: JsonPortfolioCheckpointStore,
     execution_ledger: ExecutionLedger | None = None,
     ledger_store: JsonLedgerCheckpointStore | None = None,
+    ticks: TickSource | None = None,
+    references: tuple[ReferencePriceProvider, ...] | None = None,
 ) -> ContinuousPaperService:
     if settings.trading_mode != "paper":
         raise RuntimeError("continuous paper service requires TRADING_MODE=paper")
@@ -201,11 +230,13 @@ def build_service(
         pipeline_mode=pipeline_mode,
         submit=submit,
         use_meta_agent=use_meta_agent,
+        ticks=ticks,
+        references=references,
     )
     if submit and execution_ledger is None:
         execution_ledger = ExecutionLedger()
     reconciler = build_reconciler(settings) if submit else None
-    symbols = tuple(f"{asset}/USD" for asset in settings.assets)
+    symbols = build_symbols(settings)
     return ContinuousPaperService(
         runtime=runtime,
         portfolio=portfolio,
@@ -241,6 +272,10 @@ async def _main_async(args: argparse.Namespace) -> None:
         sinks.extend((postgres, redis))
 
     start_http_server(args.metrics_port, addr=args.metrics_addr)
+    # Built here (not inside build_runtime) so shutdown can release the shared
+    # websocket subscription and pooled HTTP clients they hold.
+    ticker_feed = build_ticker_feed(settings)
+    references = build_reference_providers()
     service = build_service(
         settings,
         pipeline_mode=args.pipeline,
@@ -252,10 +287,19 @@ async def _main_async(args: argparse.Namespace) -> None:
         checkpoint_store=checkpoint_store,
         execution_ledger=execution_ledger,
         ledger_store=ledger_store,
+        ticks=ticker_feed,
+        references=references,
     )
     try:
         await service.run()
     finally:
+        with contextlib.suppress(Exception):
+            await ticker_feed.aclose()
+        for provider in references:
+            aclose = getattr(provider, "aclose", None)
+            if aclose is not None:
+                with contextlib.suppress(Exception):
+                    await aclose()
         if postgres is not None:
             await postgres.close()
         if redis is not None:
