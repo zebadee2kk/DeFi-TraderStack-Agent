@@ -31,7 +31,9 @@ class TradeProposal(BaseModel):
 
 class PortfolioSnapshot(BaseModel):
     nav_usd: float = Field(gt=0)
-    cash_usd: float = Field(ge=0)
+    # True cash, deliberately unclamped: a negative value means the book is
+    # overdrawn and must be visible to the risk engine, not masked.
+    cash_usd: float
     daily_pnl_usd: float
     peak_nav_usd: float = Field(gt=0)
     asset_exposure_usd: dict[str, float] = Field(default_factory=dict)

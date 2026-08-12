@@ -63,3 +63,24 @@ def test_daily_anchor_survives_state_round_trip() -> None:
     assert restored.daily_anchor_date == book.daily_anchor_date
     assert restored.daily_anchor_nav_usd == pytest.approx(book.daily_anchor_nav_usd)
     assert restored.snapshot().daily_pnl_usd == pytest.approx(book.snapshot().daily_pnl_usd)
+
+
+def test_peak_nav_ratchets_on_marks() -> None:
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill("BTC", Side.BUY, quantity=1.0, price_usd=1_000)
+    assert book.snapshot().peak_nav_usd == pytest.approx(10_000)
+
+    book.mark("BTC", 2_000)
+    assert book.snapshot().peak_nav_usd == pytest.approx(11_000)
+
+    book.mark("BTC", 500)
+    snapshot = book.snapshot()
+    assert snapshot.peak_nav_usd == pytest.approx(11_000)
+    assert 1 - snapshot.nav_usd / snapshot.peak_nav_usd == pytest.approx(0.136, abs=0.001)
+
+
+def test_snapshot_reports_true_negative_cash() -> None:
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill("BTC", Side.BUY, quantity=1.0, price_usd=11_000)
+    assert book.snapshot().cash_usd == pytest.approx(-1_000)
+    assert book.snapshot().nav_usd == pytest.approx(10_000)

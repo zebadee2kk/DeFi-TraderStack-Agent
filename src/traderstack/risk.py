@@ -51,11 +51,15 @@ class RiskEngine:
             reasons.append("account_drawdown_limit_reached")
 
         max_notional = portfolio.nav_usd * self.settings.max_position_pct
-        remaining = max(0.0, max_notional - existing_exposure_usd)
+        position_headroom = max(0.0, max_notional - existing_exposure_usd)
+        cash_headroom = max(0.0, portfolio.cash_usd)
+        remaining = min(position_headroom, cash_headroom)
 
         if reasons or remaining <= 0:
-            if remaining <= 0:
+            if position_headroom <= 0:
                 reasons.append("position_limit_reached")
+            if cash_headroom <= 0:
+                reasons.append("insufficient_cash")
             return self._result(proposal, RiskDecision.REJECT, 0, reasons)
 
         approved = min(proposal.requested_notional_usd, remaining)

@@ -114,3 +114,24 @@ def test_sell_still_blocked_by_kill_switch():
     result = RiskEngine(settings(kill_switch=True)).evaluate(proposal(side=Side.SELL), book)
     assert result.decision == RiskDecision.REJECT
     assert "kill_switch_enabled" in result.reasons
+
+
+def test_buy_capped_by_available_cash():
+    book = portfolio(cash_usd=300)
+    result = RiskEngine(settings()).evaluate(proposal(), book)
+    assert result.decision == RiskDecision.REDUCE
+    assert result.approved_notional_usd == 300
+
+
+def test_buy_rejected_without_cash():
+    book = portfolio(cash_usd=0)
+    result = RiskEngine(settings()).evaluate(proposal(), book)
+    assert result.decision == RiskDecision.REJECT
+    assert "insufficient_cash" in result.reasons
+
+
+def test_buy_rejected_when_cash_negative():
+    book = portfolio(cash_usd=-500)
+    result = RiskEngine(settings()).evaluate(proposal(), book)
+    assert result.decision == RiskDecision.REJECT
+    assert "insufficient_cash" in result.reasons

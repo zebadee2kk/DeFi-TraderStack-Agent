@@ -94,6 +94,10 @@ class InMemoryPortfolioBook:
         if price_usd <= 0:
             raise ValueError("mark price must be positive")
         self.marks_usd[asset.upper()] = price_usd
+        # The drawdown breaker measures against the rolling peak, so every
+        # NAV move — not just fills — must ratchet it.
+        if self.peak_nav_usd is not None:
+            self.peak_nav_usd = max(self.peak_nav_usd, self.nav_usd)
 
     def apply_fill(self, asset: str, side: Side, quantity: float, price_usd: float) -> None:
         if quantity <= 0 or price_usd <= 0:
@@ -128,9 +132,6 @@ class InMemoryPortfolioBook:
                 position.average_cost_usd = 0.0
 
         self.mark(asset, price_usd)
-        nav = self.nav_usd
-        assert self.peak_nav_usd is not None
-        self.peak_nav_usd = max(self.peak_nav_usd, nav)
 
     @property
     def nav_usd(self) -> float:
@@ -160,7 +161,7 @@ class InMemoryPortfolioBook:
         }
         return PortfolioSnapshot(
             nav_usd=self.nav_usd,
-            cash_usd=max(0.0, self.cash_usd),
+            cash_usd=self.cash_usd,
             daily_pnl_usd=self.nav_usd - anchor_nav,
             peak_nav_usd=self.peak_nav_usd,
             asset_exposure_usd=exposures,
