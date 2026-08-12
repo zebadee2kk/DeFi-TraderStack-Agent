@@ -77,16 +77,10 @@ class LunarCrushSocialProvider:
         sentiment = None
         if isinstance(sentiment_raw, int | float):
             sentiment = max(-1.0, min(1.0, (float(sentiment_raw) - 50.0) / 50.0))
-        social_volume = row.get("social_volume_24h")
-        interactions = row.get("interactions_24h")
-        mention_velocity = None
-        if isinstance(social_volume, int | float) and isinstance(interactions, int | float):
-            denominator = max(float(social_volume), 1.0)
-            mention_velocity = float(interactions) / denominator
         return SocialSnapshot(
             asset=asset.upper(),
             sentiment=sentiment,
-            mention_velocity_z=mention_velocity,
+            mention_velocity_z=None,
             source_id="lunarcrush:coins-list-v1",
         )
 
@@ -117,7 +111,7 @@ class CryptoPanicNewsProvider:
             raise TypeError("unexpected CryptoPanic response")
         importance = 0.0
         adverse_votes = 0
-        total_votes = 0
+        total_directional_votes = 0
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -128,10 +122,16 @@ class CryptoPanicNewsProvider:
             if isinstance(votes, dict):
                 negative = votes.get("negative", 0)
                 positive = votes.get("positive", 0)
+                important = votes.get("important", 0)
                 if isinstance(negative, int) and isinstance(positive, int):
                     adverse_votes += negative
-                    total_votes += negative + positive
-        adverse = total_votes > 0 and adverse_votes / total_votes >= 0.6
+                    total_directional_votes += negative + positive
+                if isinstance(important, int):
+                    importance = max(importance, min(1.0, important / 10.0))
+        adverse = (
+            total_directional_votes > 0
+            and adverse_votes / total_directional_votes >= 0.6
+        )
         return NewsSnapshot(
             asset=asset.upper(),
             event_score=importance,
