@@ -23,9 +23,9 @@ class ExecutionFill(BaseModel):
     order_id: str
     asset: str
     side: Side
-    quantity: float = Field(gt=0)
-    price_usd: float = Field(gt=0)
-    fee_usd: float = Field(default=0.0, ge=0)
+    quantity: float = Field(gt=0, lt=1e15, allow_inf_nan=False)
+    price_usd: float = Field(gt=0, lt=1e12, allow_inf_nan=False)
+    fee_usd: float = Field(default=0.0, ge=0, lt=1e12, allow_inf_nan=False)
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -34,10 +34,10 @@ class ExecutionOrder(BaseModel):
     decision_id: str
     asset: str
     side: Side
-    requested_quantity: float = Field(gt=0)
+    requested_quantity: float = Field(gt=0, lt=1e15, allow_inf_nan=False)
     state: OrderLifecycleState = OrderLifecycleState.SUBMITTED
-    filled_quantity: float = Field(default=0.0, ge=0)
-    average_fill_price_usd: float | None = Field(default=None, gt=0)
+    filled_quantity: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    average_fill_price_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     last_updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

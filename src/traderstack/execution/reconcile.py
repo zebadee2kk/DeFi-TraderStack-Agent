@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import httpx
@@ -167,13 +168,18 @@ class HummingbotExecutionReconciler:
     ) -> float:
         for key in keys:
             value = row.get(key)
+            number: float | None = None
             if isinstance(value, int | float):
-                return float(value)
-            if isinstance(value, str):
+                number = float(value)
+            elif isinstance(value, str):
                 try:
-                    return float(value)
+                    number = float(value)
                 except ValueError:
-                    pass
+                    number = None
+            # Non-finite values (e.g. "1e999" -> inf) are corrupt venue data,
+            # not numbers; treat them as missing so they fail closed.
+            if number is not None and math.isfinite(number):
+                return number
         if required:
             raise ValueError(f"missing numeric field from {keys}")
         return 0.0

@@ -55,3 +55,12 @@ async def test_reconciler_applies_new_trades_once() -> None:
     assert ledger.orders["o1"].state is OrderLifecycleState.FILLED
     assert book.snapshot().cash_usd == pytest.approx(9_000)
     assert book.snapshot().asset_exposure_usd["BTC"] == pytest.approx(1_000)
+
+
+def test_number_coercion_rejects_non_finite_strings() -> None:
+    with pytest.raises(ValueError, match="missing numeric field"):
+        HummingbotExecutionReconciler._number({"price": "1e999"}, "price")
+    with pytest.raises(ValueError, match="missing numeric field"):
+        HummingbotExecutionReconciler._number({"price": float("inf")}, "price")
+    assert HummingbotExecutionReconciler._number({"fee": "1e999"}, "fee", required=False) == 0.0
+    assert HummingbotExecutionReconciler._number({"price": "101.5"}, "price") == 101.5

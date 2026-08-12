@@ -1,4 +1,5 @@
 import json
+import math
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
@@ -49,6 +50,12 @@ def parse_kraken_ticker(message: dict[str, object]) -> MarketTick | None:
     if not isinstance(ask, (int, float)):
         return None
     if not isinstance(last, (int, float)):
+        return None
+    # json.loads accepts Infinity/NaN tokens; a non-finite, non-positive, or
+    # crossed quote is corrupt provider data and must not become a tick.
+    if not all(math.isfinite(float(value)) for value in (bid, ask, last)):
+        return None
+    if float(bid) <= 0 or float(last) <= 0 or float(ask) < float(bid):
         return None
     return MarketTick(
         source=MarketSource.KRAKEN,

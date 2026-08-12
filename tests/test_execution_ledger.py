@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from traderstack.execution.ledger import (
     ExecutionFill,
@@ -95,3 +96,20 @@ def test_ledger_rejects_orphan_and_overfill() -> None:
                 price_usd=1_000,
             )
         )
+
+
+def test_execution_fill_rejects_non_finite_values() -> None:
+    base = {
+        "fill_id": "f-1",
+        "order_id": "o-1",
+        "asset": "BTC",
+        "side": Side.BUY,
+        "quantity": 1.0,
+        "price_usd": 100.0,
+    }
+    with pytest.raises(ValidationError):
+        ExecutionFill(**{**base, "price_usd": float("inf")})
+    with pytest.raises(ValidationError):
+        ExecutionFill(**{**base, "quantity": float("nan")})
+    with pytest.raises(ValidationError):
+        ExecutionFill(**{**base, "fee_usd": float("inf")})

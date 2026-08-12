@@ -9,11 +9,11 @@ class Candle(BaseModel):
     symbol: str
     interval: str
     opened_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    open: float = Field(gt=0)
-    high: float = Field(gt=0)
-    low: float = Field(gt=0)
-    close: float = Field(gt=0)
-    volume: float = Field(ge=0)
+    open: float = Field(gt=0, lt=1e12, allow_inf_nan=False)
+    high: float = Field(gt=0, lt=1e12, allow_inf_nan=False)
+    low: float = Field(gt=0, lt=1e12, allow_inf_nan=False)
+    close: float = Field(gt=0, lt=1e12, allow_inf_nan=False)
+    volume: float = Field(ge=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def validate_ohlc(self) -> "Candle":

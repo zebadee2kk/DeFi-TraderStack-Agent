@@ -71,7 +71,11 @@ class ContinuousPaperService:
                 if result.pipeline.feature_vector is not None
                 else symbol.split("/", 1)[0].upper()
             )
-            self.portfolio.mark(asset, result.tick.last)
+            # A tick the pipeline rejected (stale, spread-blown, divergent)
+            # must not become the official mark feeding NAV, breakers, and
+            # the checkpoint — the validation gate protects marks too.
+            if result.pipeline.accepted_market_data:
+                self.portfolio.mark(asset, result.tick.last)
 
             if (
                 result.execution_receipt is not None
