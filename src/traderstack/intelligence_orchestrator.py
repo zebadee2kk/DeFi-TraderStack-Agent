@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TypeVar, cast
 
 from traderstack.features import AssetFeatureVector, MarketFeatures
 from traderstack.intelligence import (
@@ -11,6 +12,7 @@ from traderstack.intelligence import (
     merge_external_intelligence,
 )
 
+T = TypeVar("T")
 OnChainFetcher = Callable[[str], Awaitable[OnChainSnapshot]]
 SocialFetcher = Callable[[str], Awaitable[SocialSnapshot]]
 NewsFetcher = Callable[[str], Awaitable[NewsSnapshot]]
@@ -21,7 +23,7 @@ class IntelligenceCache:
     max_age_seconds: float = 300.0
     _values: dict[str, object] = field(default_factory=dict)
 
-    def get(self, key: str, expected_type: type[object]) -> object | None:
+    def get(self, key: str, expected_type: type[T]) -> T | None:
         value = self._values.get(key)
         if value is None or not isinstance(value, expected_type):
             return None
@@ -29,7 +31,7 @@ class IntelligenceCache:
         if not isinstance(observed_at, datetime):
             return None
         age = (datetime.now(UTC) - observed_at).total_seconds()
-        return value if age <= self.max_age_seconds else None
+        return cast(T, value) if age <= self.max_age_seconds else None
 
     def put(self, key: str, value: object) -> None:
         self._values[key] = value
@@ -62,9 +64,9 @@ class IntelligenceOrchestrator:
         self,
         kind: str,
         asset: str,
-        fetcher: Callable[[str], Awaitable[object]] | None,
-        expected_type: type[object],
-    ) -> object | None:
+        fetcher: Callable[[str], Awaitable[T]] | None,
+        expected_type: type[T],
+    ) -> T | None:
         key = f"{kind}:{asset}"
         cached = self.cache.get(key, expected_type)
         if cached is not None:
@@ -82,7 +84,7 @@ class IntelligenceOrchestrator:
 
     async def _fetch_news(self, asset: str) -> NewsSnapshot | None:
         cached = self.cache.get(f"news:{asset}", NewsSnapshot)
-        if isinstance(cached, NewsSnapshot):
+        if cached is not None:
             return cached
         if not self.news:
             return None
