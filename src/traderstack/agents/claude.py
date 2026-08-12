@@ -1,10 +1,9 @@
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 
 import httpx
 
 from traderstack.agents.meta import EvidencePacket, MetaAgentDecision
-
 
 META_AGENT_SCHEMA = {
     "type": "object",
