@@ -4,7 +4,6 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
 from traderstack.market.candle_feed import CandleFeed
 from traderstack.market.models import MarketTick, ReferencePrice
@@ -120,9 +119,12 @@ class SignalPaperRuntime:
     ) -> RuntimeResult:
         tick = await _next_tick(self.venue, symbol)
         asset = symbol.split("/", 1)[0].upper()
+        # CandleFeed already absorbs transient outages by serving its cache; if
+        # it still raises, the history is truly unavailable and the error must
+        # surface so RuntimeHealth records it instead of silently never trading.
         prices, candles = await asyncio.gather(
             _gather_references(self.references, asset),
-            self._candles_safely(symbol),
+            self.candles.get(symbol),
         )
 
         pipeline_result = await self.pipeline.process(tick, candles, prices, portfolio)
@@ -134,11 +136,3 @@ class SignalPaperRuntime:
             pipeline=pipeline_result,
             execution_receipt=receipt,
         )
-
-    async def _candles_safely(self, symbol: str) -> tuple[Candle, ...]:
-        # An unavailable candle feed downgrades to an "insufficient history"
-        # rejection in the pipeline instead of failing the whole cycle.
-        try:
-            return await self.candles.get(symbol)
-        except Exception:  # noqa: BLE001 - provider outage is isolated at the runtime boundary.
-            return ()
