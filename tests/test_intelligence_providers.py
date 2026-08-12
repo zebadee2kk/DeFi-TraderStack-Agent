@@ -77,3 +77,19 @@ def test_external_intelligence_merges_into_feature_vector() -> None:
     assert vector.asset == "BTC"
     assert vector.market.relative_volume == 1.2
     assert vector.source_ids == []
+
+
+async def test_cryptopanic_error_never_leaks_token() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"detail": "unauthorized"})
+
+    async with httpx.AsyncClient(
+        base_url="https://cryptopanic.com", transport=httpx.MockTransport(handler)
+    ) as client:
+        provider = CryptoPanicNewsProvider(auth_token="SECRET-TOKEN-123", client=client)
+        with pytest.raises(RuntimeError) as excinfo:
+            await provider.fetch("BTC")
+
+    assert "SECRET-TOKEN-123" not in str(excinfo.value)
+    assert "auth_token" not in str(excinfo.value)
+    assert "401" in str(excinfo.value)

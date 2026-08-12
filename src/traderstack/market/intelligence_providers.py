@@ -104,7 +104,10 @@ class CryptoPanicNewsProvider:
         else:
             async with httpx.AsyncClient(base_url=self.base_url, timeout=20) as client:
                 response = await client.get(path, params=params)
-        response.raise_for_status()
+        # The API requires the token as a query parameter, so never let the
+        # request URL (which embeds it) leak into raised error text or logs.
+        if response.status_code >= 400:
+            raise RuntimeError(f"CryptoPanic request failed with HTTP {response.status_code}")
         payload = response.json()
         rows = payload.get("results") if isinstance(payload, dict) else None
         if not isinstance(rows, list):

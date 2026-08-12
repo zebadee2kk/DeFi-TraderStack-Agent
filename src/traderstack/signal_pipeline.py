@@ -159,6 +159,7 @@ class SignalPipeline:
             feature_vector=feature_vector,
             strategy_signal=consensus,
             requested_notional_usd=requested_notional,
+            source_freshness_seconds=tick_age_seconds,
         )
         try:
             proposal = await self.meta_agent.propose(packet)

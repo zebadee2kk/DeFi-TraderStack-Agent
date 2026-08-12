@@ -71,3 +71,22 @@ async def test_hummingbot_reconciliation_detects_nav_drift() -> None:
     assert result.nav_difference_bps > 25
 
     await client.aclose()
+
+
+def test_health_trips_on_persistent_single_symbol_failure() -> None:
+    health = RuntimeHealth(max_consecutive_errors=5)
+    for cycle in range(5):
+        health.record_success("BTC/USD")
+        health.record_error("SOL/USD", RuntimeError(f"boom {cycle}"))
+    assert health.symbol_consecutive_errors["SOL/USD"] == 5
+    assert health.healthy is False
+
+
+def test_health_symbol_counter_resets_on_success() -> None:
+    health = RuntimeHealth(max_consecutive_errors=5)
+    for _ in range(4):
+        health.record_error("SOL/USD", RuntimeError("boom"))
+    health.record_success("SOL/USD")
+    for _ in range(4):
+        health.record_error("SOL/USD", RuntimeError("boom"))
+    assert health.healthy is True
