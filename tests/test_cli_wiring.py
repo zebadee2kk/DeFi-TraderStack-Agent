@@ -104,3 +104,24 @@ async def test_build_service_wires_reconciliation_for_submit_runs(tmp_path) -> N
     )
     assert paper_only.execution_ledger is None
     assert paper_only.reconciler is None
+
+
+async def test_ledger_checkpoint_round_trip(tmp_path) -> None:
+    from traderstack.checkpoint import JsonLedgerCheckpointStore
+    from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
+    from traderstack.models import Side
+
+    store = JsonLedgerCheckpointStore(tmp_path / "ledger.json")
+    assert await store.load() is None
+
+    ledger = ExecutionLedger()
+    ledger.register_order(
+        ExecutionOrder(
+            order_id="o1", decision_id="d1", asset="BTC", side=Side.BUY, requested_quantity=1.0
+        )
+    )
+    await store.save(ledger)
+
+    restored = await store.load()
+    assert restored is not None
+    assert "o1" in restored.orders

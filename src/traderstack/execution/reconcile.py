@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 
 import httpx
+from pydantic import BaseModel, Field
 
 from traderstack.execution.ledger import (
     ExecutionFill,
@@ -15,6 +16,11 @@ from traderstack.models import Side
 from traderstack.portfolio import InMemoryPortfolioBook
 
 
+class ReconcileOutcome(BaseModel):
+    applied_fills: int = Field(default=0, ge=0)
+    skipped_orphan_fills: int = Field(default=0, ge=0)
+
+
 @dataclass
 class HummingbotExecutionReconciler:
     base_url: str
@@ -24,7 +30,11 @@ class HummingbotExecutionReconciler:
     connector_name: str = "kraken_paper_trade"
     client: httpx.AsyncClient | None = None
 
-    async def reconcile(self, ledger: ExecutionLedger, portfolio: InMemoryPortfolioBook) -> int:
+    async def reconcile(
+        self,
+        ledger: ExecutionLedger,
+        portfolio: InMemoryPortfolioBook,
+    ) -> ReconcileOutcome:
         orders_payload, trades_payload = await self._fetch_state()
         self._reconcile_orders(ledger, orders_payload)
         return self._reconcile_trades(ledger, portfolio, trades_payload)
@@ -65,8 +75,8 @@ class HummingbotExecutionReconciler:
         ledger: ExecutionLedger,
         portfolio: InMemoryPortfolioBook,
         payload: object,
-    ) -> int:
-        applied = 0
+    ) -> ReconcileOutcome:
+        outcome = ReconcileOutcome()
         for row in self._rows(payload):
             fill = ExecutionFill(
                 fill_id=self._text(row, "trade_id", "id"),
@@ -77,10 +87,21 @@ class HummingbotExecutionReconciler:
                 price_usd=self._number(row, "price"),
                 fee_usd=self._number(row, "fee", required=False),
             )
-            if ledger.record_fill(fill):
-                portfolio.apply_fill(fill.asset, fill.side, fill.quantity, fill.price_usd)
-                applied += 1
-        return applied
+            # Trades for orders this ledger never registered (prior process
+            # runs, other account activity) are skipped, not fatal: the venue
+            # trades endpoint returns history without a filter, and one orphan
+            # must not block the fills that follow it.
+            if fill.order_id not in ledger.orders:
+                outcome.skipped_orphan_fills += 1
+                continue
+            if not ledger.validate_fill(fill):
+                continue
+            # Apply to the book BEFORE consuming the fill id so a failed
+            # application is retried on the next pass instead of vanishing.
+            portfolio.apply_fill(fill.asset, fill.side, fill.quantity, fill.price_usd)
+            ledger.commit_fill(fill)
+            outcome.applied_fills += 1
+        return outcome
 
     @staticmethod
     def register_submission(

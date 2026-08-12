@@ -113,8 +113,14 @@ class InMemoryPortfolioBook:
             position.quantity = new_quantity
             self.cash_usd -= notional
         else:
-            if quantity > position.quantity:
+            if position.quantity <= 0:
                 raise ValueError("cannot sell more than current paper position")
+            # Sell intents are sized in notional at the last mark but execute
+            # at the live price, so a venue fill can slightly exceed the book
+            # position. Clamp the excess instead of dropping the whole fill;
+            # NAV reconciliation surfaces any real venue/book drift.
+            quantity = min(quantity, position.quantity)
+            notional = quantity * price_usd
             self.cash_usd += notional
             self.realized_pnl_usd += quantity * (price_usd - position.average_cost_usd)
             position.quantity -= quantity
