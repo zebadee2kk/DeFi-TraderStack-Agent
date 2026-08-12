@@ -1,7 +1,17 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, MetaData, String, Table, UniqueConstraint, insert, select
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    MetaData,
+    String,
+    Table,
+    UniqueConstraint,
+    insert,
+    select,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from traderstack.candles import Candle
