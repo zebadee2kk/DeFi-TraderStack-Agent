@@ -1,10 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
-from traderstack.indicators import momentum, moving_average, realized_volatility, volume_ratio, zscore
+from traderstack.indicators import momentum, moving_average, realized_volatility, zscore
 from traderstack.models import Side
 
 
@@ -136,10 +136,10 @@ class MeanReversionStrategy:
 
 @dataclass(frozen=True)
 class StrategyEnsemble:
-    classifier: RegimeClassifier = RegimeClassifier()
-    momentum_strategy: MomentumStrategy = MomentumStrategy()
-    trend_strategy: TrendStrategy = TrendStrategy()
-    mean_reversion_strategy: MeanReversionStrategy = MeanReversionStrategy()
+    classifier: RegimeClassifier = field(default_factory=RegimeClassifier)
+    momentum_strategy: MomentumStrategy = field(default_factory=MomentumStrategy)
+    trend_strategy: TrendStrategy = field(default_factory=TrendStrategy)
+    mean_reversion_strategy: MeanReversionStrategy = field(default_factory=MeanReversionStrategy)
 
     def evaluate(self, candles: tuple[Candle, ...]) -> tuple[Regime, tuple[StrategySignal, ...]]:
         regime = self.classifier.classify(candles)
