@@ -180,8 +180,26 @@ async def test_signal_runtime_produces_consensus_paper_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_signal_runtime_degrades_gracefully_without_candles() -> None:
-    result = await signal_runtime(BrokenCandleFetcher()).run_once("BTC/USD", portfolio())
+async def test_signal_runtime_surfaces_candle_feed_failure() -> None:
+    # An exhausted candle feed (no cache, fetch failing) must raise so the
+    # service health records the error, rather than silently never trading.
+    with pytest.raises(RuntimeError, match="candles unavailable"):
+        await signal_runtime(BrokenCandleFetcher()).run_once("BTC/USD", portfolio())
+
+
+@pytest.mark.asyncio
+async def test_signal_runtime_rejects_on_insufficient_history() -> None:
+    class EmptyCandleFetcher:
+        async def fetch(
+            self,
+            symbol: str,
+            resolution: str = "1h",
+            *,
+            count: int = 250,
+        ) -> tuple[Candle, ...]:
+            return ()
+
+    result = await signal_runtime(EmptyCandleFetcher()).run_once("BTC/USD", portfolio())
     assert result.pipeline.accepted_market_data is False
     assert "insufficient_candle_history" in result.pipeline.rejection_reasons
     assert result.pipeline.paper_order is None
