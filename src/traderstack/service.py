@@ -5,12 +5,14 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
+from traderstack.execution.reconcile import ReconcileOutcome
 from traderstack.health import RuntimeHealth
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.runtime import RuntimeResult, TradingRuntime
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
 PortfolioHandler = Callable[[InMemoryPortfolioBook], Awaitable[None]]
+LedgerHandler = Callable[[ExecutionLedger], Awaitable[None]]
 
 
 class ExecutionReconciler(Protocol):
@@ -18,7 +20,7 @@ class ExecutionReconciler(Protocol):
         self,
         ledger: ExecutionLedger,
         portfolio: InMemoryPortfolioBook,
-    ) -> int: ...
+    ) -> ReconcileOutcome: ...
 
 
 @dataclass
@@ -32,6 +34,7 @@ class ContinuousPaperService:
     on_result: ResultHandler | None = None
     on_portfolio: PortfolioHandler | None = None
     execution_ledger: ExecutionLedger | None = None
+    on_ledger: LedgerHandler | None = None
     reconciler: ExecutionReconciler | None = None
     reconcile_interval_seconds: float = 30.0
     max_consecutive_reconcile_failures: int = 5
@@ -93,6 +96,8 @@ class ContinuousPaperService:
                         requested_quantity=receipt.amount,
                     )
                 )
+                if self.on_ledger is not None:
+                    await self.on_ledger(self.execution_ledger)
 
             if self.on_result is not None:
                 await self.on_result(result)
@@ -116,10 +121,12 @@ class ContinuousPaperService:
             return
         self._last_reconcile_monotonic = now
         try:
-            applied_fills = await self.reconciler.reconcile(self.execution_ledger, self.portfolio)
+            outcome = await self.reconciler.reconcile(self.execution_ledger, self.portfolio)
             self._consecutive_reconcile_failures = 0
-            if applied_fills and self.on_portfolio is not None:
+            if outcome.applied_fills and self.on_portfolio is not None:
                 await self.on_portfolio(self.portfolio)
+            if self.on_ledger is not None:
+                await self.on_ledger(self.execution_ledger)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - sustained unreconciled state must halt, not crash.

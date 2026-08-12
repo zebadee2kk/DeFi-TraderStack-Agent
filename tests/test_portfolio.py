@@ -27,8 +27,15 @@ def test_sell_realizes_pnl_and_rejects_oversell() -> None:
     assert book.realized_pnl_usd == pytest.approx(200)
     assert book.snapshot().cash_usd == pytest.approx(9_200)
 
+    # Oversized sell fills are clamped to the remaining position (the venue
+    # fill can slightly exceed the mark-sized intent); only selling with no
+    # position at all is a hard error.
+    book.apply_fill("ETH", Side.SELL, quantity=2, price_usd=1_200)
+    assert book.positions["ETH"].quantity == 0
+    assert book.realized_pnl_usd == pytest.approx(400)
+
     with pytest.raises(ValueError, match="cannot sell more"):
-        book.apply_fill("ETH", Side.SELL, quantity=2, price_usd=1_200)
+        book.apply_fill("ETH", Side.SELL, quantity=1, price_usd=1_200)
 
 
 def test_daily_pnl_resets_on_new_utc_day() -> None:

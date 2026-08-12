@@ -4,6 +4,7 @@ import pytest
 
 from traderstack.execution.hummingbot import HummingbotOrderReceipt
 from traderstack.execution.ledger import ExecutionLedger, OrderLifecycleState
+from traderstack.execution.reconcile import ReconcileOutcome
 from traderstack.market.models import MarketSource, MarketTick
 from traderstack.models import Side
 from traderstack.pipeline import PaperOrderIntent, PipelineResult
@@ -145,11 +146,11 @@ class StubReconciler:
         self.fail = fail
         self.calls = 0
 
-    async def reconcile(self, ledger, portfolio) -> int:
+    async def reconcile(self, ledger, portfolio) -> ReconcileOutcome:
         self.calls += 1
         if self.fail:
             raise RuntimeError("hummingbot unavailable")
-        return self.applied
+        return ReconcileOutcome(applied_fills=self.applied)
 
 
 def _idle_service(reconciler, **overrides) -> ContinuousPaperService:

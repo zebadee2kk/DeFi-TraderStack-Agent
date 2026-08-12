@@ -9,7 +9,7 @@ from prometheus_client import start_http_server
 from traderstack.agents.claude import AnthropicMetaAgentClient
 from traderstack.agents.meta import ConstrainedMetaAgent
 from traderstack.audit import JsonlAuditSink
-from traderstack.checkpoint import JsonPortfolioCheckpointStore
+from traderstack.checkpoint import JsonLedgerCheckpointStore, JsonPortfolioCheckpointStore
 from traderstack.config import Settings
 from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
@@ -49,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--submit", action="store_true", help="submit approved paper orders")
     parser.add_argument("--audit-path", default="var/audit/runtime.jsonl")
     parser.add_argument("--checkpoint-path", default="var/state/portfolio.json")
+    parser.add_argument("--ledger-path", default="var/state/ledger.json")
     parser.add_argument("--cycle-seconds", type=float, default=5.0)
     parser.add_argument("--metrics-port", type=int, default=9108)
     parser.add_argument(
@@ -184,6 +185,8 @@ def build_service(
     portfolio: InMemoryPortfolioBook,
     on_result: ResultHandler,
     checkpoint_store: JsonPortfolioCheckpointStore,
+    execution_ledger: ExecutionLedger | None = None,
+    ledger_store: JsonLedgerCheckpointStore | None = None,
 ) -> ContinuousPaperService:
     if settings.trading_mode != "paper":
         raise RuntimeError("continuous paper service requires TRADING_MODE=paper")
@@ -194,7 +197,8 @@ def build_service(
         submit=submit,
         use_meta_agent=use_meta_agent,
     )
-    execution_ledger = ExecutionLedger() if submit else None
+    if submit and execution_ledger is None:
+        execution_ledger = ExecutionLedger()
     reconciler = build_reconciler(settings) if submit else None
     symbols = tuple(f"{asset}/USD" for asset in settings.assets)
     return ContinuousPaperService(
@@ -205,7 +209,8 @@ def build_service(
         cycle_interval_seconds=cycle_seconds,
         on_result=on_result,
         on_portfolio=checkpoint_store.save,
-        execution_ledger=execution_ledger,
+        execution_ledger=execution_ledger if submit else None,
+        on_ledger=ledger_store.save if submit and ledger_store is not None else None,
         reconciler=reconciler,
         reconcile_interval_seconds=settings.reconcile_interval_seconds,
     )
@@ -217,6 +222,9 @@ async def _main_async(args: argparse.Namespace) -> None:
     portfolio = await checkpoint_store.load()
     if portfolio is None:
         portfolio = InMemoryPortfolioBook(settings.paper_starting_nav_usd)
+
+    ledger_store = JsonLedgerCheckpointStore(Path(args.ledger_path))
+    execution_ledger = await ledger_store.load() if args.submit else None
 
     sinks: list[ResultHandler] = [JsonlAuditSink(Path(args.audit_path))]
     postgres: PostgresRuntimeEventStore | None = None
@@ -237,6 +245,8 @@ async def _main_async(args: argparse.Namespace) -> None:
         portfolio=portfolio,
         on_result=FanoutResultSink(tuple(sinks)),
         checkpoint_store=checkpoint_store,
+        execution_ledger=execution_ledger,
+        ledger_store=ledger_store,
     )
     try:
         await service.run()
