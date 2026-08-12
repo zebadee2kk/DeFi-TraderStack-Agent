@@ -1,6 +1,8 @@
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
 from traderstack.health import RuntimeHealth
@@ -9,6 +11,14 @@ from traderstack.runtime import RuntimeResult, TradingRuntime
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
 PortfolioHandler = Callable[[InMemoryPortfolioBook], Awaitable[None]]
+
+
+class ExecutionReconciler(Protocol):
+    async def reconcile(
+        self,
+        ledger: ExecutionLedger,
+        portfolio: InMemoryPortfolioBook,
+    ) -> int: ...
 
 
 @dataclass
@@ -22,8 +32,13 @@ class ContinuousPaperService:
     on_result: ResultHandler | None = None
     on_portfolio: PortfolioHandler | None = None
     execution_ledger: ExecutionLedger | None = None
+    reconciler: ExecutionReconciler | None = None
+    reconcile_interval_seconds: float = 30.0
+    max_consecutive_reconcile_failures: int = 5
     health: RuntimeHealth = field(default_factory=RuntimeHealth)
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
+    _last_reconcile_monotonic: float | None = field(default=None, init=False)
+    _consecutive_reconcile_failures: int = field(default=0, init=False)
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -39,6 +54,8 @@ class ContinuousPaperService:
                 if not self.health.healthy:
                     self.stop()
                     break
+            if not self._stop_event.is_set():
+                await self._reconcile_if_due()
             if not self._stop_event.is_set():
                 await self._sleep_or_stop(self.cycle_interval_seconds)
 
@@ -83,6 +100,29 @@ class ContinuousPaperService:
         except Exception as exc:  # noqa: BLE001 - service boundary records and backs off.
             self.health.record_error(symbol, exc)
             await self._sleep_or_stop(self.error_backoff_seconds)
+
+    async def _reconcile_if_due(self) -> None:
+        if self.reconciler is None or self.execution_ledger is None:
+            return
+        now = time.monotonic()
+        if (
+            self._last_reconcile_monotonic is not None
+            and now - self._last_reconcile_monotonic < self.reconcile_interval_seconds
+        ):
+            return
+        self._last_reconcile_monotonic = now
+        try:
+            applied_fills = await self.reconciler.reconcile(self.execution_ledger, self.portfolio)
+            self._consecutive_reconcile_failures = 0
+            if applied_fills and self.on_portfolio is not None:
+                await self.on_portfolio(self.portfolio)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - sustained unreconciled state must halt, not crash.
+            self._consecutive_reconcile_failures += 1
+            self.health.record_error("__reconciliation__", exc)
+            if self._consecutive_reconcile_failures >= self.max_consecutive_reconcile_failures:
+                self.stop()
 
     async def _sleep_or_stop(self, seconds: float) -> None:
         if seconds <= 0:

@@ -34,12 +34,33 @@ class Settings(BaseSettings):
     candle_count: int = Field(default=250, gt=31)
     candle_refresh_seconds: float = Field(default=300.0, gt=0)
 
+    # Execution reconciliation cadence for --submit runs.
+    reconcile_interval_seconds: float = Field(default=30.0, gt=0)
+
     # External intelligence and meta-agent credentials (optional).
     anthropic_api_key: SecretStr | None = None
     anthropic_model: str = "claude-haiku-4-5-20251001"
     cryptopanic_api_key: SecretStr | None = None
     lunarcrush_api_key: SecretStr | None = None
+    dune_api_key: SecretStr | None = None
+    dune_query_ids: str = ""
 
     @property
     def assets(self) -> tuple[str, ...]:
         return tuple(x.strip().upper() for x in self.mvp_assets.split(",") if x.strip())
+
+    @property
+    def dune_queries(self) -> dict[str, int]:
+        """Parse DUNE_QUERY_IDS of the form "BTC:123,ETH:456" into {asset: query_id}."""
+        queries: dict[str, int] = {}
+        for entry in self.dune_query_ids.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            asset, _, query_id = entry.partition(":")
+            asset = asset.strip().upper()
+            query_id = query_id.strip()
+            if not asset or not query_id.isdigit():
+                raise ValueError(f"invalid Dune query mapping {entry!r}; expected ASSET:QUERY_ID")
+            queries[asset] = int(query_id)
+        return queries

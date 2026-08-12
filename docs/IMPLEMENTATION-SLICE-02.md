@@ -50,6 +50,29 @@ Fail open (advisory only) when:
   a market-only feature vector, because intelligence can only veto, never
   originate trades.
 
+## Execution reconciliation loop
+When `--submit` is active the service owns an `ExecutionLedger` and a
+`HummingbotExecutionReconciler`. Every `RECONCILE_INTERVAL_SECONDS` it pulls
+order states and trades from the Hummingbot API, applies previously unseen
+fills to the portfolio book (idempotent by fill id), and checkpoints the book
+whenever fills were applied. Reconciliation failures never crash a cycle, but
+`max_consecutive_reconcile_failures` (default 5) consecutive failures halt the
+service — sustained unreconciled state is treated as unsafe to trade through.
+
+## On-chain enrichment
+When `DUNE_API_KEY` and `DUNE_QUERY_IDS` (`BTC:1234567,ETH:2345678`) are both
+set, the intelligence orchestrator fetches per-asset on-chain snapshots from
+Dune and merges them into the feature vector. Like all external intelligence
+this is advisory: it informs the meta-agent's evidence packet but cannot
+originate trades.
+
+## Walk-forward parameter fitting
+`FittedWalkForwardEvaluator` (see `walkforward.py`) fits ensemble parameters on
+each training window — selecting among `EnsembleCandidate` configurations by
+train-window Sharpe (tie-broken by total return) — and scores only the selected
+candidate on the out-of-sample test window. The test slice never influences
+selection.
+
 ## New configuration
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -60,8 +83,10 @@ Fail open (advisory only) when:
 | `CANDLE_COUNT` | 250 | candles fetched per refresh |
 | `CANDLE_REFRESH_SECONDS` | 300 | candle cache TTL |
 | `ANTHROPIC_MODEL` | claude-haiku-4-5-20251001 | meta-agent review model |
+| `RECONCILE_INTERVAL_SECONDS` | 30 | execution reconciliation cadence |
+| `DUNE_QUERY_IDS` | (empty) | per-asset Dune query IDs for on-chain features |
 
 ## Explicitly out of scope for this slice
-- parameter fitting on walk-forward train windows;
-- Dune on-chain enrichment in the live loop (needs per-asset query IDs);
-- shorting, leverage, or any non-paper execution.
+- shorting, leverage, or any non-paper execution;
+- automatic promotion of fitted parameters into the live loop (fitting remains
+  a research harness until the evaluation gates in the roadmap are met).

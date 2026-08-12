@@ -13,9 +13,12 @@ from traderstack.checkpoint import JsonPortfolioCheckpointStore
 from traderstack.config import Settings
 from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
+from traderstack.execution.ledger import ExecutionLedger
+from traderstack.execution.reconcile import HummingbotExecutionReconciler
 from traderstack.intelligence_orchestrator import (
     IntelligenceOrchestrator,
     NewsFetcher,
+    OnChainFetcher,
     SocialFetcher,
 )
 from traderstack.market.adapters import (
@@ -26,6 +29,7 @@ from traderstack.market.adapters import (
 from traderstack.market.candle_feed import CandleFeed
 from traderstack.market.intelligence_providers import (
     CryptoPanicNewsProvider,
+    DuneOnChainProvider,
     LunarCrushSocialProvider,
 )
 from traderstack.market.kraken_candles import KrakenCandleProvider
@@ -83,6 +87,7 @@ def build_executor(settings: Settings, *, submit: bool) -> HummingbotPaperExecut
 def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
     news: tuple[NewsFetcher, ...] = ()
     social: SocialFetcher | None = None
+    onchain: OnChainFetcher | None = None
     if settings.cryptopanic_api_key is not None:
         provider = CryptoPanicNewsProvider(
             auth_token=settings.cryptopanic_api_key.get_secret_value()
@@ -92,9 +97,26 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
         social = LunarCrushSocialProvider(
             api_key=settings.lunarcrush_api_key.get_secret_value()
         ).fetch
-    if not news and social is None:
+    if settings.dune_api_key is not None and settings.dune_queries:
+        onchain = DuneOnChainProvider(
+            api_key=settings.dune_api_key.get_secret_value(),
+            query_ids=settings.dune_queries,
+        ).fetch
+    if not news and social is None and onchain is None:
         return None
-    return IntelligenceOrchestrator(social=social, news=news)
+    return IntelligenceOrchestrator(onchain=onchain, social=social, news=news)
+
+
+def build_reconciler(settings: Settings) -> HummingbotExecutionReconciler:
+    if settings.hummingbot_api_username is None or settings.hummingbot_api_password is None:
+        raise RuntimeError("execution reconciliation requires Hummingbot API credentials")
+    return HummingbotExecutionReconciler(
+        base_url=settings.hummingbot_api_url,
+        username=settings.hummingbot_api_username,
+        password=settings.hummingbot_api_password.get_secret_value(),
+        account_name=settings.hummingbot_account_name,
+        connector_name=settings.hummingbot_connector_name,
+    )
 
 
 def build_meta_agent(settings: Settings) -> ConstrainedMetaAgent:
@@ -172,6 +194,8 @@ def build_service(
         submit=submit,
         use_meta_agent=use_meta_agent,
     )
+    execution_ledger = ExecutionLedger() if submit else None
+    reconciler = build_reconciler(settings) if submit else None
     symbols = tuple(f"{asset}/USD" for asset in settings.assets)
     return ContinuousPaperService(
         runtime=runtime,
@@ -181,6 +205,9 @@ def build_service(
         cycle_interval_seconds=cycle_seconds,
         on_result=on_result,
         on_portfolio=checkpoint_store.save,
+        execution_ledger=execution_ledger,
+        reconciler=reconciler,
+        reconcile_interval_seconds=settings.reconcile_interval_seconds,
     )
 
 
