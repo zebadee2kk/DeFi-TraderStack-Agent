@@ -7,7 +7,9 @@ Use Hummingbot as the preferred execution abstraction for the MVP, with direct e
 ## Execution Path
 
 ```text
-Trade Proposal
+Validated market data (tick + independent references + candle history)
+   -> Pre-trade backtest gate (strategy confirmation, backtest, walk-forward)
+   -> Trade Proposal
    -> Portfolio Allocator
    -> Deterministic Risk Engine
    -> Execution Planner
@@ -15,6 +17,28 @@ Trade Proposal
    -> Venue
    -> Fill/Reconciliation
 ```
+
+### Pre-trade backtest gate
+
+`traderstack.pretrade.PreTradeBacktestGate` runs before a proposal is even
+constructed. Given the asset's recent candle history it:
+
+1. rejects if history is missing, shorter than `PRETRADE_MIN_CANDLES`, or older
+   than `PRETRADE_MAX_CANDLE_AGE_SECONDS`;
+2. re-evaluates the deterministic strategy ensemble on those candles and
+   rejects unless there is a consensus side (and, if a side was proposed,
+   unless it matches);
+3. backtests the ensemble over the same history net of
+   `PRETRADE_FEE_BPS` + `PRETRADE_SLIPPAGE_BPS` and rejects on excess return
+   vs. buy-and-hold, max drawdown, Sharpe or trade-count thresholds;
+4. runs rolling walk-forward folds and rejects on out-of-sample excess return
+   or worst-fold drawdown (or on too little history, when
+   `PRETRADE_REQUIRE_WALKFORWARD=true`).
+
+The gate can only add rejections. It never relaxes the risk engine, and its
+thresholds live in version-controlled configuration, not in any agent's
+runtime state. The full `PreTradeCheck` (metrics, folds, reasons) is attached
+to every `PipelineResult` so each decision is auditable.
 
 ## Responsibilities
 

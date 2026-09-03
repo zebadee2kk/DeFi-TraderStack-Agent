@@ -3,9 +3,14 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
+from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
 from traderstack.market.models import MarketTick, ReferencePrice
-from traderstack.market.providers import ReferencePriceProvider, VenueMarketDataProvider
+from traderstack.market.providers import (
+    CandleHistoryProvider,
+    ReferencePriceProvider,
+    VenueMarketDataProvider,
+)
 from traderstack.models import PortfolioSnapshot
 from traderstack.pipeline import PipelineResult, VerticalSlicePipeline
 
@@ -14,6 +19,8 @@ class RuntimeResult(BaseModel):
     tick: MarketTick
     references: list[ReferencePrice]
     pipeline: PipelineResult
+    candles_loaded: int = 0
+    candle_error: str | None = None
     execution_receipt: HummingbotOrderReceipt | None = None
 
 
@@ -23,6 +30,9 @@ class PaperRuntime:
     references: tuple[ReferencePriceProvider, ...]
     pipeline: VerticalSlicePipeline
     executor: HummingbotPaperExecutor | None = None
+    candles: CandleHistoryProvider | None = None
+    candle_interval: str = "1h"
+    candle_count: int = 400
 
     async def run_once(
         self,
@@ -43,7 +53,17 @@ class PaperRuntime:
                 continue
             prices.extend(batch)
 
-        pipeline_result = self.pipeline.process(tick, prices, portfolio)
+        history: tuple[Candle, ...] | None = None
+        candle_error: str | None = None
+        if self.candles is not None:
+            try:
+                history = await self.candles.fetch(
+                    symbol, self.candle_interval, count=self.candle_count
+                )
+            except Exception as exc:  # noqa: BLE001 - a failed history fetch fails closed downstream.
+                candle_error = f"{type(exc).__name__}: {exc}"
+
+        pipeline_result = self.pipeline.process(tick, prices, portfolio, candles=history)
         receipt = None
         if submit and pipeline_result.paper_order is not None:
             if self.executor is None:
@@ -58,6 +78,8 @@ class PaperRuntime:
             tick=tick,
             references=prices,
             pipeline=pipeline_result,
+            candles_loaded=len(history) if history else 0,
+            candle_error=candle_error,
             execution_receipt=receipt,
         )
 

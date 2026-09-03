@@ -6,6 +6,7 @@ from pathlib import Path
 from prometheus_client import start_http_server
 
 from traderstack.audit import JsonlAuditSink
+from traderstack.backtest import BaselineBacktester
 from traderstack.checkpoint import JsonPortfolioCheckpointStore
 from traderstack.config import Settings
 from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
@@ -15,13 +16,34 @@ from traderstack.market.adapters import (
     CoinMarketCapPriceProvider,
     KrakenTickerProvider,
 )
+from traderstack.market.kraken_candles import KrakenCandleProvider
+from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
+from traderstack.pretrade import PreTradeBacktestGate
 from traderstack.risk import RiskEngine
 from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
+
+
+def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
+    backtester = BaselineBacktester(
+        starting_equity=settings.paper_starting_nav_usd,
+        fee_bps=settings.pretrade_fee_bps,
+        slippage_bps=settings.pretrade_slippage_bps,
+    )
+    return PreTradeBacktestGate(
+        backtester=backtester,
+        min_candles=settings.pretrade_min_candles,
+        max_candle_age_seconds=settings.pretrade_max_candle_age_seconds,
+        min_excess_return=settings.pretrade_min_excess_return,
+        max_drawdown=settings.pretrade_max_drawdown_pct,
+        min_sharpe=settings.pretrade_min_sharpe,
+        min_trades=settings.pretrade_min_trades,
+        require_walkforward=settings.pretrade_require_walkforward,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,16 +85,27 @@ def build_service(
             connector_name=settings.hummingbot_connector_name,
         )
 
+    pretrade_gate = None
+    candle_provider = None
+    if settings.pretrade_backtest_enabled:
+        pretrade_gate = build_pretrade_gate(settings)
+        candle_provider = KrakenCandleProvider()
+
     pipeline = VerticalSlicePipeline(
         risk_engine=RiskEngine(settings),
         max_tick_age_seconds=settings.max_market_data_age_seconds,
         max_reference_divergence_bps=settings.max_reference_divergence_bps,
+        pretrade_gate=pretrade_gate,
+        feature_builder=CandleMarketFeatureBuilder() if pretrade_gate else None,
     )
     runtime = PaperRuntime(
         venue=KrakenTickerProvider(),
         references=(CoinGeckoPriceProvider(), CoinMarketCapPriceProvider()),
         pipeline=pipeline,
         executor=executor,
+        candles=candle_provider,
+        candle_interval=settings.pretrade_candle_interval,
+        candle_count=settings.pretrade_candle_count,
     )
     symbols = tuple(f"{asset}/USD" for asset in settings.assets)
     return ContinuousPaperService(

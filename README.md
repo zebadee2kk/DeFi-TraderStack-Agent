@@ -55,6 +55,15 @@ Historical backtest → leakage/look-ahead checks → walk-forward validation �
 
 Benchmarks will include BTC/ETH buy-and-hold and simple non-AI momentum/trend/mean-reversion strategies so that any claimed AI alpha is measured against appropriate baselines.
 
+## Pre-trade self-check (backtest gate)
+
+Before any proposal reaches the risk engine, `src/traderstack/pretrade.py` re-runs
+the strategy ensemble over the asset's recent candle history (fetched each cycle
+from Kraken), backtests it net of fees and slippage against buy-and-hold, and
+walk-forward tests it out-of-sample. A missing, stale or unconvincing history
+rejects the trade. Thresholds are `PRETRADE_*` settings in `.env.example`; the gate
+is on by default and can only add rejections, never relax risk policy.
+
 ## Robinhood Chain (EVM) execution scaffolding
 
 `src/traderstack/execution/robinhood_chain.py` prepares policy-checked, simulated,

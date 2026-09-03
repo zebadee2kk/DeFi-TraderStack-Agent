@@ -26,6 +26,22 @@ class Settings(BaseSettings):
     max_account_drawdown_pct: float = Field(default=0.10, gt=0, le=1)
     kill_switch: bool = True
 
+    # Pre-trade self-check: every proposal is re-validated by backtesting the
+    # strategy ensemble over recent candle history before it reaches the risk
+    # engine. Missing, stale or insufficient history rejects the trade.
+    pretrade_backtest_enabled: bool = True
+    pretrade_candle_interval: str = "1h"
+    pretrade_candle_count: int = Field(default=400, gt=0)
+    pretrade_min_candles: int = Field(default=250, gt=0)
+    pretrade_max_candle_age_seconds: float = Field(default=7_200.0, gt=0)
+    pretrade_min_excess_return: float = 0.0
+    pretrade_max_drawdown_pct: float = Field(default=0.15, gt=0, le=1)
+    pretrade_min_sharpe: float = 0.0
+    pretrade_min_trades: int = Field(default=3, ge=0)
+    pretrade_require_walkforward: bool = True
+    pretrade_fee_bps: float = Field(default=10.0, ge=0)
+    pretrade_slippage_bps: float = Field(default=5.0, ge=0)
+
     # Robinhood Chain (EVM-compatible) network identity and on-chain execution
     # policy. rpc_url/chain_id must be sourced from Robinhood's own official chain
     # documentation, never guessed or hardcoded — a wrong chain id or endpoint can

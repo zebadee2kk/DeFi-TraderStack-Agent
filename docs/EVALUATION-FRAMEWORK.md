@@ -25,6 +25,8 @@ Repeated out-of-sample windows with no parameter access to future periods.
 ### Stage 4 — Paper Trading
 Run against live market data with simulated execution for a meaningful observation period.
 
+Every paper (and later live) decision additionally passes the **pre-trade backtest gate** (`traderstack.pretrade`): Stages 1 and 3 are re-run on the asset's most recent candle history at decision time, and the proposal is rejected unless the strategy confirms the side and still shows bounded-drawdown, cost-adjusted, out-of-sample edge. This is a continuous self-check, not a substitute for the offline research stages above.
+
 ### Stage 5 — Shadow Live
 Generate the exact orders the production system would submit, but do not transmit them. Compare theoretical against market outcomes.
 
