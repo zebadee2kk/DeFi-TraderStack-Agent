@@ -64,6 +64,16 @@ walk-forward tests it out-of-sample. A missing, stale or unconvincing history
 rejects the trade. Thresholds are `PRETRADE_*` settings in `.env.example`; the gate
 is on by default and can only add rejections, never relax risk policy.
 
+## Robinhood Chain real-time swap feed
+
+`src/traderstack/market/robinhood_chain_feed.py` streams Uniswap v3/v4 `Swap`
+events from operator-listed pools over websocket JSON-RPC (`eth_subscribe`), after
+verifying the endpoint's chain id, and emits them as `MarketTick`s so the normal
+staleness/spread/reference-divergence validation applies. Set
+`VENUE_FEED=robinhood_chain` plus `ROBINHOOD_CHAIN_WS_URL` and
+`ROBINHOOD_CHAIN_POOLS` to use it as the primary tick source. Read-only: it never
+discovers tokens or trades on its own.
+
 ## Robinhood Chain (EVM) execution scaffolding
 
 `src/traderstack/execution/robinhood_chain.py` prepares policy-checked, simulated,

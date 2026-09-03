@@ -17,6 +17,8 @@ from traderstack.market.adapters import (
     KrakenTickerProvider,
 )
 from traderstack.market.kraken_candles import KrakenCandleProvider
+from traderstack.market.providers import VenueMarketDataProvider
+from traderstack.market.robinhood_chain_feed import swap_feed_from_settings
 from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
@@ -98,8 +100,23 @@ def build_service(
         pretrade_gate=pretrade_gate,
         feature_builder=CandleMarketFeatureBuilder() if pretrade_gate else None,
     )
+    venue: VenueMarketDataProvider
+    if settings.venue_feed == "robinhood_chain":
+        swap_feed = swap_feed_from_settings(settings)
+        venue = swap_feed
+        symbols = tuple(
+            pool.symbol
+            for pool in swap_feed.pools
+            if pool.symbol.split("/", 1)[0].upper() in settings.assets
+        )
+        if not symbols:
+            raise RuntimeError("no ROBINHOOD_CHAIN_POOLS match MVP_ASSETS")
+    else:
+        venue = KrakenTickerProvider()
+        symbols = tuple(f"{asset}/USD" for asset in settings.assets)
+
     runtime = PaperRuntime(
-        venue=KrakenTickerProvider(),
+        venue=venue,
         references=(CoinGeckoPriceProvider(), CoinMarketCapPriceProvider()),
         pipeline=pipeline,
         executor=executor,
@@ -107,7 +124,6 @@ def build_service(
         candle_interval=settings.pretrade_candle_interval,
         candle_count=settings.pretrade_candle_count,
     )
-    symbols = tuple(f"{asset}/USD" for asset in settings.assets)
     return ContinuousPaperService(
         runtime=runtime,
         portfolio=portfolio,

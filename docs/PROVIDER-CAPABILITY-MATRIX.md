@@ -16,6 +16,7 @@ This matrix defines intended roles rather than marketing claims. Pricing, rate l
 | LunarCrush MCP/API | social/narrative intelligence | No | No | Yes | narrative features only; manipulation-aware controls needed |
 | Hummingbot | exchange/DEX execution abstraction | **Yes** | Yes | **Yes** | sole MVP order-routing spine |
 | Robinhood Chain (EVM) | on-chain swap execution venue | No for MVP | Unsigned-tx preparation only | Research only | `traderstack.execution.robinhood_chain` prepares policy-checked, simulated, **unsigned** transactions; chain id/RPC are operator-configured, never hardcoded; no signing/broadcast in this repo until a Phase 8 signing service exists |
+| Robinhood Chain swap feed | venue-native real-time DEX price/flow (Uniswap v3/v4 `Swap` logs via `eth_subscribe`) | Yes when `VENUE_FEED=robinhood_chain` | No (read-only) | Research / paper | `traderstack.market.robinhood_chain_feed`; verifies chain id before subscribing; watches only operator-listed pools; bid/ask synthesised from pool fee tier |
 | Freqtrade | research/backtest/dry-run harness | No | Can trade but disabled in architecture | **Yes** | independent research harness, not production executor |
 | Direct venue WS/REST | venue-native market data and reconciliation | **Yes** | execution delegated to Hummingbot | **Yes** | authoritative venue state for execution checks |
 | Claude API | reasoning, proposal synthesis, meta-agent | No for safety | No direct execution | **Yes** | failure must degrade to no-new-risk state |

@@ -33,6 +33,10 @@ class PaperRuntime:
     candles: CandleHistoryProvider | None = None
     candle_interval: str = "1h"
     candle_count: int = 400
+    # Candle history is keyed by base asset against this quote so the pre-trade
+    # gate can backtest on deep CEX history even when the live tick comes from an
+    # on-chain pool quoted in a stablecoin (e.g. ETH/USDG).
+    candle_quote: str = "USD"
 
     async def run_once(
         self,
@@ -58,7 +62,7 @@ class PaperRuntime:
         if self.candles is not None:
             try:
                 history = await self.candles.fetch(
-                    symbol, self.candle_interval, count=self.candle_count
+                    f"{asset}/{self.candle_quote}", self.candle_interval, count=self.candle_count
                 )
             except Exception as exc:  # noqa: BLE001 - a failed history fetch fails closed downstream.
                 candle_error = f"{type(exc).__name__}: {exc}"

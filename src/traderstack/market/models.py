@@ -8,6 +8,7 @@ class MarketSource(StrEnum):
     KRAKEN = "kraken"
     COINGECKO = "coingecko"
     COINMARKETCAP = "coinmarketcap"
+    ROBINHOOD_CHAIN = "robinhood_chain"
 
 
 class MarketTick(BaseModel):

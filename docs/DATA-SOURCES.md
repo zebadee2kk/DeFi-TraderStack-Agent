@@ -128,6 +128,24 @@ operator re-verifies the addresses against the Uniswap deployments page.
 | Moralis | **No** [V] | — |
 | Birdeye, Ponder, Nansen, Infura | **[?]** | Birdeye is Solana-centric; assume unsupported. |
 
+### Implemented: real-time swap feed
+
+`traderstack.market.robinhood_chain_feed.RobinhoodChainSwapFeed` implements step
+2 of the plan below as a `VenueMarketDataProvider`. It opens a websocket
+JSON-RPC session (`ROBINHOOD_CHAIN_WS_URL`), verifies `eth_chainId` against
+`ROBINHOOD_CHAIN_ID` before doing anything else, then `eth_subscribe`s to
+`logs` for the operator-listed pools (`ROBINHOOD_CHAIN_POOLS`): Uniswap v3
+pool addresses directly, and v4 pool ids filtered on the PoolManager
+singleton. Each `Swap` is decoded into a `SwapEvent` (amounts, side, post-swap
+price from `sqrtPriceX96`, liquidity, tick) and surfaced as a `MarketTick`
+whose bid/ask straddle the price by the pool's fee tier, since an AMM's
+marginal spread at small size is its fee. Event topics are derived from the
+human-readable signatures via an in-module keccak-256 (verified against known
+answers in tests) rather than pasted constants. Select it with
+`VENUE_FEED=robinhood_chain`; the existing staleness, spread and
+independent-reference checks then apply unchanged, and the pre-trade gate
+still backtests on the base asset's Kraken USD candles.
+
 ### Robinhood Chain wiring plan
 
 1. **RPC**: Alchemy HTTPS + WSS (free tier) as primary; Chainstack or dRPC as

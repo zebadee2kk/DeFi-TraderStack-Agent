@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
 from traderstack.features import AssetFeatureVector, MarketFeatures
-from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
+from traderstack.market.models import MarketTick, ReferencePrice
 from traderstack.market.validation import is_reference_consistent
 from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side, TradeProposal
@@ -60,7 +60,7 @@ class VerticalSlicePipeline:
 
         eligible = [r for r in references if r.asset.upper() == asset and r.currency == "USD"]
         primary = ReferencePrice(
-            source=MarketSource.KRAKEN,
+            source=tick.source,
             asset=asset,
             currency="USD",
             observed_at=tick.observed_at,

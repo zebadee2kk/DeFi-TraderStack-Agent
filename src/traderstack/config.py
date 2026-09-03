@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     hummingbot_account_name: str = "paper_account"
     hummingbot_connector_name: str = "kraken_paper_trade"
     trading_mode: Literal["paper", "shadow", "live"] = "paper"
+    # Which venue supplies the primary execution-quality tick stream.
+    venue_feed: Literal["kraken", "robinhood_chain"] = "kraken"
     paper_starting_nav_usd: float = 10_000
     mvp_assets: str = "BTC,ETH,SOL"
     max_reference_divergence_bps: float = Field(default=50.0, gt=0)
@@ -56,6 +58,12 @@ class Settings(BaseSettings):
     robinhood_chain_allowed_tokens: str = ""
     # "0xrouter,0xrouter"
     robinhood_chain_allowed_routers: str = ""
+    # Real-time swap feed (read-only): websocket JSON-RPC endpoint, watched pools
+    # and the Uniswap v4 PoolManager address (needed only for v4 pools).
+    # Pool spec: "SYMBOL:v3|v4:0xpool_or_poolid:dec0:dec1:token0|token1:fee_bps,..."
+    robinhood_chain_ws_url: str | None = None
+    robinhood_chain_pools: str = ""
+    robinhood_chain_v4_pool_manager: str = ""
     robinhood_chain_max_notional_usd: float = Field(default=0.0, ge=0)
     robinhood_chain_max_gas_limit: int = Field(default=500_000, gt=0)
     robinhood_chain_max_gas_price_gwei: float = Field(default=5.0, gt=0)
