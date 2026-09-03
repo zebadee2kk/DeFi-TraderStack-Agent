@@ -26,6 +26,24 @@ class Settings(BaseSettings):
     max_account_drawdown_pct: float = Field(default=0.10, gt=0, le=1)
     kill_switch: bool = True
 
+    # Robinhood Chain (EVM-compatible) network identity and on-chain execution
+    # policy. rpc_url/chain_id must be sourced from Robinhood's own official chain
+    # documentation, never guessed or hardcoded — a wrong chain id or endpoint can
+    # silently sign against the wrong network. This module treats them as unset by
+    # default and fails closed until an operator supplies verified values.
+    robinhood_chain_rpc_url: str | None = None
+    robinhood_chain_id: int | None = Field(default=None, gt=0)
+    robinhood_chain_explorer_url: str | None = None
+    robinhood_chain_native_currency: str = "ETH"
+    robinhood_chain_connector_name: str = "robinhood_chain"
+    # "SYMBOL:0xcontract:decimals,SYMBOL:0xcontract:decimals"
+    robinhood_chain_allowed_tokens: str = ""
+    # "0xrouter,0xrouter"
+    robinhood_chain_allowed_routers: str = ""
+    robinhood_chain_max_notional_usd: float = Field(default=0.0, ge=0)
+    robinhood_chain_max_gas_limit: int = Field(default=500_000, gt=0)
+    robinhood_chain_max_gas_price_gwei: float = Field(default=5.0, gt=0)
+
     @property
     def assets(self) -> tuple[str, ...]:
         return tuple(x.strip().upper() for x in self.mvp_assets.split(",") if x.strip())

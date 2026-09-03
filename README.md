@@ -55,6 +55,18 @@ Historical backtest → leakage/look-ahead checks → walk-forward validation �
 
 Benchmarks will include BTC/ETH buy-and-hold and simple non-AI momentum/trend/mean-reversion strategies so that any claimed AI alpha is measured against appropriate baselines.
 
+## Robinhood Chain (EVM) execution scaffolding
+
+`src/traderstack/execution/robinhood_chain.py` prepares policy-checked, simulated,
+**unsigned** swap transactions against Robinhood Chain, an EVM-compatible network.
+Chain id, RPC URL and token/router allowlists are always operator-supplied via
+`Settings` (see `.env.example`) — sourced from Robinhood's own official chain
+documentation, never hardcoded or guessed. The executor independently verifies the
+connected RPC's chain id, enforces allowlists and a notional/gas policy, and
+simulates the transaction, but never signs or broadcasts it and never holds a
+private key; `live` trading mode is rejected until an isolated signing/custody
+service exists (see `docs/EXECUTION-ARCHITECTURE.md` and `docs/ROADMAP.md` Phase 8).
+
 ## Repository roadmap
 
 See `docs/PROJECT-CHARTER.md`, `docs/HLD.md`, `docs/RESEARCH-NOTES.md`, `docs/RISK-PRINCIPLES.md`, and `docs/ROADMAP.md` as they are developed.

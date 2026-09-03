@@ -70,6 +70,30 @@ DEX production path requires:
 - smart-account spending limits
 - post-transaction receipt reconciliation
 
+## Robinhood Chain Scaffolding
+
+`traderstack.execution.robinhood_chain` scaffolds the DEX Execution requirements
+above for Robinhood Chain (EVM-compatible) specifically:
+
+- `ChainConfig` / `Settings.robinhood_chain_*` — chain id and RPC URL are always
+  operator-supplied from Robinhood's own official chain documentation; nothing
+  is hardcoded, and the module fails closed (`ExecutionSafetyError`) if they are
+  unset.
+- `RobinhoodChainExecutionPolicy` — deterministic token and router allowlists,
+  a maximum on-chain notional, and gas-limit/gas-price ceilings.
+- `RobinhoodChainExecutor.prepare_swap` — verifies venue/mode, enforces the
+  allowlists and notional cap, independently re-checks the connected RPC's
+  chain id against configuration, checks wallet balance and nonce, bounds the
+  estimated gas and gas price, and simulates the call (`eth_call`) before
+  returning an `UnsignedSwapTransaction`.
+
+This executor never signs or broadcasts a transaction and never holds a
+private key — it stops at producing a fully policy-checked unsigned
+transaction for an isolated signing/custody service to consume. `live` trading
+mode is rejected outright: per ADR-0001, DEX/on-chain execution is Phase 2
+work, and the isolated signer/smart-account controls in Roadmap Phase 8 do not
+exist yet.
+
 ## GOAT / Community MCP Position
 
 GOAT SDK MCP and community execution-capable MCPs are research/integration references, not the primary production execution authority. They may be tested in isolated test-wallet environments only until explicitly promoted by an architecture decision record.
