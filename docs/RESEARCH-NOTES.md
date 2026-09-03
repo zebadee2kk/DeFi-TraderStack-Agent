@@ -57,7 +57,7 @@ At minimum:
 
 ## Research questions still open
 
-- Which exchange(s) and chain(s) should be the first supported live venues?
+- Which exchange(s) and chain(s) should be the first supported live venues? (Robinhood Chain, chain id 4663, is now scaffolded as the first on-chain venue; see `DATA-SOURCES.md` and `execution/robinhood_chain.py`.)
 - Which data sources have usable free/API tiers for continuous operation?
 - What signal frequency maximises usefulness of Claude without excessive cost/latency?
 - Does social/narrative information add value after controlling for price momentum?

@@ -80,6 +80,11 @@ service exists (see `docs/EXECUTION-ARCHITECTURE.md` and `docs/ROADMAP.md` Phase
 
 See `docs/PROJECT-CHARTER.md`, `docs/HLD.md`, `docs/RESEARCH-NOTES.md`, `docs/RISK-PRINCIPLES.md`, and `docs/ROADMAP.md` as they are developed.
 
+`docs/DATA-SOURCES.md` is the researched inventory of live, reference, on-chain and
+backtest data sources (with verification status), including a Robinhood Chain
+section covering the documented chain ids, RPC/explorer endpoints, live DEX router
+addresses, oracles and which indexers/vendors support chain 4663.
+
 ## Disclaimer
 
 This repository is for research and proprietary experimentation, not financial advice. Initial scope is private/proprietary trading only; no third-party client funds or investment service functionality is in scope.
