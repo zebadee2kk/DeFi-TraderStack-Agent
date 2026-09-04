@@ -8,6 +8,8 @@ Use Hummingbot as the preferred execution abstraction for the MVP, with direct e
 
 ```text
 Validated market data (tick + independent references + candle history)
+   + External intelligence (Dune on-chain, LunarCrush social, CryptoPanic/Perplexity news)
+   -> Feature vector merge + deterministic news rule (adverse event => no new risk)
    -> Pre-trade backtest gate (strategy confirmation, backtest, walk-forward)
    -> Trade Proposal
    -> Portfolio Allocator
@@ -17,6 +19,26 @@ Validated market data (tick + independent references + candle history)
    -> Venue
    -> Fill/Reconciliation
 ```
+
+### External intelligence in the loop
+
+`PaperRuntime` gathers on-chain, social and news snapshots for the asset each
+cycle through `IntelligenceOrchestrator.gather` (concurrent, cached for
+`INTELLIGENCE_CACHE_SECONDS`, each provider failure isolated). The pipeline
+merges them into the `AssetFeatureVector` alongside market features, then
+applies two deterministic rules before any proposal exists:
+
+- `INTELLIGENCE_BLOCK_ON_ADVERSE_NEWS=true` (default): an `adverse_event` from
+  the news providers rejects the cycle with `adverse_news_event`.
+- `INTELLIGENCE_REQUIRED=true`: a cycle with no external intelligence at all
+  is rejected with `no_external_intelligence` rather than trading on market
+  data alone.
+
+Providers are assembled from whichever credentials are present
+(`DUNE_API_KEY` + `DUNE_QUERY_IDS`, `LUNARCRUSH_API_KEY`, `CRYPTOPANIC_API_KEY`,
+`PERPLEXITY_API_KEY`). Retrieved text never reaches the pipeline: each adapter
+reduces its source to bounded numeric features, which is the prompt-injection
+boundary from the threat model.
 
 ### Pre-trade backtest gate
 

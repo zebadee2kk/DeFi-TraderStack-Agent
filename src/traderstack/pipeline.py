@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
 from traderstack.features import AssetFeatureVector, MarketFeatures
+from traderstack.intelligence import merge_external_intelligence
+from traderstack.intelligence_orchestrator import ExternalIntelligence
 from traderstack.market.models import MarketTick, ReferencePrice
 from traderstack.market.validation import is_reference_consistent
 from traderstack.market_features import CandleMarketFeatureBuilder
@@ -40,6 +42,12 @@ class VerticalSlicePipeline:
     demonstration_notional_pct: float = 0.01
     pretrade_gate: PreTradeBacktestGate | None = None
     feature_builder: CandleMarketFeatureBuilder | None = None
+    # Deterministic news rule: an adverse event flagged by the news providers
+    # blocks new risk this cycle. Existing positions are untouched.
+    block_on_adverse_news: bool = True
+    # When set, a cycle with no external intelligence at all is rejected
+    # instead of proceeding on market data alone.
+    require_external_intelligence: bool = False
 
     def process(
         self,
@@ -47,6 +55,7 @@ class VerticalSlicePipeline:
         references: list[ReferencePrice],
         portfolio: PortfolioSnapshot,
         candles: tuple[Candle, ...] | None = None,
+        intelligence: ExternalIntelligence | None = None,
     ) -> PipelineResult:
         asset = tick.symbol.split("/", 1)[0].upper()
         now = datetime.now(UTC)
@@ -85,7 +94,33 @@ class VerticalSlicePipeline:
         if candles and self.feature_builder is not None:
             market = self.feature_builder.build(candles, spread_bps=tick.spread_bps)
             source_ids.append(f"candles:{candles[-1].interval}")
-        feature_vector = AssetFeatureVector(asset=asset, market=market, source_ids=source_ids)
+
+        if intelligence is not None and intelligence.asset.upper() != asset:
+            intelligence = None
+        if intelligence is not None:
+            feature_vector = merge_external_intelligence(
+                asset,
+                market,
+                onchain=intelligence.onchain,
+                social=intelligence.social,
+                news=intelligence.news,
+            )
+            feature_vector.source_ids = [*source_ids, *feature_vector.source_ids]
+        else:
+            feature_vector = AssetFeatureVector(asset=asset, market=market, source_ids=source_ids)
+
+        if self.require_external_intelligence and (intelligence is None or intelligence.is_empty):
+            return PipelineResult(
+                accepted_market_data=True,
+                rejection_reasons=["no_external_intelligence"],
+                feature_vector=feature_vector,
+            )
+        if self.block_on_adverse_news and feature_vector.news.adverse_event:
+            return PipelineResult(
+                accepted_market_data=True,
+                rejection_reasons=["adverse_news_event"],
+                feature_vector=feature_vector,
+            )
 
         side = Side.BUY
         confidence = 0.5

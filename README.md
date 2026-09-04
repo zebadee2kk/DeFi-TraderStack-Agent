@@ -55,6 +55,15 @@ Historical backtest → leakage/look-ahead checks → walk-forward validation �
 
 Benchmarks will include BTC/ETH buy-and-hold and simple non-AI momentum/trend/mean-reversion strategies so that any claimed AI alpha is measured against appropriate baselines.
 
+## External intelligence in the live loop
+
+Every cycle the runtime gathers Dune (on-chain), LunarCrush (social) and
+CryptoPanic/Perplexity (news) snapshots for the asset, cached and failure-isolated,
+and merges them into the feature vector. An adverse news event deterministically
+blocks new risk for that cycle. Providers activate when their API key is set; see
+the `INTELLIGENCE_*` settings in `.env.example`. Adapters emit bounded numbers only,
+so retrieved text never reaches the decision path.
+
 ## Pre-trade self-check (backtest gate)
 
 Before any proposal reaches the risk engine, `src/traderstack/pretrade.py` re-runs

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
+from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
 from traderstack.market.models import MarketTick, ReferencePrice
 from traderstack.market.providers import (
     CandleHistoryProvider,
@@ -21,6 +22,8 @@ class RuntimeResult(BaseModel):
     pipeline: PipelineResult
     candles_loaded: int = 0
     candle_error: str | None = None
+    intelligence_sources: list[str] = []
+    intelligence_error: str | None = None
     execution_receipt: HummingbotOrderReceipt | None = None
 
 
@@ -37,6 +40,7 @@ class PaperRuntime:
     # gate can backtest on deep CEX history even when the live tick comes from an
     # on-chain pool quoted in a stablecoin (e.g. ETH/USDG).
     candle_quote: str = "USD"
+    intelligence: IntelligenceOrchestrator | None = None
 
     async def run_once(
         self,
@@ -67,7 +71,17 @@ class PaperRuntime:
             except Exception as exc:  # noqa: BLE001 - a failed history fetch fails closed downstream.
                 candle_error = f"{type(exc).__name__}: {exc}"
 
-        pipeline_result = self.pipeline.process(tick, prices, portfolio, candles=history)
+        external: ExternalIntelligence | None = None
+        intelligence_error: str | None = None
+        if self.intelligence is not None:
+            try:
+                external = await self.intelligence.gather(asset)
+            except Exception as exc:  # noqa: BLE001 - intelligence failure degrades to no-new-risk downstream.
+                intelligence_error = f"{type(exc).__name__}: {exc}"
+
+        pipeline_result = self.pipeline.process(
+            tick, prices, portfolio, candles=history, intelligence=external
+        )
         receipt = None
         if submit and pipeline_result.paper_order is not None:
             if self.executor is None:
@@ -84,6 +98,8 @@ class PaperRuntime:
             pipeline=pipeline_result,
             candles_loaded=len(history) if history else 0,
             candle_error=candle_error,
+            intelligence_sources=external.source_ids if external is not None else [],
+            intelligence_error=intelligence_error,
             execution_receipt=receipt,
         )
 

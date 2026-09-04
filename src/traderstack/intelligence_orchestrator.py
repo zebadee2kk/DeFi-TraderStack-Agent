@@ -37,6 +37,24 @@ class IntelligenceCache:
         self._values[key] = value
 
 
+@dataclass(frozen=True)
+class ExternalIntelligence:
+    """The external snapshots gathered for one asset in one cycle (any may be missing)."""
+
+    asset: str
+    onchain: OnChainSnapshot | None = None
+    social: SocialSnapshot | None = None
+    news: NewsSnapshot | None = None
+
+    @property
+    def source_ids(self) -> list[str]:
+        return [s.source_id for s in (self.onchain, self.social, self.news) if s is not None]
+
+    @property
+    def is_empty(self) -> bool:
+        return self.onchain is None and self.social is None and self.news is None
+
+
 @dataclass
 class IntelligenceOrchestrator:
     onchain: OnChainFetcher | None = None
@@ -45,19 +63,26 @@ class IntelligenceOrchestrator:
     cache: IntelligenceCache = field(default_factory=IntelligenceCache)
     require_any_external: bool = False
 
-    async def build(self, asset: str, market: MarketFeatures) -> AssetFeatureVector:
+    async def gather(self, asset: str) -> ExternalIntelligence:
         symbol = asset.upper()
-        onchain = await self._fetch_one("onchain", symbol, self.onchain, OnChainSnapshot)
-        social = await self._fetch_one("social", symbol, self.social, SocialSnapshot)
-        news = await self._fetch_news(symbol)
-        if self.require_any_external and onchain is None and social is None and news is None:
+        onchain, social, news = await asyncio.gather(
+            self._fetch_one("onchain", symbol, self.onchain, OnChainSnapshot),
+            self._fetch_one("social", symbol, self.social, SocialSnapshot),
+            self._fetch_news(symbol),
+        )
+        bundle = ExternalIntelligence(asset=symbol, onchain=onchain, social=social, news=news)
+        if self.require_any_external and bundle.is_empty:
             raise RuntimeError("all external intelligence providers unavailable")
+        return bundle
+
+    async def build(self, asset: str, market: MarketFeatures) -> AssetFeatureVector:
+        bundle = await self.gather(asset)
         return merge_external_intelligence(
-            symbol,
+            bundle.asset,
             market,
-            onchain=onchain,
-            social=social,
-            news=news,
+            onchain=bundle.onchain,
+            social=bundle.social,
+            news=bundle.news,
         )
 
     async def _fetch_one(

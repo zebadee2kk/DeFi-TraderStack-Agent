@@ -16,6 +16,23 @@ class Settings(BaseSettings):
     hummingbot_api_password: SecretStr | None = None
     hummingbot_account_name: str = "paper_account"
     hummingbot_connector_name: str = "kraken_paper_trade"
+    # Provider credentials (runtime-injected; never committed). A missing key
+    # simply leaves that provider out of the intelligence set.
+    coingecko_api_key: SecretStr | None = None
+    coinmarketcap_api_key: SecretStr | None = None
+    dune_api_key: SecretStr | None = None
+    # "BTC:123456,ETH:234567" — Dune query id per asset returning one row with
+    # exchange_netflow_z and large_wallet_accumulation columns.
+    dune_query_ids: str = ""
+    lunarcrush_api_key: SecretStr | None = None
+    cryptopanic_api_key: SecretStr | None = None
+    cryptopanic_api_plan: str = "developer"
+    perplexity_api_key: SecretStr | None = None
+    # External intelligence handling in the live loop.
+    intelligence_cache_seconds: float = Field(default=300.0, gt=0)
+    intelligence_block_on_adverse_news: bool = True
+    intelligence_required: bool = False
+
     trading_mode: Literal["paper", "shadow", "live"] = "paper"
     # Which venue supplies the primary execution-quality tick stream.
     venue_feed: Literal["kraken", "robinhood_chain"] = "kraken"

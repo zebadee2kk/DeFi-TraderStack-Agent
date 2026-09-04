@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from prometheus_client import start_http_server
+from pydantic import SecretStr
 
 from traderstack.audit import JsonlAuditSink
 from traderstack.backtest import BaselineBacktester
@@ -11,12 +12,23 @@ from traderstack.checkpoint import JsonPortfolioCheckpointStore
 from traderstack.config import Settings
 from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
+from traderstack.intelligence_orchestrator import (
+    IntelligenceCache,
+    IntelligenceOrchestrator,
+    NewsFetcher,
+)
 from traderstack.market.adapters import (
     CoinGeckoPriceProvider,
     CoinMarketCapPriceProvider,
     KrakenTickerProvider,
 )
+from traderstack.market.intelligence_providers import (
+    CryptoPanicNewsProvider,
+    DuneOnChainProvider,
+    LunarCrushSocialProvider,
+)
 from traderstack.market.kraken_candles import KrakenCandleProvider
+from traderstack.market.perplexity import PerplexityNewsProvider
 from traderstack.market.providers import VenueMarketDataProvider
 from traderstack.market.robinhood_chain_feed import swap_feed_from_settings
 from traderstack.market_features import CandleMarketFeatureBuilder
@@ -45,6 +57,61 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
         min_sharpe=settings.pretrade_min_sharpe,
         min_trades=settings.pretrade_min_trades,
         require_walkforward=settings.pretrade_require_walkforward,
+    )
+
+
+def _secret(value: SecretStr | None) -> str | None:
+    return value.get_secret_value() if value is not None else None
+
+
+def parse_dune_query_ids(raw: str) -> dict[str, int]:
+    query_ids: dict[str, int] = {}
+    for spec in raw.split(","):
+        spec = spec.strip()
+        if not spec:
+            continue
+        asset, _, query_id = spec.partition(":")
+        if not asset.strip() or not query_id.strip().isdigit():
+            raise RuntimeError(f"malformed DUNE_QUERY_IDS entry: {spec!r}")
+        query_ids[asset.strip().upper()] = int(query_id.strip())
+    return query_ids
+
+
+def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
+    """Assemble every intelligence provider that has credentials; None if there are none."""
+    onchain = None
+    if settings.dune_api_key is not None:
+        query_ids = parse_dune_query_ids(settings.dune_query_ids)
+        if query_ids:
+            onchain = DuneOnChainProvider(
+                api_key=settings.dune_api_key.get_secret_value(), query_ids=query_ids
+            ).fetch
+
+    social = None
+    if settings.lunarcrush_api_key is not None:
+        social = LunarCrushSocialProvider(
+            api_key=settings.lunarcrush_api_key.get_secret_value()
+        ).fetch
+
+    news: list[NewsFetcher] = []
+    if settings.cryptopanic_api_key is not None:
+        news.append(
+            CryptoPanicNewsProvider(
+                auth_token=settings.cryptopanic_api_key.get_secret_value(),
+                api_plan=settings.cryptopanic_api_plan,
+            ).fetch
+        )
+    if settings.perplexity_api_key is not None:
+        news.append(PerplexityNewsProvider(api_key=settings.perplexity_api_key.get_secret_value()).fetch)
+
+    if onchain is None and social is None and not news:
+        return None
+    return IntelligenceOrchestrator(
+        onchain=onchain,
+        social=social,
+        news=tuple(news),
+        cache=IntelligenceCache(max_age_seconds=settings.intelligence_cache_seconds),
+        require_any_external=settings.intelligence_required,
     )
 
 
@@ -93,12 +160,18 @@ def build_service(
         pretrade_gate = build_pretrade_gate(settings)
         candle_provider = KrakenCandleProvider()
 
+    intelligence = build_intelligence(settings)
+    if settings.intelligence_required and intelligence is None:
+        raise RuntimeError("INTELLIGENCE_REQUIRED=true but no intelligence provider has credentials")
+
     pipeline = VerticalSlicePipeline(
         risk_engine=RiskEngine(settings),
         max_tick_age_seconds=settings.max_market_data_age_seconds,
         max_reference_divergence_bps=settings.max_reference_divergence_bps,
         pretrade_gate=pretrade_gate,
         feature_builder=CandleMarketFeatureBuilder() if pretrade_gate else None,
+        block_on_adverse_news=settings.intelligence_block_on_adverse_news,
+        require_external_intelligence=settings.intelligence_required,
     )
     venue: VenueMarketDataProvider
     if settings.venue_feed == "robinhood_chain":
@@ -117,12 +190,16 @@ def build_service(
 
     runtime = PaperRuntime(
         venue=venue,
-        references=(CoinGeckoPriceProvider(), CoinMarketCapPriceProvider()),
+        references=(
+            CoinGeckoPriceProvider(api_key=_secret(settings.coingecko_api_key)),
+            CoinMarketCapPriceProvider(api_key=_secret(settings.coinmarketcap_api_key)),
+        ),
         pipeline=pipeline,
         executor=executor,
         candles=candle_provider,
         candle_interval=settings.pretrade_candle_interval,
         candle_count=settings.pretrade_candle_count,
+        intelligence=intelligence,
     )
     return ContinuousPaperService(
         runtime=runtime,
