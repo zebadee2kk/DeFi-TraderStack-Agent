@@ -43,3 +43,37 @@ class CandleHistory:
     def get(self, symbol: str, interval: str, limit: int | None = None) -> tuple[Candle, ...]:
         values = tuple(self._candles.get((symbol.upper(), interval), ()))
         return values[-limit:] if limit is not None else values
+
+
+_INTERVAL_UNIT_SECONDS: dict[str, int] = {
+    "s": 1,
+    "m": 60,
+    "h": 3600,
+    "d": 86400,
+    "w": 604_800,
+}
+
+
+def interval_to_seconds(interval: str) -> float:
+    """Parse a candle interval label (e.g. ``"1m"``, ``"15m"``, ``"4h"``, ``"1d"``) to seconds."""
+    text = interval.strip().lower()
+    if not text:
+        raise ValueError("interval must not be empty")
+    digits = ""
+    unit = ""
+    for char in text:
+        if char.isdigit():
+            digits += char
+        else:
+            unit += char
+    if not unit or unit not in _INTERVAL_UNIT_SECONDS:
+        raise ValueError(f"unsupported candle interval '{interval}'")
+    magnitude = int(digits) if digits else 1
+    if magnitude <= 0:
+        raise ValueError(f"candle interval '{interval}' must have a positive magnitude")
+    return float(magnitude * _INTERVAL_UNIT_SECONDS[unit])
+
+
+def periods_per_year(interval: str) -> float:
+    """Infer the number of bars per (365-day) year implied by a candle interval label."""
+    return (365.0 * 86_400.0) / interval_to_seconds(interval)

@@ -36,6 +36,8 @@ traderstack-trace = "traderstack.trace_cli:main"
 # both entry points only create/remove the sentinel file.
 traderstack-kill = "traderstack.killswitch:kill_main"
 traderstack-resume = "traderstack.killswitch:resume_main"
+traderstack-research = "traderstack.research.cli:main"
+traderstack-download-candles = "traderstack.research.download_candles:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

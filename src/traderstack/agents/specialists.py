@@ -11,7 +11,8 @@ Every threshold is a constructor parameter so it can be tuned in configuration
 and version-controlled, never inferred at runtime.
 
 `SpecialistCommittee.consensus` deliberately delegates to
-`StrategyEnsemble.consensus` so the committee combines signals with exactly the
+`traderstack.strategies.combine_signals`, the same function behind
+`StrategyEnsemble.consensus`, so the committee combines signals with exactly the
 same majority/agreement rule as the baseline quant ensemble.
 """
 
@@ -21,7 +22,8 @@ from dataclasses import dataclass, field
 
 from traderstack.features import AssetFeatureVector
 from traderstack.models import Side
-from traderstack.strategies import Regime, StrategyEnsemble, StrategySignal
+from traderstack.signal_registry import version_of
+from traderstack.strategies import Regime, StrategySignal, combine_signals
 
 
 def _clamp(value: float, low: float = -1.0, high: float = 1.0) -> float:
@@ -263,7 +265,6 @@ class SpecialistCommittee:
         )
 
     def consensus(self, signals: tuple[StrategySignal, ...]) -> StrategySignal | None:
-        combined = StrategyEnsemble.consensus(signals)
-        if combined is None:
-            return None
-        return combined.model_copy(update={"strategy_id": self.committee_id})
+        return combine_signals(
+            signals, strategy_id=self.committee_id, signal_version=version_of(self)
+        )

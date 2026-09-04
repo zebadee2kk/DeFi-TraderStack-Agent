@@ -40,15 +40,15 @@
 - [ ] social/narrative feature pipeline
 - [ ] news/event classifier
 - [ ] regime classifier v1
-- [ ] signal registry and versioning
+- [x] signal registry and versioning
 
 ## Epic 5 — Research Harness
 - [ ] Freqtrade research integration
-- [ ] baseline strategies
-- [ ] fee/slippage models
-- [ ] lookahead-bias test
-- [ ] walk-forward evaluator
-- [ ] performance attribution report
+- [x] baseline strategies
+- [x] fee/slippage models
+- [x] lookahead-bias test
+- [x] walk-forward evaluator
+- [x] performance attribution report
 
 ## Epic 6 — Agent Runtime
 - [x] Claude model abstraction

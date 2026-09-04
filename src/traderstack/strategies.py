@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from traderstack.candles import Candle
 from traderstack.indicators import momentum, moving_average, realized_volatility, zscore
 from traderstack.models import Side
+from traderstack.signal_registry import version_of
 
 
 class Regime(StrEnum):
@@ -23,6 +24,7 @@ class StrategySignal(BaseModel):
     confidence: float = Field(ge=0, le=1)
     regime: Regime
     rationale: str
+    signal_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -150,24 +152,40 @@ class StrategyEnsemble:
         )
         return regime, signals
 
-    @staticmethod
-    def consensus(signals: tuple[StrategySignal, ...]) -> StrategySignal | None:
-        actionable = [signal for signal in signals if signal.side is not None]
-        if not actionable:
-            return None
-        buys = [signal for signal in actionable if signal.side is Side.BUY]
-        sells = [signal for signal in actionable if signal.side is Side.SELL]
-        selected = buys if len(buys) >= len(sells) else sells
-        if len(selected) < 2:
-            return None
-        confidence = sum(signal.confidence for signal in selected) / len(selected)
-        score = sum(signal.score for signal in selected) / len(selected)
-        return StrategySignal(
-            strategy_id="baseline_ensemble_v1",
-            symbol=selected[0].symbol,
-            side=selected[0].side,
-            score=max(-1.0, min(1.0, score)),
-            confidence=confidence,
-            regime=selected[0].regime,
-            rationale="; ".join(signal.rationale for signal in selected),
+    def consensus(self, signals: tuple[StrategySignal, ...]) -> StrategySignal | None:
+        return combine_signals(
+            signals, strategy_id="baseline_ensemble_v1", signal_version=version_of(self)
         )
+
+
+def combine_signals(
+    signals: tuple[StrategySignal, ...],
+    *,
+    strategy_id: str,
+    signal_version: str | None = None,
+) -> StrategySignal | None:
+    """Majority-side consensus requiring at least two agreeing actionable signals.
+
+    Shared by the quant ensemble and the specialist committee so both combine
+    their members identically; each caller stamps its own id and version.
+    """
+    actionable = [signal for signal in signals if signal.side is not None]
+    if not actionable:
+        return None
+    buys = [signal for signal in actionable if signal.side is Side.BUY]
+    sells = [signal for signal in actionable if signal.side is Side.SELL]
+    selected = buys if len(buys) >= len(sells) else sells
+    if len(selected) < 2:
+        return None
+    confidence = sum(signal.confidence for signal in selected) / len(selected)
+    score = sum(signal.score for signal in selected) / len(selected)
+    return StrategySignal(
+        strategy_id=strategy_id,
+        symbol=selected[0].symbol,
+        side=selected[0].side,
+        score=max(-1.0, min(1.0, score)),
+        confidence=confidence,
+        regime=selected[0].regime,
+        rationale="; ".join(signal.rationale for signal in selected),
+        signal_version=signal_version,
+    )
