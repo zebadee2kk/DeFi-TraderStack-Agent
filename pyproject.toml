@@ -24,6 +24,10 @@ dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10"]
 
 [project.scripts]
 traderstack-paper = "traderstack.cli:main"
+# Operator kill switch, usable without the trading process or the LLM runtime:
+# both entry points only create/remove the sentinel file.
+traderstack-kill = "traderstack.killswitch:kill_main"
+traderstack-resume = "traderstack.killswitch:resume_main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

@@ -45,6 +45,43 @@ class Settings(BaseSettings):
     max_account_drawdown_pct: float = Field(default=0.10, gt=0, le=1)
     kill_switch: bool = True
 
+    # --- risk plane (Epic 7) ---
+    # Every value below is deterministic risk policy. It is read from
+    # version-controlled configuration only: no agent, LLM message, tool result
+    # or runtime API may mutate it. Changing any of them changes
+    # RiskEngine.policy_version, which is stamped into every audit record.
+    #
+    # Manual policy label. Bump it when the *meaning* of the policy changes even
+    # though no numeric limit did.
+    risk_policy_label: str = "mvp-v1"
+    # Portfolio-level exposure controls.
+    max_open_positions: int = Field(default=5, gt=0)
+    min_cash_reserve_pct: float = Field(default=0.05, ge=0, lt=1)
+    max_gross_exposure_pct: float = Field(default=0.60, gt=0, le=1)
+    # Stale-state shutdown: refuse new risk when the portfolio view is older
+    # than this. Default response to inconsistent state is no new risk.
+    max_portfolio_state_age_seconds: float = Field(default=60.0, gt=0)
+    # Asset/venue liquidity gate applied inside the risk engine (independent of
+    # the pipeline's own market-data spread check).
+    risk_max_spread_bps: float = Field(default=30.0, gt=0)
+    # Volatility targeting. Approved notional is scaled by
+    # target_volatility / observed_volatility, and never scaled *up* above what
+    # the proposal asked for.
+    volatility_sizing_enabled: bool = True
+    target_volatility: float = Field(default=0.02, gt=0)
+    # Strategy circuit breaker.
+    strategy_max_consecutive_losses: int = Field(default=3, gt=0)
+    strategy_drawdown_window: int = Field(default=10, gt=0)
+    strategy_max_rolling_drawdown_pct: float = Field(default=0.05, gt=0, le=1)
+    strategy_breaker_cooldown_seconds: float = Field(default=3_600.0, gt=0)
+    # Operator kill switch outside the LLM runtime. The sentinel file and the
+    # Redis key are both writable by an operator with no access to this process.
+    kill_switch_file: str = "var/state/KILL"
+    kill_switch_redis_key: str = "traderstack:kill_switch"
+    kill_switch_redis_enabled: bool = False
+    # Append-only, hash-chained risk-decision audit trail.
+    risk_audit_path: str = "var/audit/risk_decisions.jsonl"
+
     # Pre-trade self-check: every proposal is re-validated by backtesting the
     # strategy ensemble over recent candle history before it reaches the risk
     # engine. Missing, stale or insufficient history rejects the trade.

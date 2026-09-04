@@ -35,6 +35,10 @@ class PortfolioSnapshot(BaseModel):
     daily_pnl_usd: float
     peak_nav_usd: float = Field(gt=0)
     asset_exposure_usd: dict[str, float] = Field(default_factory=dict)
+    # --- risk plane (Epic 7) ---
+    # When this view of the book was taken. The risk engine authorises no new
+    # risk against a snapshot older than MAX_PORTFOLIO_STATE_AGE_SECONDS.
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class RiskResult(BaseModel):

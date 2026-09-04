@@ -158,7 +158,9 @@ class VerticalSlicePipeline:
             signal_ids=signal_ids,
             source_freshness_seconds=age_seconds,
         )
-        risk_result = self.risk_engine.evaluate(proposal, portfolio)
+        # --- risk plane (Epic 7) --- the feature vector carries the realized
+        # volatility and spread the risk engine sizes and gates on.
+        risk_result = self.risk_engine.evaluate(proposal, portfolio, feature_vector)
         paper_order = None
         if risk_result.decision in {RiskDecision.ALLOW, RiskDecision.REDUCE} and risk_result.approved_notional_usd > 0:
             paper_order = PaperOrderIntent(
