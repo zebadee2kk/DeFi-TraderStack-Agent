@@ -6,8 +6,9 @@ from pydantic import BaseModel
 from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
-from traderstack.market.models import MarketTick, ReferencePrice
+from traderstack.market.models import BookSnapshot, MarketTick, ReferencePrice
 from traderstack.market.providers import (
+    BookSnapshotProvider,
     CandleHistoryProvider,
     ReferencePriceProvider,
     VenueMarketDataProvider,
@@ -25,6 +26,9 @@ class RuntimeResult(BaseModel):
     intelligence_sources: list[str] = []
     intelligence_error: str | None = None
     execution_receipt: HummingbotOrderReceipt | None = None
+    # --- providers (Epic 2): order-book snapshot handling -----------------------
+    book_snapshot: BookSnapshot | None = None
+    book_error: str | None = None
 
 
 @dataclass
@@ -41,6 +45,9 @@ class PaperRuntime:
     # on-chain pool quoted in a stablecoin (e.g. ETH/USDG).
     candle_quote: str = "USD"
     intelligence: IntelligenceOrchestrator | None = None
+    # --- providers (Epic 2): order-book snapshot handling -----------------------
+    # Optional; informational only today (not consumed by the risk plane yet).
+    book: BookSnapshotProvider | None = None
 
     async def run_once(
         self,
@@ -79,6 +86,15 @@ class PaperRuntime:
             except Exception as exc:  # noqa: BLE001 - intelligence failure degrades to no-new-risk downstream.
                 intelligence_error = f"{type(exc).__name__}: {exc}"
 
+        # --- providers (Epic 2): order-book snapshot handling -------------------
+        book_snapshot: BookSnapshot | None = None
+        book_error: str | None = None
+        if self.book is not None:
+            try:
+                book_snapshot = await self._next_book(symbol)
+            except Exception as exc:  # noqa: BLE001 - book depth is informational; never blocks the cycle.
+                book_error = f"{type(exc).__name__}: {exc}"
+
         pipeline_result = self.pipeline.process(
             tick, prices, portfolio, candles=history, intelligence=external
         )
@@ -101,9 +117,17 @@ class PaperRuntime:
             intelligence_sources=external.source_ids if external is not None else [],
             intelligence_error=intelligence_error,
             execution_receipt=receipt,
+            book_snapshot=book_snapshot,
+            book_error=book_error,
         )
 
     async def _next_tick(self, symbol: str) -> MarketTick:
         async for tick in self.venue.stream_ticks((symbol,)):
             return tick
         raise RuntimeError("venue stream ended before producing a tick")
+
+    async def _next_book(self, symbol: str) -> BookSnapshot:
+        assert self.book is not None
+        async for snapshot in self.book.stream_books((symbol,)):
+            return snapshot
+        raise RuntimeError("book stream ended before producing a snapshot")

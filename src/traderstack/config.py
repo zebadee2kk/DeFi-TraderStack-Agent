@@ -28,10 +28,42 @@ class Settings(BaseSettings):
     cryptopanic_api_key: SecretStr | None = None
     cryptopanic_api_plan: str = "developer"
     perplexity_api_key: SecretStr | None = None
+    altfins_api_key: SecretStr | None = None
     # External intelligence handling in the live loop.
     intelligence_cache_seconds: float = Field(default=300.0, gt=0)
     intelligence_block_on_adverse_news: bool = True
     intelligence_required: bool = False
+
+    # --- providers (Epic 2/3): health, quota and caching wrapper ---------------
+    # Defaults for every provider wrapped by traderstack.market.registry
+    # (reference prices, candle history, intelligence fetchers). See the
+    # "Selection policy" in docs/PROVIDER-CAPABILITY-MATRIX.md.
+    provider_timeout_seconds: float = Field(default=10.0, gt=0)
+    provider_failure_threshold: int = Field(default=3, gt=0)
+    provider_breaker_cooldown_seconds: float = Field(default=30.0, gt=0)
+    # Reference-price polling cache: the pipeline still sees the cached
+    # observed_at, so this must stay well under max_market_data_age_seconds.
+    reference_price_cache_seconds: float = Field(default=20.0, ge=0)
+    # CoinGecko Demo free tier is documented around 30 req/min; CoinMarketCap
+    # Basic's free allowance is small and daily-bucketed. None disables that
+    # budget dimension. Re-verify against each vendor's current plan.
+    coingecko_calls_per_minute: int | None = Field(default=25, gt=0)
+    coingecko_calls_per_day: int | None = None
+    coinmarketcap_calls_per_minute: int | None = Field(default=10, gt=0)
+    coinmarketcap_calls_per_day: int | None = Field(default=300, gt=0)
+    candle_provider_calls_per_minute: int | None = None
+    intelligence_provider_calls_per_minute: int | None = None
+
+    # --- providers (Epic 2): Kraken WS resilience -------------------------------
+    kraken_max_reconnect_attempts: int = Field(default=10, gt=0)
+    kraken_backoff_base_seconds: float = Field(default=1.0, gt=0)
+    kraken_backoff_max_seconds: float = Field(default=30.0, gt=0)
+    kraken_stale_after_seconds: float = Field(default=30.0, gt=0)
+    # Order-book snapshots (Epic 2): opt-in, Kraken-venue only. The pipeline
+    # doesn't consume this yet; it's surfaced on RuntimeResult for a future
+    # order-book depth risk check.
+    kraken_book_enabled: bool = False
+    kraken_book_depth: int = Field(default=10, gt=0)
 
     trading_mode: Literal["paper", "shadow", "live"] = "paper"
     # Which venue supplies the primary execution-quality tick stream.

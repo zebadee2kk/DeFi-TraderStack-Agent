@@ -7,8 +7,8 @@ from traderstack.candles import Candle
 from traderstack.features import AssetFeatureVector, MarketFeatures
 from traderstack.intelligence import merge_external_intelligence
 from traderstack.intelligence_orchestrator import ExternalIntelligence
-from traderstack.market.models import MarketTick, ReferencePrice
-from traderstack.market.validation import is_reference_consistent
+from traderstack.market.models import MarketTick, PriceDivergence, ReferencePrice
+from traderstack.market.validation import is_reference_consistent, pairwise_divergences
 from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side, TradeProposal
 from traderstack.pretrade import PreTradeBacktestGate, PreTradeCheck
@@ -31,6 +31,11 @@ class PipelineResult(BaseModel):
     proposal: TradeProposal | None = None
     risk_result: RiskResult | None = None
     paper_order: PaperOrderIntent | None = None
+    # --- providers (Epic 2): provider divergence event -------------------------
+    # Every pairwise reference-price divergence beyond max_reference_divergence_bps
+    # (not only primary-vs-reference), so it lands in the audit trail regardless
+    # of whether the cycle was otherwise accepted.
+    divergences: list[PriceDivergence] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -79,9 +84,13 @@ class VerticalSlicePipeline:
             reasons.append("no_independent_reference_price")
         elif not is_reference_consistent(primary, eligible, self.max_reference_divergence_bps):
             reasons.append("reference_price_divergence")
+        # --- providers (Epic 2): provider divergence event --------------------
+        divergences = pairwise_divergences(primary, eligible, self.max_reference_divergence_bps)
 
         if reasons:
-            return PipelineResult(accepted_market_data=False, rejection_reasons=reasons)
+            return PipelineResult(
+                accepted_market_data=False, rejection_reasons=reasons, divergences=divergences
+            )
 
         source_ids = [tick.source.value, *sorted({r.source.value for r in eligible})]
         market = MarketFeatures(
@@ -104,6 +113,8 @@ class VerticalSlicePipeline:
                 onchain=intelligence.onchain,
                 social=intelligence.social,
                 news=intelligence.news,
+                # --- providers (Epic 3): altFINS technical-signal slot --------
+                altfins=intelligence.altfins,
             )
             feature_vector.source_ids = [*source_ids, *feature_vector.source_ids]
         else:
@@ -114,12 +125,14 @@ class VerticalSlicePipeline:
                 accepted_market_data=True,
                 rejection_reasons=["no_external_intelligence"],
                 feature_vector=feature_vector,
+                divergences=divergences,
             )
         if self.block_on_adverse_news and feature_vector.news.adverse_event:
             return PipelineResult(
                 accepted_market_data=True,
                 rejection_reasons=["adverse_news_event"],
                 feature_vector=feature_vector,
+                divergences=divergences,
             )
 
         side = Side.BUY
@@ -133,6 +146,7 @@ class VerticalSlicePipeline:
                     accepted_market_data=True,
                     rejection_reasons=["missing_candle_history"],
                     feature_vector=feature_vector,
+                    divergences=divergences,
                 )
             pretrade_check = self.pretrade_gate.evaluate(candles, now=now)
             if not pretrade_check.passed or pretrade_check.confirmed_side is None:
@@ -141,6 +155,7 @@ class VerticalSlicePipeline:
                     rejection_reasons=list(pretrade_check.reasons),
                     feature_vector=feature_vector,
                     pretrade_check=pretrade_check,
+                    divergences=divergences,
                 )
             side = pretrade_check.confirmed_side
             confidence = pretrade_check.confidence
@@ -175,4 +190,5 @@ class VerticalSlicePipeline:
             proposal=proposal,
             risk_result=risk_result,
             paper_order=paper_order,
+            divergences=divergences,
         )

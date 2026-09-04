@@ -81,3 +81,23 @@ def test_kill_switch_prevents_paper_intent() -> None:
     assert result.risk_result is not None
     assert result.risk_result.decision is RiskDecision.REJECT
     assert result.paper_order is None
+
+
+def test_pipeline_reports_reference_vs_reference_divergence_even_when_accepted() -> None:
+    # Both CoinGecko (+90bps) and CoinMarketCap (-90bps) sit within the default
+    # 100bps threshold of the Kraken primary individually, so the cycle is
+    # accepted - but they disagree with *each other* by ~178bps, which the
+    # primary-vs-each-reference check alone would never catch.
+    tick = MarketTick(source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000)
+    refs = [
+        ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=1009),
+        ReferencePrice(source=MarketSource.COINMARKETCAP, asset="BTC", price=991),
+    ]
+    result = pipeline().process(tick, refs, portfolio())
+    assert result.accepted_market_data is True
+    assert len(result.divergences) == 1
+    divergence = result.divergences[0]
+    assert {divergence.primary_source, divergence.reference_source} == {
+        MarketSource.COINGECKO,
+        MarketSource.COINMARKETCAP,
+    }

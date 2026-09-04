@@ -6,6 +6,7 @@ from typing import TypeVar, cast
 
 from traderstack.features import AssetFeatureVector, MarketFeatures
 from traderstack.intelligence import (
+    AltFinsSignalSnapshot,
     NewsSnapshot,
     OnChainSnapshot,
     SocialSnapshot,
@@ -16,6 +17,8 @@ T = TypeVar("T")
 OnChainFetcher = Callable[[str], Awaitable[OnChainSnapshot]]
 SocialFetcher = Callable[[str], Awaitable[SocialSnapshot]]
 NewsFetcher = Callable[[str], Awaitable[NewsSnapshot]]
+# --- providers (Epic 3): altFINS technical-signal slot ------------------------
+AltFinsFetcher = Callable[[str], Awaitable[AltFinsSignalSnapshot]]
 
 
 @dataclass
@@ -45,14 +48,25 @@ class ExternalIntelligence:
     onchain: OnChainSnapshot | None = None
     social: SocialSnapshot | None = None
     news: NewsSnapshot | None = None
+    # --- providers (Epic 3): altFINS technical-signal slot ---------------------
+    altfins: AltFinsSignalSnapshot | None = None
 
     @property
     def source_ids(self) -> list[str]:
-        return [s.source_id for s in (self.onchain, self.social, self.news) if s is not None]
+        return [
+            s.source_id
+            for s in (self.onchain, self.social, self.news, self.altfins)
+            if s is not None
+        ]
 
     @property
     def is_empty(self) -> bool:
-        return self.onchain is None and self.social is None and self.news is None
+        return (
+            self.onchain is None
+            and self.social is None
+            and self.news is None
+            and self.altfins is None
+        )
 
 
 @dataclass
@@ -62,15 +76,20 @@ class IntelligenceOrchestrator:
     news: tuple[NewsFetcher, ...] = ()
     cache: IntelligenceCache = field(default_factory=IntelligenceCache)
     require_any_external: bool = False
+    # --- providers (Epic 3): altFINS technical-signal slot ---------------------
+    altfins: AltFinsFetcher | None = None
 
     async def gather(self, asset: str) -> ExternalIntelligence:
         symbol = asset.upper()
-        onchain, social, news = await asyncio.gather(
+        onchain, social, news, altfins = await asyncio.gather(
             self._fetch_one("onchain", symbol, self.onchain, OnChainSnapshot),
             self._fetch_one("social", symbol, self.social, SocialSnapshot),
             self._fetch_news(symbol),
+            self._fetch_one("altfins", symbol, self.altfins, AltFinsSignalSnapshot),
         )
-        bundle = ExternalIntelligence(asset=symbol, onchain=onchain, social=social, news=news)
+        bundle = ExternalIntelligence(
+            asset=symbol, onchain=onchain, social=social, news=news, altfins=altfins
+        )
         if self.require_any_external and bundle.is_empty:
             raise RuntimeError("all external intelligence providers unavailable")
         return bundle
@@ -83,6 +102,7 @@ class IntelligenceOrchestrator:
             onchain=bundle.onchain,
             social=bundle.social,
             news=bundle.news,
+            altfins=bundle.altfins,
         )
 
     async def _fetch_one(

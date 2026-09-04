@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator
 from typing import Protocol
 
 from traderstack.candles import Candle
-from traderstack.market.models import MarketTick, ReferencePrice
+from traderstack.market.models import BookSnapshot, MarketTick, ReferencePrice
 
 
 class VenueMarketDataProvider(Protocol):
@@ -21,3 +21,10 @@ class CandleHistoryProvider(Protocol):
 
 class ProviderHealth(Protocol):
     async def healthy(self) -> bool: ...
+
+
+# --- providers (Epic 2): order-book snapshot handling --------------------------
+
+
+class BookSnapshotProvider(Protocol):
+    def stream_books(self, symbols: tuple[str, ...]) -> AsyncIterator[BookSnapshot]: ...
