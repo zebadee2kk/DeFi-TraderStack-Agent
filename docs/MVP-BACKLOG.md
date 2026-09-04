@@ -22,7 +22,7 @@
 - [ ] CoinGecko reference adapter
 - [ ] CoinMarketCap reference adapter
 - [ ] data freshness/divergence checks
-- [ ] persistent time-series storage
+- [x] persistent time-series storage
 
 ## Epic 3 — Intelligence Adapters
 - [ ] Dune adapter/MCP integration
@@ -81,12 +81,12 @@
 - [ ] retry/timeout handling
 
 ## Epic 9 — Observability
-- [ ] OpenTelemetry traces
-- [ ] Prometheus metrics
-- [ ] Grafana dashboard
-- [ ] Loki logs
-- [ ] provider/API-cost dashboard
-- [ ] decision-to-fill trace view
+- [x] OpenTelemetry traces
+- [x] Prometheus metrics
+- [x] Grafana dashboard
+- [x] Loki logs
+- [x] provider/API-cost dashboard
+- [x] decision-to-fill trace view
 
 ## Epic 10 — Paper-Trading Acceptance
 - [ ] 24/7 soak test

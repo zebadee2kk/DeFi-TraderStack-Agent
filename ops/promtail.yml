@@ -1,0 +1,30 @@
+# Minimal Promtail config for the "observability" Compose profile (Epic 9:
+# Loki logs). Ships the `app` container's stdout/stderr to Loki via Docker
+# service discovery -- no file paths to keep in sync with the app's own
+# logging setup, just the running container's log stream.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: traderstack
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Only ship logs from the compose "app" service (the traderstack-paper
+      # process); every other container in the stack is left alone.
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: app
+        action: keep
+      - source_labels: [__meta_docker_container_name]
+        regex: "/(.*)"
+        target_label: container
+      - target_label: job
+        replacement: traderstack

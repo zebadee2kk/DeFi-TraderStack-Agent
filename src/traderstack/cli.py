@@ -16,6 +16,8 @@ from traderstack.agents.review import (
 from traderstack.agents.specialists import SpecialistCommittee
 from traderstack.audit import JsonlAuditSink
 from traderstack.backtest import BaselineBacktester
+from traderstack.candle_store import PostgresCandleStore  # persistence (Epic 2)
+from traderstack.candles import Candle  # persistence (Epic 2)
 from traderstack.checkpoint import JsonPortfolioCheckpointStore
 from traderstack.config import Settings
 from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
@@ -25,6 +27,7 @@ from traderstack.intelligence_orchestrator import (
     IntelligenceOrchestrator,
     NewsFetcher,
 )
+from traderstack.logging_config import configure_logging  # observability (Epic 9)
 from traderstack.market.adapters import (
     CoinGeckoPriceProvider,
     CoinMarketCapPriceProvider,
@@ -46,8 +49,10 @@ from traderstack.pretrade import PreTradeBacktestGate
 from traderstack.risk import RiskEngine
 from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
+from traderstack.tracing import configure_tracing  # observability (Epic 9)
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
+CandleSink = Callable[[tuple[Candle, ...]], Awaitable[None]]  # persistence (Epic 2)
 
 
 def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
@@ -186,6 +191,7 @@ def build_service(
     portfolio: InMemoryPortfolioBook,
     on_result: ResultHandler,
     checkpoint_store: JsonPortfolioCheckpointStore,
+    candle_sink: CandleSink | None = None,  # persistence (Epic 2)
 ) -> ContinuousPaperService:
     if settings.trading_mode != "paper":
         raise RuntimeError("continuous paper service requires TRADING_MODE=paper")
@@ -251,6 +257,7 @@ def build_service(
         # --- meta-agent (Epic 6) ---
         meta_reviewer=build_meta_reviewer(settings),
         # --- end meta-agent (Epic 6) ---
+        candle_sink=candle_sink,  # persistence (Epic 2)
     )
     return ContinuousPaperService(
         runtime=runtime,
@@ -265,6 +272,8 @@ def build_service(
 
 async def _main_async(args: argparse.Namespace) -> None:
     settings = Settings()
+    configure_logging(settings)  # observability (Epic 9)
+    configure_tracing()  # observability (Epic 9): no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set
     checkpoint_store = JsonPortfolioCheckpointStore(Path(args.checkpoint_path))
     portfolio = await checkpoint_store.load()
     if portfolio is None:
@@ -273,11 +282,18 @@ async def _main_async(args: argparse.Namespace) -> None:
     sinks: list[ResultHandler] = [JsonlAuditSink(Path(args.audit_path))]
     postgres: PostgresRuntimeEventStore | None = None
     redis: RedisRuntimePublisher | None = None
+    candle_store: PostgresCandleStore | None = None  # persistence (Epic 2)
+    candle_sink: CandleSink | None = None  # persistence (Epic 2)
     if args.persistent_events:
         postgres = PostgresRuntimeEventStore(settings.database_url)
         await postgres.initialize()
         redis = RedisRuntimePublisher(settings.redis_url)
         sinks.extend((postgres, redis))
+        # --- persistence (Epic 2): also append fetched candle history to Postgres ---
+        candle_store = PostgresCandleStore(settings.database_url)
+        await candle_store.initialize()
+        candle_sink = candle_store.append_many
+        # --- end persistence (Epic 2) ---
 
     start_http_server(args.metrics_port)
     service = build_service(
@@ -287,6 +303,7 @@ async def _main_async(args: argparse.Namespace) -> None:
         portfolio=portfolio,
         on_result=FanoutResultSink(tuple(sinks)),
         checkpoint_store=checkpoint_store,
+        candle_sink=candle_sink,  # persistence (Epic 2)
     )
     try:
         await service.run()
@@ -295,6 +312,8 @@ async def _main_async(args: argparse.Namespace) -> None:
             await postgres.close()
         if redis is not None:
             await redis.close()
+        if candle_store is not None:  # persistence (Epic 2)
+            await candle_store.close()
 
 
 def main() -> None:
