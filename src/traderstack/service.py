@@ -2,10 +2,18 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+import structlog
+
 from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
 from traderstack.health import RuntimeHealth
+from traderstack.metrics import (  # --- observability (Epic 9) ---
+    record_event_sink_failure,
+    record_portfolio_snapshot,
+)
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.runtime import PaperRuntime, RuntimeResult
+
+_log = structlog.get_logger("traderstack.service")  # observability (Epic 9)
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
 PortfolioHandler = Callable[[InMemoryPortfolioBook], Awaitable[None]]
@@ -24,6 +32,7 @@ class ContinuousPaperService:
     execution_ledger: ExecutionLedger | None = None
     health: RuntimeHealth = field(default_factory=RuntimeHealth)
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
+    _cycle: int = field(default=0, init=False)  # observability (Epic 9): monotonic cycle counter
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -43,6 +52,9 @@ class ContinuousPaperService:
                 await self._sleep_or_stop(self.cycle_interval_seconds)
 
     async def _run_symbol_safely(self, symbol: str) -> None:
+        self._cycle += 1  # observability (Epic 9)
+        decision_id = None  # observability (Epic 9)
+        log = _log.bind(symbol=symbol, cycle=self._cycle)  # observability (Epic 9)
         try:
             result = await self.runtime.run_once(
                 symbol,
@@ -55,6 +67,23 @@ class ContinuousPaperService:
                 else symbol.split("/", 1)[0].upper()
             )
             self.portfolio.mark(asset, result.tick.last)
+            # --- observability (Epic 9): portfolio gauges + one structured log line/cycle ---
+            snapshot = self.portfolio.snapshot()
+            record_portfolio_snapshot(snapshot.nav_usd, snapshot.cash_usd, snapshot.peak_nav_usd)
+            if result.pipeline.proposal is not None:
+                decision_id = str(result.pipeline.proposal.decision_id)
+            log = log.bind(decision_id=decision_id)
+            log.info(
+                "runtime_cycle_completed",
+                outcome="accepted" if result.pipeline.accepted_market_data else "rejected",
+                rejection_reasons=result.pipeline.rejection_reasons,
+                risk_decision=(
+                    result.pipeline.risk_result.decision.value
+                    if result.pipeline.risk_result is not None
+                    else None
+                ),
+            )
+            # --- end observability (Epic 9) ---
 
             if (
                 result.execution_receipt is not None
@@ -74,13 +103,18 @@ class ContinuousPaperService:
                 )
 
             if self.on_result is not None:
-                await self.on_result(result)
+                try:
+                    await self.on_result(result)
+                except Exception:  # observability (Epic 9): count sink failures, keep failing loudly
+                    record_event_sink_failure("on_result")
+                    raise
             if self.on_portfolio is not None:
                 await self.on_portfolio(self.portfolio)
             self.health.record_success(symbol)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - service boundary records and backs off.
+            log.warning("runtime_cycle_failed", error=f"{type(exc).__name__}: {exc}")  # observability (Epic 9)
             self.health.record_error(symbol, exc)
             await self._sleep_or_stop(self.error_backoff_seconds)
 
