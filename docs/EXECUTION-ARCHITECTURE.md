@@ -91,6 +91,83 @@ Venue state is authoritative for execution. The service continually compares loc
 
 No assumption may be made that an API timeout means an order failed. Reconciliation is required before retrying.
 
+### Implemented
+
+The lifecycle above is enforced in code by `traderstack.execution`.
+
+**Planner** (`execution/planner.py`) — pure and side-effect free.
+`ExecutionPlanner.plan` converts an approved `PaperOrderIntent` plus an
+execution price into one venue child order:
+
+- quantity is floored to `EXECUTION_LOT_STEP` (never rounded up, so a plan can
+  never exceed the approved notional) and rejected if it rounds to zero;
+- the resulting notional must reach `EXECUTION_MIN_NOTIONAL_USD`;
+- the execution price must be within `EXECUTION_MAX_SLIPPAGE_BPS` of the
+  pipeline's validated tick, in *either* direction — a suspiciously favourable
+  price is a data-integrity signal, not a gift;
+- a deterministic `client_order_id` (the idempotency key) and `correlation_id`
+  are derived from `decision_id` alone, so two processes, or the same process
+  after a restart, mint identical identifiers for the same decision.
+
+Every rejection is terminal for that decision: the planner never resizes,
+relaxes a bound or retries.
+
+**Ledger and state machine** (`execution/ledger.py`, `execution/ledger_store.py`).
+`OrderLifecycleState` carries the full documented lifecycle —
+`PLANNED`, `SUBMITTED`, `ACKNOWLEDGED`, `OPEN`, `PARTIALLY_FILLED`, `FILLED`,
+`CANCELLED`, `REJECTED`, `EXPIRED` — plus `SUBMISSION_UNCERTAIN` for the
+timeout case below. `ExecutionLedger.update_order_state` and `record_fill`
+enforce a transition table: the four terminal states never reopen, nothing
+moves backwards (a `PARTIALLY_FILLED` order can never return to `SUBMITTED`),
+an `ACKNOWLEDGED` order can never become uncertain again, and re-asserting the
+current state is a no-op so repeated reconciliation passes are safe. Illegal
+transitions raise `IllegalStateTransition` and are refused before any quantity
+is mutated. `JsonExecutionLedgerStore` persists the ledger alongside the
+portfolio checkpoint (`--ledger-path`, default `var/state/execution_ledger.json`)
+with the same atomic-write discipline, and is written after every mutation.
+
+**Idempotent submission** (`execution/submitter.py`). `IdempotentSubmitter`
+writes the `PLANNED` order to the ledger *before* calling the venue, so a crash
+mid-submission still leaves evidence the decision was acted on. A decision that
+already has a ledger order in any state is refused outright — including after a
+process restart, because the ledger is loaded at startup. The client order id is
+sent to Hummingbot, but idempotency does not depend on the venue honouring it;
+the persistent ledger is the authoritative duplicate guard.
+
+**Retry and timeout.** Submission is wrapped in
+`EXECUTION_SUBMIT_TIMEOUT_SECONDS`. A timeout, transport failure or 5xx marks
+the decision `SUBMISSION_UNCERTAIN` and stops there. No retry is permitted until
+a reconciliation pass has confirmed the venue does not know the client order id;
+if reconciliation itself is unavailable the order simply stays uncertain. Once
+absence is confirmed, retries are bounded by `EXECUTION_MAX_RETRIES` with
+exponential backoff, and exhausting them marks the order `REJECTED` with the
+reason recorded. A 4xx is a permanent rejection with no retry, and safety
+violations (non-paper mode, non-`_paper_trade` connector) are refused before
+anything is written or sent.
+
+**Reconciliation in the service loop.** `ContinuousPaperService` runs
+`HummingbotExecutionReconciler` (orders and fills into the ledger and portfolio)
+and `HummingbotPortfolioReconciler` (NAV drift against `MAX_NAV_DRIFT_BPS`)
+every `RECONCILE_INTERVAL_SECONDS`. A failed pass, an order-state divergence or
+NAV drift sets `RuntimeHealth.reconciliation_blocked`, exported as the
+`traderstack_reconciliation_blocked` gauge. That flag blocks **new risk only**:
+market data, agent decisions, risk evaluation and the audit trail all keep
+running and existing positions are untouched. The next clean pass clears it.
+
+A venue snapshot that merely lags local state (still "open" while a partial fill
+is already booked) is tolerated; a venue that contradicts a *terminal* local
+state is reported as a conflict and blocks.
+
+**Hummingbot API caveat.** `hummingbot-api`'s `TradeRequest` (verified against
+`models/trading.py`, September 2026) has no client-order-id field at all — it
+accepts `account_name`, `connector_name`, `trading_pair`, `trade_type`,
+`amount`, `order_type`, `price`, `position_action` and mints its own `order_id`.
+The key is still sent as `client_order_id` (an assumed name, inert on today's
+API) for any connector or future version that honours it. Because of this,
+`venue_knows_order` also treats an order the ledger cannot account for that
+matches the planned pair/side/quantity as "the venue knows it" — the fail-closed
+reading, since concluding "not found" would license a resubmission.
+
 ## Paper and Live Separation
 
 Paper, shadow and live environments require different credentials and database namespaces. Live keys must never be accepted by development configuration.

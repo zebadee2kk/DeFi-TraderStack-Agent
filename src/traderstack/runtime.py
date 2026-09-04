@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from traderstack.agents.review import MetaAgentReview, MetaAgentReviewer
 from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
+from traderstack.execution.submitter import IdempotentSubmitter
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
 from traderstack.market.models import MarketTick, ReferencePrice
 from traderstack.market.providers import (
@@ -21,7 +22,7 @@ from traderstack.metrics import (  # --- observability (Epic 9) ---
     record_pipeline_result,
     timed_provider_call,
 )
-from traderstack.models import PortfolioSnapshot
+from traderstack.models import PortfolioSnapshot, Side
 from traderstack.pipeline import PipelineResult, VerticalSlicePipeline
 from traderstack.tracing import traced_call, traced_span  # observability (Epic 9)
 
@@ -38,6 +39,11 @@ class RuntimeResult(BaseModel):
     meta_review: MetaAgentReview | None = None
     # --- end meta-agent (Epic 6) ---
     execution_receipt: HummingbotOrderReceipt | None = None
+    # --- execution hardening (Epic 8) ---
+    # Why a submission did or did not happen, so refusals (duplicate decision,
+    # planner rejection, uncertain venue state) land in the audit trail too.
+    execution_status: str | None = None
+    execution_reason: str | None = None
 
 
 @dataclass
@@ -63,6 +69,10 @@ class PaperRuntime:
     # candle batch (e.g. PostgresCandleStore.append_many) when --persistent-events
     # is set. None disables candle persistence entirely (default).
     candle_sink: Callable[[tuple[Candle, ...]], Awaitable[None]] | None = None
+    # --- execution hardening (Epic 8) ---
+    # When wired, the submitter owns planning, idempotency and retry gating and
+    # replaces the bare executor call below.
+    submitter: IdempotentSubmitter | None = None
 
     async def run_once(
         self,
@@ -172,17 +182,34 @@ class PaperRuntime:
             if _span is not None and pipeline_result.proposal is not None:  # observability (Epic 9)
                 _span.set_attribute("decision_id", str(pipeline_result.proposal.decision_id))
             receipt = None
+            # --- execution hardening (Epic 8) ---
+            execution_status: str | None = None
+            execution_reason: str | None = None
             if submit and pipeline_result.paper_order is not None:
-                if self.executor is None:
+                if self.submitter is not None:
+                    intent = pipeline_result.paper_order
+                    outcome = await self.submitter.submit(
+                        intent,
+                        # Cross the spread: the price actually payable is checked
+                        # against the pipeline's validated last trade by the planner.
+                        execution_price_usd=tick.ask if intent.side is Side.BUY else tick.bid,
+                        reference_price_usd=tick.last,
+                    )
+                    receipt = outcome.receipt
+                    execution_status = outcome.status.value
+                    execution_reason = outcome.reason
+                elif self.executor is None:
                     raise RuntimeError("paper execution requested without an executor")
-                receipt = await self.executor.submit(
-                    pipeline_result.paper_order,
-                    execution_price_usd=tick.last,
-                    trading_mode="paper",
-                )
-                # observability (Epic 9): count the paper order as submitted once the
-                # executor call above succeeds without raising.
-                record_paper_order_submitted(symbol, pipeline_result.paper_order.side.value)
+                else:
+                    receipt = await self.executor.submit(
+                        pipeline_result.paper_order,
+                        execution_price_usd=tick.last,
+                        trading_mode="paper",
+                    )
+                if receipt is not None:
+                    # observability (Epic 9): count the paper order as submitted once
+                    # the venue accepted it.
+                    record_paper_order_submitted(symbol, pipeline_result.paper_order.side.value)
 
             return RuntimeResult(
                 tick=tick,
@@ -194,6 +221,8 @@ class PaperRuntime:
                 intelligence_error=intelligence_error,
                 meta_review=meta_review,
                 execution_receipt=receipt,
+                execution_status=execution_status,
+                execution_reason=execution_reason,
             )
 
     async def _next_tick(self, symbol: str) -> MarketTick:
