@@ -70,9 +70,7 @@ def runtime_result_with_decision() -> tuple[RuntimeResult, TradeProposal, RiskRe
         RuntimeResult(
             tick=tick(),
             references=[],
-            pipeline=PipelineResult(
-                accepted_market_data=True, proposal=item, risk_result=result
-            ),
+            pipeline=PipelineResult(accepted_market_data=True, proposal=item, risk_result=result),
         ),
         item,
         result,

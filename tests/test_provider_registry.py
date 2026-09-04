@@ -57,7 +57,9 @@ async def test_breaker_opens_after_failure_threshold_and_refuses_further_calls()
 @pytest.mark.asyncio
 async def test_breaker_half_opens_after_cooldown_and_closes_on_success() -> None:
     clock = _Clock()
-    registry = ProviderRegistry(name="recovering", failure_threshold=1, cooldown_seconds=10, clock=clock)
+    registry = ProviderRegistry(
+        name="recovering", failure_threshold=1, cooldown_seconds=10, clock=clock
+    )
 
     async def failing() -> str:
         raise RuntimeError("down")
@@ -84,7 +86,9 @@ async def test_breaker_half_opens_after_cooldown_and_closes_on_success() -> None
 @pytest.mark.asyncio
 async def test_breaker_half_open_failure_reopens_immediately() -> None:
     clock = _Clock()
-    registry = ProviderRegistry(name="unstable", failure_threshold=5, cooldown_seconds=10, clock=clock)
+    registry = ProviderRegistry(
+        name="unstable", failure_threshold=5, cooldown_seconds=10, clock=clock
+    )
 
     async def failing() -> str:
         raise RuntimeError("down")

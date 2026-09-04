@@ -243,9 +243,9 @@ async def test_veto_mode_fails_closed_on_an_exception() -> None:
 
 @pytest.mark.asyncio
 async def test_veto_mode_fails_closed_on_timeout() -> None:
-    result, review = await reviewer(
-        MetaAgentMode.VETO, hanging, timeout_seconds=0.01
-    ).run(SYMBOL, pipeline_result())
+    result, review = await reviewer(MetaAgentMode.VETO, hanging, timeout_seconds=0.01).run(
+        SYMBOL, pipeline_result()
+    )
 
     assert result.paper_order is None
     assert UNAVAILABLE_REASON in result.rejection_reasons
@@ -291,12 +291,8 @@ async def test_veto_mode_approval_applies_the_bounded_delta() -> None:
 
 @pytest.mark.asyncio
 async def test_approval_clamps_confidence_into_the_unit_interval() -> None:
-    high, _ = await reviewer(MetaAgentMode.VETO, approving(0.15)).run(
-        SYMBOL, pipeline_result(0.95)
-    )
-    low, _ = await reviewer(MetaAgentMode.VETO, approving(-0.15)).run(
-        SYMBOL, pipeline_result(0.05)
-    )
+    high, _ = await reviewer(MetaAgentMode.VETO, approving(0.15)).run(SYMBOL, pipeline_result(0.95))
+    low, _ = await reviewer(MetaAgentMode.VETO, approving(-0.15)).run(SYMBOL, pipeline_result(0.05))
 
     assert high.proposal is not None and high.proposal.confidence == pytest.approx(1.0)
     assert low.proposal is not None and low.proposal.confidence == pytest.approx(0.0)
@@ -394,9 +390,7 @@ async def test_failed_reviews_are_not_cached() -> None:
 
 @pytest.mark.asyncio
 async def test_veto_mode_fails_closed_when_the_daily_call_budget_is_exhausted() -> None:
-    agent = reviewer(
-        MetaAgentMode.VETO, approving(0.1), budget=DailyBudget(max_calls=1)
-    )
+    agent = reviewer(MetaAgentMode.VETO, approving(0.1), budget=DailyBudget(max_calls=1))
 
     first, _ = await agent.run(SYMBOL, pipeline_result(0.6))
     second, review = await agent.run(SYMBOL, pipeline_result(0.4))
@@ -413,17 +407,13 @@ async def test_veto_mode_fails_closed_when_the_daily_token_budget_is_exhausted()
     class TokenHungryClient:
         async def review(self, _: EvidencePacket) -> MetaAgentCall:
             return MetaAgentCall(
-                decision=MetaAgentDecision(
-                    approve=True, confidence_delta=0.0, rationale="ok"
-                ),
+                decision=MetaAgentDecision(approve=True, confidence_delta=0.0, rationale="ok"),
                 model="test-model",
                 input_tokens=900,
                 output_tokens=200,
             )
 
-    agent = reviewer(
-        MetaAgentMode.VETO, TokenHungryClient(), budget=DailyBudget(max_tokens=1_000)
-    )
+    agent = reviewer(MetaAgentMode.VETO, TokenHungryClient(), budget=DailyBudget(max_tokens=1_000))
 
     first, first_review = await agent.run(SYMBOL, pipeline_result(0.6))
     second, second_review = await agent.run(SYMBOL, pipeline_result(0.4))
@@ -440,9 +430,7 @@ async def test_usage_reporting_client_populates_cost_and_model() -> None:
     class UsageClient:
         async def review(self, _: EvidencePacket) -> MetaAgentCall:
             return MetaAgentCall(
-                decision=MetaAgentDecision(
-                    approve=True, confidence_delta=0.0, rationale="ok"
-                ),
+                decision=MetaAgentDecision(approve=True, confidence_delta=0.0, rationale="ok"),
                 model="claude-test",
                 input_tokens=1_000_000,
                 output_tokens=1_000_000,

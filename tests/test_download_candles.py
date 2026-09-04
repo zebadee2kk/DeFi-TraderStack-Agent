@@ -76,7 +76,10 @@ async def test_download_candles_pages_forward_and_drops_the_uncommitted_bar() ->
     the very last (always "not yet committed") candle is dropped from the result."""
     base = 1_700_000_000
     pages = [
-        ([_row(base, 100.0), _row(base + 3600, 101.0), _row(base + 2 * 3600, 102.0)], base + 2 * 3600),
+        (
+            [_row(base, 100.0), _row(base + 3600, 101.0), _row(base + 2 * 3600, 102.0)],
+            base + 2 * 3600,
+        ),
         ([_row(base + 2 * 3600, 102.0), _row(base + 3 * 3600, 103.0)], base + 3 * 3600),
         ([_row(base + 2 * 3600, 102.0), _row(base + 3 * 3600, 103.0)], base + 3 * 3600),
     ]

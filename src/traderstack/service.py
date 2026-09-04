@@ -173,7 +173,9 @@ class ContinuousPaperService:
             if self.on_result is not None:
                 try:
                     await self.on_result(result)
-                except Exception:  # observability (Epic 9): count sink failures, keep failing loudly
+                except (
+                    Exception
+                ):  # observability (Epic 9): count sink failures, keep failing loudly
                     record_event_sink_failure("on_result")
                     raise
             if self.on_portfolio is not None:
@@ -182,7 +184,9 @@ class ContinuousPaperService:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - service boundary records and backs off.
-            log.warning("runtime_cycle_failed", error=f"{type(exc).__name__}: {exc}")  # observability (Epic 9)
+            log.warning(
+                "runtime_cycle_failed", error=f"{type(exc).__name__}: {exc}"
+            )  # observability (Epic 9)
             self.health.record_error(symbol, exc)
             await self._sleep_or_stop(self.error_backoff_seconds)
 

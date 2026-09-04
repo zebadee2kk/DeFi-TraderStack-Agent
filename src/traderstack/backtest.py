@@ -254,7 +254,9 @@ class BaselineBacktester:
             if consensus is None or consensus.side is None:
                 return 0.0, regime, []
             weight = 1.0 if consensus.side is Side.BUY else -1.0
-            contributing = [signal.strategy_id for signal in signals if signal.side is consensus.side]
+            contributing = [
+                signal.strategy_id for signal in signals if signal.side is consensus.side
+            ]
             return weight, regime, contributing
 
         return simulate_positions(

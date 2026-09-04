@@ -72,7 +72,10 @@ def merge_external_intelligence(
     if altfins is not None:
         source_ids.append(altfins.source_id)
         market_features = market.model_copy(
-            update={"external_signal_score": altfins.score, "external_signal_source": altfins.source_id}
+            update={
+                "external_signal_score": altfins.score,
+                "external_signal_source": altfins.source_id,
+            }
         )
     return AssetFeatureVector(
         asset=asset.upper(),

@@ -144,8 +144,7 @@ class OnChainSpecialist:
         if onchain.large_wallet_accumulation is not None:
             components.append(
                 _clamp(
-                    onchain.large_wallet_accumulation
-                    / max(self.accumulation_threshold * 2, 1e-9)
+                    onchain.large_wallet_accumulation / max(self.accumulation_threshold * 2, 1e-9)
                 )
             )
             parts.append(f"accumulation={onchain.large_wallet_accumulation:.3f}")
@@ -207,15 +206,12 @@ class NarrativeSpecialist:
         parts: list[str] = []
 
         if narrative.sentiment is not None:
-            components.append(
-                _clamp(narrative.sentiment / max(self.sentiment_threshold * 2, 1e-9))
-            )
+            components.append(_clamp(narrative.sentiment / max(self.sentiment_threshold * 2, 1e-9)))
             parts.append(f"sentiment={narrative.sentiment:.3f}")
         if narrative.mention_velocity_z is not None:
             components.append(
                 _clamp(
-                    narrative.mention_velocity_z
-                    / max(self.mention_velocity_z_threshold * 2, 1e-9)
+                    narrative.mention_velocity_z / max(self.mention_velocity_z_threshold * 2, 1e-9)
                 )
             )
             parts.append(f"mention_velocity_z={narrative.mention_velocity_z:.3f}")

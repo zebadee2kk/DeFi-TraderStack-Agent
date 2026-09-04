@@ -82,13 +82,20 @@ async def _stream_with_reconnect[T](
             # A generator that returns instead of raising is still a lost
             # connection (server closed cleanly) - treat it as one.
             raise KrakenFeedError(f"{feed_name} stream ended unexpectedly")
-        except (KrakenFeedError, OSError, TimeoutError, websockets.exceptions.WebSocketException) as exc:
+        except (
+            KrakenFeedError,
+            OSError,
+            TimeoutError,
+            websockets.exceptions.WebSocketException,
+        ) as exc:
             attempt += 1
             if attempt > max_reconnect_attempts:
                 raise KrakenFeedExhausted(
                     f"{feed_name} failed after {attempt - 1} reconnect attempt(s)"
                 ) from exc
-            delay = _compute_backoff(attempt, backoff_base_seconds, backoff_max_seconds, random_jitter())
+            delay = _compute_backoff(
+                attempt, backoff_base_seconds, backoff_max_seconds, random_jitter()
+            )
             await sleep(delay)
 
 

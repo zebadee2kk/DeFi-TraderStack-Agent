@@ -312,9 +312,7 @@ def test_live_kill_switch_overrides_a_permissive_setting(tmp_path):
 def test_kill_switch_outranks_every_other_reason(tmp_path):
     sentinel = tmp_path / "KILL"
     sentinel.write_text("halt", encoding="utf-8")
-    engine = RiskEngine(
-        settings(kill_switch=False), kill_switch=KillSwitch(sentinel_path=sentinel)
-    )
+    engine = RiskEngine(settings(kill_switch=False), kill_switch=KillSwitch(sentinel_path=sentinel))
     result = engine.evaluate(proposal(asset="DOGE"), portfolio(daily_pnl_usd=-9_000))
     assert result.reasons == ["kill_switch_enabled"]
 

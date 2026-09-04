@@ -23,9 +23,13 @@ def base_settings(**overrides: object) -> Settings:
 
 def test_build_provider_registry_uses_settings_defaults() -> None:
     settings = base_settings(
-        provider_timeout_seconds=7.5, provider_failure_threshold=4, provider_breaker_cooldown_seconds=12
+        provider_timeout_seconds=7.5,
+        provider_failure_threshold=4,
+        provider_breaker_cooldown_seconds=12,
     )
-    registry = build_provider_registry(settings, "example", calls_per_minute=5, cache_ttl_seconds=15)
+    registry = build_provider_registry(
+        settings, "example", calls_per_minute=5, cache_ttl_seconds=15
+    )
     assert registry.name == "example"
     assert registry.timeout_seconds == 7.5
     assert registry.failure_threshold == 4
@@ -43,7 +47,9 @@ def test_build_intelligence_includes_altfins_alone() -> None:
     assert orchestrator.news == ()
 
 
-def test_build_service_wraps_reference_and_candle_providers_through_the_registry(tmp_path: Path) -> None:
+def test_build_service_wraps_reference_and_candle_providers_through_the_registry(
+    tmp_path: Path,
+) -> None:
     settings = base_settings(pretrade_backtest_enabled=True)
     checkpoint_store = JsonPortfolioCheckpointStore(tmp_path / "portfolio.json")
     service = build_service(

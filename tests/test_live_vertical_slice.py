@@ -92,7 +92,9 @@ def test_pipeline_reports_reference_vs_reference_divergence_even_when_accepted()
     # 100bps threshold of the Kraken primary individually, so the cycle is
     # accepted - but they disagree with *each other* by ~178bps, which the
     # primary-vs-each-reference check alone would never catch.
-    tick = MarketTick(source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000)
+    tick = MarketTick(
+        source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000
+    )
     refs = [
         ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=1009),
         ReferencePrice(source=MarketSource.COINMARKETCAP, asset="BTC", price=991),

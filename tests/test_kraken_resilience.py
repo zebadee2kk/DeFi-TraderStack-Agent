@@ -13,7 +13,9 @@ from traderstack.market.adapters import (
 from traderstack.market.models import MarketSource
 
 
-def ticker_message(symbol: str = "BTC/USD", *, bid: float = 999.0, ask: float = 1001.0, last: float = 1000.0) -> str:
+def ticker_message(
+    symbol: str = "BTC/USD", *, bid: float = 999.0, ask: float = 1001.0, last: float = 1000.0
+) -> str:
     return json.dumps(
         {
             "channel": "ticker",
@@ -94,9 +96,14 @@ def _instant_sleep(_: float) -> Any:
 @pytest.mark.asyncio
 async def test_ticker_reconnects_after_first_connection_failure_and_keeps_streaming() -> None:
     connect = _connect_sequence(
-        [OSError("connection refused"), FakeTickerSocket([ticker_message(last=1000.0), ticker_message(last=1001.0)])]
+        [
+            OSError("connection refused"),
+            FakeTickerSocket([ticker_message(last=1000.0), ticker_message(last=1001.0)]),
+        ]
     )
-    provider = KrakenTickerProvider(connect=connect, sleep=_instant_sleep, random_jitter=lambda: 0.0)
+    provider = KrakenTickerProvider(
+        connect=connect, sleep=_instant_sleep, random_jitter=lambda: 0.0
+    )
 
     ticks = []
     async for tick in provider.stream_ticks(("BTC/USD",)):
@@ -113,7 +120,9 @@ async def test_ticker_reconnects_across_a_clean_disconnect() -> None:
     first_socket = FakeTickerSocket([ticker_message(last=100.0)])
     second_socket = FakeTickerSocket([ticker_message(last=200.0)])
     connect = _connect_sequence([first_socket, second_socket])
-    provider = KrakenTickerProvider(connect=connect, sleep=_instant_sleep, random_jitter=lambda: 0.0)
+    provider = KrakenTickerProvider(
+        connect=connect, sleep=_instant_sleep, random_jitter=lambda: 0.0
+    )
 
     ticks = []
     async for tick in provider.stream_ticks(("BTC/USD",)):
@@ -210,7 +219,9 @@ def test_parse_kraken_book_message_builds_sorted_top_of_book() -> None:
 
 
 def test_parse_kraken_book_message_ignores_non_book_messages() -> None:
-    assert parse_kraken_book_message({"channel": "ticker", "type": "update", "data": []}, {}) is None
+    assert (
+        parse_kraken_book_message({"channel": "ticker", "type": "update", "data": []}, {}) is None
+    )
     assert parse_kraken_book_message({"channel": "book", "type": "heartbeat"}, {}) is None
 
 

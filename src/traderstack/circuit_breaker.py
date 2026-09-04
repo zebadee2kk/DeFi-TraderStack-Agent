@@ -45,6 +45,7 @@ class RealizedPnLSource(Protocol):
     @property
     def nav_usd(self) -> float: ...
 
+
 TRIP_CONSECUTIVE_LOSSES = "consecutive_losses"
 TRIP_ROLLING_DRAWDOWN = "rolling_drawdown"
 
@@ -136,9 +137,7 @@ class StrategyCircuitBreaker:
             raise ValueError("nav_usd must be positive to normalise a closed trade")
         moment = at or datetime.now(UTC)
         state = self.state_for(strategy_id)
-        state.closed_trades.append(
-            ClosedTrade(pnl_usd=pnl_usd, nav_usd=nav_usd, closed_at=moment)
-        )
+        state.closed_trades.append(ClosedTrade(pnl_usd=pnl_usd, nav_usd=nav_usd, closed_at=moment))
         if len(state.closed_trades) > self.drawdown_window:
             del state.closed_trades[: -self.drawdown_window]
 

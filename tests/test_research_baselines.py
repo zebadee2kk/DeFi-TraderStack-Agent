@@ -88,7 +88,10 @@ def test_higher_notional_orders_reduce_returns_under_volume_aware_costs() -> Non
 
     candles = make_uptrend()
     model = VolumeAwareSlippageModel(
-        fee_bps=5.0, base_slippage_bps=2.0, participation_sensitivity_bps=500.0, max_slippage_bps=500.0
+        fee_bps=5.0,
+        base_slippage_bps=2.0,
+        participation_sensitivity_bps=500.0,
+        max_slippage_bps=500.0,
     )
     small = BuyAndHoldBaseline().run(candles, cost_model=model, starting_equity=1_000.0)
     large = BuyAndHoldBaseline().run(candles, cost_model=model, starting_equity=1_000_000.0)

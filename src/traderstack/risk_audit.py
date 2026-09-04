@@ -148,9 +148,7 @@ class JsonlRiskAuditTrail:
 
     def _append(self, record: RiskAuditRecord) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(
-            record.model_dump(mode="json"), separators=(",", ":"), sort_keys=True
-        )
+        line = json.dumps(record.model_dump(mode="json"), separators=(",", ":"), sort_keys=True)
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
             handle.flush()

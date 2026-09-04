@@ -116,9 +116,7 @@ class ExecutionPlanner:
         if reference_price_usd <= 0:
             raise ExecutionPlanRejected("reference price must be positive")
 
-        slippage_bps = (
-            abs(execution_price_usd - reference_price_usd) / reference_price_usd * 10_000
-        )
+        slippage_bps = abs(execution_price_usd - reference_price_usd) / reference_price_usd * 10_000
         if slippage_bps > self.max_slippage_bps:
             raise ExecutionPlanRejected(
                 f"execution price deviates {slippage_bps:.2f} bps from the validated tick, "
@@ -127,15 +125,12 @@ class ExecutionPlanner:
 
         quantity = self._round_to_lot(intent.notional_usd / execution_price_usd)
         if quantity <= 0:
-            raise ExecutionPlanRejected(
-                f"quantity rounds to zero at lot step {self.lot_step}"
-            )
+            raise ExecutionPlanRejected(f"quantity rounds to zero at lot step {self.lot_step}")
 
         notional = quantity * execution_price_usd
         if notional < self.min_notional_usd:
             raise ExecutionPlanRejected(
-                f"order notional {notional:.2f} USD below minimum "
-                f"{self.min_notional_usd:.2f} USD"
+                f"order notional {notional:.2f} USD below minimum {self.min_notional_usd:.2f} USD"
             )
 
         return ExecutionPlan(
@@ -159,9 +154,7 @@ class ExecutionPlanner:
     def _round_to_lot(self, quantity: float) -> float:
         try:
             step = Decimal(str(self.lot_step))
-            rounded = (Decimal(str(quantity)) / step).to_integral_value(
-                rounding=ROUND_DOWN
-            ) * step
+            rounded = (Decimal(str(quantity)) / step).to_integral_value(rounding=ROUND_DOWN) * step
         except (InvalidOperation, ValueError) as exc:  # pragma: no cover - guarded by __post_init__
             raise ExecutionPlanRejected(f"cannot round quantity to lot step: {exc}") from exc
         return float(rounded)

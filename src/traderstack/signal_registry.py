@@ -25,14 +25,15 @@ from typing import Any
 def _normalize(value: Any) -> Any:
     """Recursively convert a value into a JSON-stable, order-independent form."""
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {
-            f.name: _normalize(getattr(value, f.name)) for f in dataclasses.fields(value)
-        }
+        return {f.name: _normalize(getattr(value, f.name)) for f in dataclasses.fields(value)}
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
         return _normalize(model_dump())
     if isinstance(value, dict):
-        return {str(key): _normalize(item) for key, item in sorted(value.items(), key=lambda kv: str(kv[0]))}
+        return {
+            str(key): _normalize(item)
+            for key, item in sorted(value.items(), key=lambda kv: str(kv[0]))
+        }
     if isinstance(value, list | tuple):
         return [_normalize(item) for item in value]
     if isinstance(value, float):

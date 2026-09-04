@@ -25,7 +25,9 @@ def test_render_event_includes_outcome_and_rejection_reasons() -> None:
             last=100,
         ),
         references=[],
-        pipeline=PipelineResult(accepted_market_data=False, rejection_reasons=["stale_primary_tick"]),
+        pipeline=PipelineResult(
+            accepted_market_data=False, rejection_reasons=["stale_primary_tick"]
+        ),
     )
 
     text = render_event(1, result)

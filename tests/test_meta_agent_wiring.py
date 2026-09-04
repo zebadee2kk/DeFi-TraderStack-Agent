@@ -43,9 +43,7 @@ class GoodReference:
 
 
 def portfolio() -> PortfolioSnapshot:
-    return PortfolioSnapshot(
-        nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000
-    )
+    return PortfolioSnapshot(nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000)
 
 
 def runtime(reviewer: MetaAgentReviewer | None) -> PaperRuntime:
@@ -99,9 +97,7 @@ async def test_runtime_records_an_advisory_review_without_changing_execution() -
 
 @pytest.mark.asyncio
 async def test_runtime_suppresses_the_order_on_a_veto() -> None:
-    result = await runtime(reviewer(MetaAgentMode.VETO, vetoing)).run_once(
-        "BTC/USD", portfolio()
-    )
+    result = await runtime(reviewer(MetaAgentMode.VETO, vetoing)).run_once("BTC/USD", portfolio())
 
     assert result.pipeline.paper_order is None
     assert VETO_REASON in result.pipeline.rejection_reasons
@@ -110,9 +106,7 @@ async def test_runtime_suppresses_the_order_on_a_veto() -> None:
 
 @pytest.mark.asyncio
 async def test_runtime_fails_closed_when_the_reviewer_errors() -> None:
-    result = await runtime(reviewer(MetaAgentMode.VETO, exploding)).run_once(
-        "BTC/USD", portfolio()
-    )
+    result = await runtime(reviewer(MetaAgentMode.VETO, exploding)).run_once("BTC/USD", portfolio())
 
     assert result.pipeline.paper_order is None
     assert UNAVAILABLE_REASON in result.pipeline.rejection_reasons
@@ -120,9 +114,7 @@ async def test_runtime_fails_closed_when_the_reviewer_errors() -> None:
 
 @pytest.mark.asyncio
 async def test_runtime_keeps_the_order_on_approval_and_applies_the_delta() -> None:
-    result = await runtime(reviewer(MetaAgentMode.VETO, approving)).run_once(
-        "BTC/USD", portfolio()
-    )
+    result = await runtime(reviewer(MetaAgentMode.VETO, approving)).run_once("BTC/USD", portfolio())
 
     assert result.pipeline.paper_order is not None
     assert result.pipeline.proposal is not None

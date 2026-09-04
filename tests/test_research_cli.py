@@ -67,7 +67,9 @@ def test_run_produces_a_full_research_report(tmp_path: Path) -> None:
 def test_run_handles_too_few_candles_for_walkforward(tmp_path: Path) -> None:
     path = tmp_path / "candles.json"
     make_candles_json(path, count=50)
-    args = build_parser().parse_args(["--candles", str(path), "--train-size", "40", "--test-size", "40"])
+    args = build_parser().parse_args(
+        ["--candles", str(path), "--train-size", "40", "--test-size", "40"]
+    )
     report = run(args)
     assert report.walkforward is None
     rendered = report.render()

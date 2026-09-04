@@ -248,9 +248,7 @@ class IdempotentSubmitter:
             return SubmissionOutcome(status=SubmissionStatus.REJECTED, reason=exhausted)
         return None
 
-    async def _call(
-        self, intent: PaperOrderIntent, plan: ExecutionPlan
-    ) -> HummingbotOrderReceipt:
+    async def _call(self, intent: PaperOrderIntent, plan: ExecutionPlan) -> HummingbotOrderReceipt:
         async with asyncio.timeout(self.timeout_seconds):
             return await self.executor.submit(
                 intent,

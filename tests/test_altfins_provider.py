@@ -9,7 +9,9 @@ from traderstack.market.altfins import AltFinsSignalProvider
 
 
 def market() -> MarketFeatures:
-    return MarketFeatures(trend_4h=0.1, trend_1d=0.1, volatility_z=0.0, relative_volume=1.0, spread_bps=2.0)
+    return MarketFeatures(
+        trend_4h=0.1, trend_1d=0.1, volatility_z=0.0, relative_volume=1.0, spread_bps=2.0
+    )
 
 
 @pytest.mark.asyncio
@@ -23,15 +25,35 @@ async def test_altfins_provider_maps_bullish_bearish_ratio_to_bounded_score() ->
             200,
             json={
                 "content": [
-                    {"symbol": "BTC", "signalKey": "SIGNALS_SUMMARY_SMA_50_200", "signalName": "x", "direction": "BULLISH", "timestamp": "2026-09-04T00:00:00Z"},
-                    {"symbol": "BTC", "signalKey": "SIGNALS_SUMMARY_CHANNEL_UP", "signalName": "y", "direction": "BULLISH", "timestamp": "2026-09-04T00:00:00Z"},
-                    {"symbol": "BTC", "signalKey": "SIGNALS_SUMMARY_RSI", "signalName": "z", "direction": "BEARISH", "timestamp": "2026-09-04T00:00:00Z"},
+                    {
+                        "symbol": "BTC",
+                        "signalKey": "SIGNALS_SUMMARY_SMA_50_200",
+                        "signalName": "x",
+                        "direction": "BULLISH",
+                        "timestamp": "2026-09-04T00:00:00Z",
+                    },
+                    {
+                        "symbol": "BTC",
+                        "signalKey": "SIGNALS_SUMMARY_CHANNEL_UP",
+                        "signalName": "y",
+                        "direction": "BULLISH",
+                        "timestamp": "2026-09-04T00:00:00Z",
+                    },
+                    {
+                        "symbol": "BTC",
+                        "signalKey": "SIGNALS_SUMMARY_RSI",
+                        "signalName": "z",
+                        "direction": "BEARISH",
+                        "timestamp": "2026-09-04T00:00:00Z",
+                    },
                 ],
                 "totalElements": 3,
             },
         )
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://altfins.com") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://altfins.com"
+    ) as client:
         snapshot = await AltFinsSignalProvider(api_key="secret", client=client).fetch("btc")
 
     assert snapshot.asset == "BTC"
@@ -44,7 +66,9 @@ async def test_altfins_provider_returns_none_score_when_no_signals() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"content": [], "totalElements": 0})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://altfins.com") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://altfins.com"
+    ) as client:
         snapshot = await AltFinsSignalProvider(api_key="secret", client=client).fetch("eth")
 
     assert snapshot.score is None

@@ -41,7 +41,9 @@ class AttributionReport(BaseModel):
 def _bucket(key: str, trades: list[BacktestTrade]) -> AttributionBucket:
     count = len(trades)
     gross_returns = [
-        trade.return_pct + trade.fees_paid / trade.notional_usd if trade.notional_usd > 0 else trade.return_pct
+        trade.return_pct + trade.fees_paid / trade.notional_usd
+        if trade.notional_usd > 0
+        else trade.return_pct
         for trade in trades
     ]
     net_returns = [trade.return_pct for trade in trades]

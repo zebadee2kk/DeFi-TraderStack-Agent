@@ -35,7 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def render_event(index: int, result: RuntimeResult) -> str:
     outcome = "accepted" if result.pipeline.accepted_market_data else "rejected"
-    risk_decision = result.pipeline.risk_result.decision.value if result.pipeline.risk_result else None
+    risk_decision = (
+        result.pipeline.risk_result.decision.value if result.pipeline.risk_result else None
+    )
     lines = [
         f"[{index}] {result.tick.observed_at.isoformat()}  {result.tick.symbol}  outcome={outcome}",
     ]

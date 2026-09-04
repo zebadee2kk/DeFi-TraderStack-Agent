@@ -132,9 +132,7 @@ async def test_claude_client_sends_the_registered_prompt_and_reports_usage() -> 
 
     assert seen["model"] == DEFAULT_META_AGENT_MODEL == "claude-haiku-4-5"
     assert seen["system"] == meta_agent_prompt().text
-    assert seen["output_config"] == {
-        "format": {"type": "json_schema", "schema": META_AGENT_SCHEMA}
-    }
+    assert seen["output_config"] == {"format": {"type": "json_schema", "schema": META_AGENT_SCHEMA}}
     assert call.decision.approve is False
     assert call.model == "claude-haiku-4-5"
     assert call.input_tokens == 1200

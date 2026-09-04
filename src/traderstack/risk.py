@@ -187,7 +187,9 @@ class RiskEngine:
         if volatility_scaled:
             reasons.append("volatility_scaled")
         decision = (
-            RiskDecision.ALLOW if approved == proposal.requested_notional_usd else RiskDecision.REDUCE
+            RiskDecision.ALLOW
+            if approved == proposal.requested_notional_usd
+            else RiskDecision.REDUCE
         )
         if decision is RiskDecision.REDUCE:
             reasons.append("position_size_reduced")

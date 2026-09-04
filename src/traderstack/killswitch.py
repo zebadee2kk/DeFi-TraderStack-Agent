@@ -111,7 +111,9 @@ class KillSwitch:
         return cls(
             settings_flag=settings.kill_switch,
             sentinel_path=Path(settings.kill_switch_file),
-            redis_key=settings.kill_switch_redis_key if settings.kill_switch_redis_enabled else None,
+            redis_key=settings.kill_switch_redis_key
+            if settings.kill_switch_redis_enabled
+            else None,
             redis_client=redis_client if settings.kill_switch_redis_enabled else None,
         )
 
@@ -217,9 +219,7 @@ def kill_main(argv: list[str] | None = None) -> int:
 def resume_main(argv: list[str] | None = None) -> int:
     """``traderstack-resume``: clear the sentinel file."""
 
-    parser = argparse.ArgumentParser(
-        description="Clear the TraderStack kill-switch sentinel file"
-    )
+    parser = argparse.ArgumentParser(description="Clear the TraderStack kill-switch sentinel file")
     parser.add_argument("--file", default=None, help="sentinel path (default $KILL_SWITCH_FILE)")
     args = parser.parse_args(argv)
     path = _sentinel_path(args.file)

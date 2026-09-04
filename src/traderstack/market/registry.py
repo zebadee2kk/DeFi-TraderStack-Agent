@@ -170,7 +170,10 @@ class ProviderRegistry:
 
     def _check_breaker(self, now: datetime) -> None:
         if self._state is BreakerState.OPEN:
-            if self._opened_at is not None and (now - self._opened_at).total_seconds() >= self.cooldown_seconds:
+            if (
+                self._opened_at is not None
+                and (now - self._opened_at).total_seconds() >= self.cooldown_seconds
+            ):
                 self._state = BreakerState.HALF_OPEN
                 provider_breaker_state.labels(provider=self.name).set(_STATE_VALUE[self._state])
             else:
@@ -203,7 +206,10 @@ class ProviderRegistry:
         self._consecutive_failures += 1
         self._last_error = f"{type(exc).__name__}: {exc}"
         provider_calls_total.labels(provider=self.name, outcome="error").inc()
-        if self._state is BreakerState.HALF_OPEN or self._consecutive_failures >= self.failure_threshold:
+        if (
+            self._state is BreakerState.HALF_OPEN
+            or self._consecutive_failures >= self.failure_threshold
+        ):
             self._state = BreakerState.OPEN
             self._opened_at = self._now()
         provider_breaker_state.labels(provider=self.name).set(_STATE_VALUE[self._state])
@@ -228,7 +234,9 @@ class ProviderRegistry:
         return entry.value
 
     def _cache_put(self, key: Hashable, value: Any, now: datetime) -> None:
-        self._cache[key] = _CacheEntry(value=value, expires_at=now + timedelta(seconds=self.cache_ttl_seconds))
+        self._cache[key] = _CacheEntry(
+            value=value, expires_at=now + timedelta(seconds=self.cache_ttl_seconds)
+        )
 
     def health(self) -> ProviderHealthReport:
         now = self._now()

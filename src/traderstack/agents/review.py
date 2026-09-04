@@ -288,7 +288,9 @@ class MetaAgentReviewer:
             specialist_signals=specialist_signals or [],
         )
 
-    async def run(self, symbol: str, result: PipelineResult) -> tuple[PipelineResult, MetaAgentReview]:
+    async def run(
+        self, symbol: str, result: PipelineResult
+    ) -> tuple[PipelineResult, MetaAgentReview]:
         """Review the cycle and return the (possibly restricted) pipeline result."""
         review = await self.review(symbol, result)
         return self.apply(result, review)
@@ -408,9 +410,7 @@ class MetaAgentReviewer:
                 "rejection_reasons": [*result.rejection_reasons, reason],
             }
         )
-        updated = review.model_copy(
-            update={"suppressed_order": True, "suppression_reason": reason}
-        )
+        updated = review.model_copy(update={"suppressed_order": True, "suppression_reason": reason})
         return restricted, updated
 
     async def _call(self, packet: EvidencePacket) -> MetaAgentCall:

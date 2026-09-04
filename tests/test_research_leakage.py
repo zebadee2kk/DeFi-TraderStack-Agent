@@ -101,7 +101,9 @@ def test_assert_no_lookahead_under_shuffled_future_catches_the_same_bug() -> Non
         return state["ema"]
 
     with pytest.raises(LookaheadBiasError):
-        assert_no_lookahead_under_shuffled_future(leaky_streaming_ema, candles, min_index=10, step=10)
+        assert_no_lookahead_under_shuffled_future(
+            leaky_streaming_ema, candles, min_index=10, step=10
+        )
 
 
 def test_a_pure_function_of_its_window_passes() -> None:

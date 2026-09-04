@@ -75,9 +75,7 @@ class PerplexityNewsProvider:
         if self.client is not None:
             response = await self.client.post(AGENT_ENDPOINT, headers=headers, json=payload)
         else:
-            async with httpx.AsyncClient(
-                base_url=self.base_url.rstrip("/"), timeout=20
-            ) as client:
+            async with httpx.AsyncClient(base_url=self.base_url.rstrip("/"), timeout=20) as client:
                 response = await client.post(AGENT_ENDPOINT, headers=headers, json=payload)
         response.raise_for_status()
         body = response.json()
@@ -119,7 +117,9 @@ def _extract_output_text(body: object) -> str:
         texts = [
             piece["text"]
             for piece in contents
-            if isinstance(piece, dict) and piece.get("type") == "output_text" and isinstance(piece.get("text"), str)
+            if isinstance(piece, dict)
+            and piece.get("type") == "output_text"
+            and isinstance(piece.get("text"), str)
         ]
         if texts:
             return "".join(texts)

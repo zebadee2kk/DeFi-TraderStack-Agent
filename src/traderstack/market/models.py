@@ -92,5 +92,7 @@ class BookSnapshot(BaseModel):
         bid_floor = mid * (1 - bps / 10_000)
         ask_ceiling = mid * (1 + bps / 10_000)
         bid_depth = sum(level.price * level.qty for level in self.bids if level.price >= bid_floor)
-        ask_depth = sum(level.price * level.qty for level in self.asks if level.price <= ask_ceiling)
+        ask_depth = sum(
+            level.price * level.qty for level in self.asks if level.price <= ask_ceiling
+        )
         return (bid_depth, ask_depth)

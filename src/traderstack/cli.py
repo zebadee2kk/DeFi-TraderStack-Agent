@@ -176,7 +176,9 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
     if settings.perplexity_api_key is not None:
         news.append(
             registered_fetcher(
-                PerplexityNewsProvider(api_key=settings.perplexity_api_key.get_secret_value()).fetch,
+                PerplexityNewsProvider(
+                    api_key=settings.perplexity_api_key.get_secret_value()
+                ).fetch,
                 build_provider_registry(settings, "perplexity", calls_per_minute=quota),
             )
         )
@@ -337,20 +339,22 @@ def build_service(
         candle_provider = RegisteredCandleHistoryProvider(
             KrakenCandleProvider(),
             build_provider_registry(
-                settings, "kraken_candles", calls_per_minute=settings.candle_provider_calls_per_minute
+                settings,
+                "kraken_candles",
+                calls_per_minute=settings.candle_provider_calls_per_minute,
             ),
         )
 
     intelligence = build_intelligence(settings)
     if settings.intelligence_required and intelligence is None:
-        raise RuntimeError("INTELLIGENCE_REQUIRED=true but no intelligence provider has credentials")
+        raise RuntimeError(
+            "INTELLIGENCE_REQUIRED=true but no intelligence provider has credentials"
+        )
 
     pipeline = VerticalSlicePipeline(
         # --- risk plane (Epic 7) --- live halt + strategy breaker, not the
         # static settings flag alone.
-        risk_engine=RiskEngine(
-            settings, kill_switch=kill_switch, circuit_breaker=circuit_breaker
-        ),
+        risk_engine=RiskEngine(settings, kill_switch=kill_switch, circuit_breaker=circuit_breaker),
         max_tick_age_seconds=settings.max_market_data_age_seconds,
         max_reference_divergence_bps=settings.max_reference_divergence_bps,
         pretrade_gate=pretrade_gate,

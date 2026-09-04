@@ -48,7 +48,9 @@ def grid_search_momentum_lookback(
         best: BaselineBacktester | None = None
         best_score = float("-inf")
         for lookback in candidates:
-            momentum_strategy = replace(base_backtester.ensemble.momentum_strategy, lookback=lookback)
+            momentum_strategy = replace(
+                base_backtester.ensemble.momentum_strategy, lookback=lookback
+            )
             ensemble = replace(base_backtester.ensemble, momentum_strategy=momentum_strategy)
             candidate = replace(base_backtester, ensemble=ensemble)
             try:

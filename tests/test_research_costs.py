@@ -26,7 +26,10 @@ def test_flat_cost_model_ignores_notional_and_bar() -> None:
 
 def test_volume_aware_slippage_grows_with_order_size() -> None:
     model = VolumeAwareSlippageModel(
-        fee_bps=10.0, base_slippage_bps=5.0, participation_sensitivity_bps=200.0, max_slippage_bps=250.0
+        fee_bps=10.0,
+        base_slippage_bps=5.0,
+        participation_sensitivity_bps=200.0,
+        max_slippage_bps=250.0,
     )
     candle = make_candle(close=100.0, volume=1_000.0)  # bar notional = 100,000
     small_order = model.cost_bps(candle, notional_usd=1_000.0)
@@ -37,7 +40,10 @@ def test_volume_aware_slippage_grows_with_order_size() -> None:
 
 def test_volume_aware_slippage_is_capped() -> None:
     model = VolumeAwareSlippageModel(
-        fee_bps=10.0, base_slippage_bps=5.0, participation_sensitivity_bps=200.0, max_slippage_bps=50.0
+        fee_bps=10.0,
+        base_slippage_bps=5.0,
+        participation_sensitivity_bps=200.0,
+        max_slippage_bps=50.0,
     )
     candle = make_candle(close=100.0, volume=100.0)  # tiny bar notional
     cost = model.cost_bps(candle, notional_usd=10_000_000.0)

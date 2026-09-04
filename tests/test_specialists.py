@@ -57,9 +57,7 @@ def test_technical_specialist_is_flat_when_trends_disagree() -> None:
 def test_technical_specialist_blocks_on_wide_spread_and_wild_volatility() -> None:
     wide = TechnicalSpecialist().evaluate(vector(trend_4h=0.8, trend_1d=0.8, spread_bps=99))
     wild = TechnicalSpecialist().evaluate(vector(trend_4h=0.8, trend_1d=0.8, volatility_z=9))
-    thin = TechnicalSpecialist().evaluate(
-        vector(trend_4h=0.8, trend_1d=0.8, relative_volume=0.05)
-    )
+    thin = TechnicalSpecialist().evaluate(vector(trend_4h=0.8, trend_1d=0.8, relative_volume=0.05))
 
     assert wide.side is None and "spread_too_wide" in wide.rationale
     assert wild.side is None and "volatility_out_of_band" in wild.rationale

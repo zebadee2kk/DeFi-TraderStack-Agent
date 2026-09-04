@@ -15,9 +15,7 @@ def settings(**overrides: object) -> Settings:
 
 
 def portfolio() -> PortfolioSnapshot:
-    return PortfolioSnapshot(
-        nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000
-    )
+    return PortfolioSnapshot(nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000)
 
 
 def proposal(**overrides: object) -> TradeProposal:

@@ -52,7 +52,9 @@ def test_record_pipeline_result_counts_proposal_and_risk_decision() -> None:
         approved_notional_usd=100,
         policy_version="v1",
     )
-    order = PaperOrderIntent(decision_id=str(proposal.decision_id), asset="BTC", side=Side.BUY, notional_usd=100)
+    order = PaperOrderIntent(
+        decision_id=str(proposal.decision_id), asset="BTC", side=Side.BUY, notional_usd=100
+    )
     result = PipelineResult(
         accepted_market_data=True, proposal=proposal, risk_result=risk_result, paper_order=order
     )
@@ -84,7 +86,9 @@ def test_record_paper_order_submitted() -> None:
 
 def test_record_candles_loaded_sets_gauge() -> None:
     metrics.record_candles_loaded("BTC/USD", 250)
-    assert REGISTRY.get_sample_value("traderstack_candle_history_size", {"symbol": "BTC/USD"}) == 250
+    assert (
+        REGISTRY.get_sample_value("traderstack_candle_history_size", {"symbol": "BTC/USD"}) == 250
+    )
 
 
 def test_record_provider_fetch_records_latency_and_failure() -> None:
@@ -120,15 +124,15 @@ def test_record_portfolio_snapshot_sets_nav_cash_and_drawdown() -> None:
 def test_record_event_sink_failure() -> None:
     before = _counter_value("traderstack_event_sink_failures_total", sink="redis")
     metrics.record_event_sink_failure("redis")
-    assert (
-        _counter_value("traderstack_event_sink_failures_total", sink="redis") == before + 1
-    )
+    assert _counter_value("traderstack_event_sink_failures_total", sink="redis") == before + 1
 
 
 @pytest.mark.asyncio
 async def test_timed_provider_call_records_success() -> None:
     before_count = _counter_value(
-        "traderstack_provider_fetch_latency_seconds_count", provider="coingecko", kind="reference_price"
+        "traderstack_provider_fetch_latency_seconds_count",
+        provider="coingecko",
+        kind="reference_price",
     )
 
     async def ok() -> list[ReferencePrice]:

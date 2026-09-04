@@ -47,8 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--candles", type=Path, help="JSON file of candle objects (no network)")
     source.add_argument("--symbol", help="fetch candles live from Kraken, e.g. BTC/USD (network)")
-    parser.add_argument("--resolution", default="1h", help="candle interval when fetching from Kraken")
-    parser.add_argument("--count", type=int, default=500, help="candle count when fetching from Kraken")
+    parser.add_argument(
+        "--resolution", default="1h", help="candle interval when fetching from Kraken"
+    )
+    parser.add_argument(
+        "--count", type=int, default=500, help="candle count when fetching from Kraken"
+    )
     parser.add_argument("--starting-equity", type=float, default=10_000.0)
     parser.add_argument("--fee-bps", type=float, default=10.0)
     parser.add_argument("--slippage-bps", type=float, default=5.0)
@@ -57,7 +61,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test-size", type=int, default=60)
     parser.add_argument("--step-size", type=int, default=60)
     parser.add_argument("--asset", default=None, help="asset label for the attribution report")
-    parser.add_argument("--json", action="store_true", help="emit machine-readable JSON instead of a table")
+    parser.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON instead of a table"
+    )
     return parser
 
 
@@ -171,7 +177,9 @@ def run(args: argparse.Namespace) -> ResearchReport:
     except ValueError:
         walkforward_report = None
 
-    baseline_metrics = run_baselines(candles, starting_equity=args.starting_equity, warmup=args.warmup)
+    baseline_metrics = run_baselines(
+        candles, starting_equity=args.starting_equity, warmup=args.warmup
+    )
     excess = compare(metrics, baseline_metrics)
     attribution = build_attribution_report(metrics.trade_log, asset=asset)
 
