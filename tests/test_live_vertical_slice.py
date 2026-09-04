@@ -36,7 +36,9 @@ def test_parse_kraken_ticker() -> None:
 
 
 def test_pipeline_emits_paper_intent_after_validation() -> None:
-    tick = MarketTick(source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000)
+    tick = MarketTick(
+        source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000
+    )
     references = [
         ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=1001),
         ReferencePrice(source=MarketSource.COINMARKETCAP, asset="BTC", price=999),
@@ -66,7 +68,9 @@ def test_pipeline_rejects_stale_tick() -> None:
 
 
 def test_pipeline_rejects_divergent_reference() -> None:
-    tick = MarketTick(source=MarketSource.KRAKEN, symbol="ETH/USD", bid=999.5, ask=1000.5, last=1000)
+    tick = MarketTick(
+        source=MarketSource.KRAKEN, symbol="ETH/USD", bid=999.5, ask=1000.5, last=1000
+    )
     refs = [ReferencePrice(source=MarketSource.COINGECKO, asset="ETH", price=1200)]
     result = pipeline().process(tick, refs, portfolio())
     assert result.accepted_market_data is False

@@ -37,14 +37,30 @@ async def test_kraken_candle_provider_normalizes_and_orders() -> None:
             200,
             json={
                 "candles": [
-                    {"time": 2, "open": "101", "high": "103", "low": "100", "close": "102", "volume": "12"},
-                    {"time": 1, "open": "100", "high": "102", "low": "99", "close": "101", "volume": "10"},
+                    {
+                        "time": 2,
+                        "open": "101",
+                        "high": "103",
+                        "low": "100",
+                        "close": "102",
+                        "volume": "12",
+                    },
+                    {
+                        "time": 1,
+                        "open": "100",
+                        "high": "102",
+                        "low": "99",
+                        "close": "101",
+                        "volume": "10",
+                    },
                 ]
             },
         )
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(base_url="https://futures.kraken.com", transport=transport) as client:
+    async with httpx.AsyncClient(
+        base_url="https://futures.kraken.com", transport=transport
+    ) as client:
         provider = KrakenCandleProvider(client=client)
         candles = await provider.fetch("BTC/USD", "1h", count=2)
 

@@ -104,6 +104,23 @@ This starts:
 - **Loki** (`:3100`) + **Promtail** — Promtail tails the `app` container's stdout via Docker service discovery (`ops/promtail.yml`) and ships it to Loki; this is optional and can be omitted by not starting the `observability` profile, in which case only Prometheus metrics and local structured logs remain.
 - **OpenTelemetry traces** are opt-in and not part of the Compose stack by default: install the `opentelemetry` extra (`pip install -e '.[opentelemetry]'`) and set `OTEL_EXPORTER_OTLP_ENDPOINT` to an OTLP/HTTP collector to enable them; nothing else changes.
 
+## Container hardening
+
+The `app` image (`Dockerfile`) is a two-stage build — a `builder` stage resolves
+dependencies into an isolated venv, and the `runtime` stage carries only that venv
+plus the app, on a digest-pinned `python:3.12-slim` base, running as the existing
+non-root `traderstack` user with `PIP_NO_CACHE_DIR=1`. It ships a `HEALTHCHECK`
+against its own Prometheus endpoint (`/metrics` on port 9108, via `urllib` since
+the slim image has no `curl`), and a `.dockerignore` keeps build context to source
++ `pyproject.toml`.
+
+`docker-compose.yml`'s `app` service runs with `read_only: true` (a `tmpfs` mount
+covers `/tmp`; the `app_state` volume remains the one writable path, at
+`/app/var`), `security_opt: [no-new-privileges:true]`, a matching `healthcheck:`,
+and CPU/memory limits (`deploy.resources.limits`). See `docs/RUNBOOK.md` for
+day-to-day operation and `docs/SECURITY-THREAT-MODEL.md` for the controls this
+implements.
+
 ## Deployment Principle
 
 Infrastructure must be disposable; state must be recoverable. No irreplaceable configuration should exist only inside a running container or UI.

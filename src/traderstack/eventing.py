@@ -131,7 +131,9 @@ class FanoutResultSink:
     sinks: tuple[ResultSink, ...]
 
     async def __call__(self, result: RuntimeResult) -> None:
-        outcomes = await asyncio.gather(*(sink(result) for sink in self.sinks), return_exceptions=True)
+        outcomes = await asyncio.gather(
+            *(sink(result) for sink in self.sinks), return_exceptions=True
+        )
         failures = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
         if failures:
             raise RuntimeError(f"{len(failures)} runtime event sink(s) failed") from failures[0]

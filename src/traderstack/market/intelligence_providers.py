@@ -128,10 +128,7 @@ class CryptoPanicNewsProvider:
                     total_directional_votes += negative + positive
                 if isinstance(important, int):
                     importance = max(importance, min(1.0, important / 10.0))
-        adverse = (
-            total_directional_votes > 0
-            and adverse_votes / total_directional_votes >= 0.6
-        )
+        adverse = total_directional_votes > 0 and adverse_votes / total_directional_votes >= 0.6
         return NewsSnapshot(
             asset=asset.upper(),
             event_score=importance,

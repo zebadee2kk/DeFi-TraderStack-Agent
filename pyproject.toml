@@ -20,7 +20,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10"]
+dev = [
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "pip-audit>=2.7",
+  "bandit>=1.7",
+]
 # Optional OpenTelemetry tracing (Epic 9). traderstack.tracing is a no-op
 # whenever this extra is not installed, so it is never required at runtime.
 opentelemetry = [
@@ -38,6 +46,7 @@ traderstack-kill = "traderstack.killswitch:kill_main"
 traderstack-resume = "traderstack.killswitch:resume_main"
 traderstack-research = "traderstack.research.cli:main"
 traderstack-download-candles = "traderstack.research.download_candles:main"
+traderstack-check-config = "traderstack.cli_check:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

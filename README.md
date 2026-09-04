@@ -4,6 +4,24 @@ An experimental autonomous crypto/DeFi trading research and execution platform c
 
 > **Status:** Architecture and research phase. No production capital should be connected until the full backtest, forward-test, paper-trading, security, and risk-control gates are complete.
 
+## Quickstart (paper trading)
+
+```bash
+cp .env.example .env          # fill in what you need; everything else can stay blank
+make setup                    # creates .venv, installs the package + dev tools
+make check-config             # traderstack-check-config: shows what's enabled, fails on unsafe combos
+docker compose up -d postgres redis
+docker compose --profile app up -d --build
+docker compose ps             # app should report "healthy" within ~50s
+tail -f var/audit/runtime.jsonl
+```
+
+`KILL_SWITCH=true` and `TRADING_MODE=paper` are the defaults — the deterministic
+risk engine rejects every proposal until you deliberately change that. Full
+zero-to-running steps, filling in `.env` safely, the kill switch, key rotation,
+reading the audit log/metrics, upgrading, and incident response all live in
+**[`docs/RUNBOOK.md`](docs/RUNBOOK.md)**.
+
 ## Project goal
 
 Build a 24/7/365 event-driven trading platform in which:

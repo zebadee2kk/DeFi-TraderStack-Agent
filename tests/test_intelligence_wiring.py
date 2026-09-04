@@ -18,7 +18,9 @@ def portfolio() -> PortfolioSnapshot:
 
 
 def tick() -> MarketTick:
-    return MarketTick(source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000)
+    return MarketTick(
+        source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000
+    )
 
 
 def references() -> list[ReferencePrice]:
@@ -32,9 +34,19 @@ def pipeline(**overrides: object) -> VerticalSlicePipeline:
 def bundle(*, adverse: bool = False) -> ExternalIntelligence:
     return ExternalIntelligence(
         asset="BTC",
-        onchain=OnChainSnapshot(asset="BTC", exchange_netflow_z=-1.1, large_wallet_accumulation=0.6, source_id="dune:q1"),
-        social=SocialSnapshot(asset="BTC", sentiment=0.3, mention_velocity_z=1.2, source_id="lunarcrush:test"),
-        news=NewsSnapshot(asset="BTC", event_score=0.7, adverse_event=adverse, item_count=4, source_id="cryptopanic:test"),
+        onchain=OnChainSnapshot(
+            asset="BTC", exchange_netflow_z=-1.1, large_wallet_accumulation=0.6, source_id="dune:q1"
+        ),
+        social=SocialSnapshot(
+            asset="BTC", sentiment=0.3, mention_velocity_z=1.2, source_id="lunarcrush:test"
+        ),
+        news=NewsSnapshot(
+            asset="BTC",
+            event_score=0.7,
+            adverse_event=adverse,
+            item_count=4,
+            source_id="cryptopanic:test",
+        ),
     )
 
 
@@ -76,12 +88,20 @@ def test_pipeline_merges_intelligence_into_feature_vector() -> None:
     assert vector.onchain.large_wallet_accumulation == pytest.approx(0.6)
     assert vector.narrative.sentiment == pytest.approx(0.3)
     assert vector.news.event_score == pytest.approx(0.7)
-    assert vector.source_ids == ["kraken", "coingecko", "dune:q1", "lunarcrush:test", "cryptopanic:test"]
+    assert vector.source_ids == [
+        "kraken",
+        "coingecko",
+        "dune:q1",
+        "lunarcrush:test",
+        "cryptopanic:test",
+    ]
     assert result.paper_order is not None
 
 
 def test_pipeline_blocks_new_risk_on_adverse_news() -> None:
-    result = pipeline().process(tick(), references(), portfolio(), intelligence=bundle(adverse=True))
+    result = pipeline().process(
+        tick(), references(), portfolio(), intelligence=bundle(adverse=True)
+    )
     assert result.accepted_market_data is True
     assert result.rejection_reasons == ["adverse_news_event"]
     assert result.proposal is None and result.paper_order is None
@@ -97,18 +117,25 @@ def test_pipeline_adverse_news_block_can_be_disabled_by_config() -> None:
 
 def test_pipeline_can_require_external_intelligence() -> None:
     strict = pipeline(require_external_intelligence=True)
-    assert strict.process(tick(), references(), portfolio()).rejection_reasons == ["no_external_intelligence"]
-    empty = ExternalIntelligence(asset="BTC")
-    assert strict.process(tick(), references(), portfolio(), intelligence=empty).rejection_reasons == [
+    assert strict.process(tick(), references(), portfolio()).rejection_reasons == [
         "no_external_intelligence"
     ]
-    assert strict.process(tick(), references(), portfolio(), intelligence=bundle()).paper_order is not None
+    empty = ExternalIntelligence(asset="BTC")
+    assert strict.process(
+        tick(), references(), portfolio(), intelligence=empty
+    ).rejection_reasons == ["no_external_intelligence"]
+    assert (
+        strict.process(tick(), references(), portfolio(), intelligence=bundle()).paper_order
+        is not None
+    )
 
 
 def test_pipeline_ignores_intelligence_for_a_different_asset() -> None:
     wrong = ExternalIntelligence(
         asset="ETH",
-        news=NewsSnapshot(asset="ETH", event_score=0.9, adverse_event=True, item_count=1, source_id="x"),
+        news=NewsSnapshot(
+            asset="ETH", event_score=0.9, adverse_event=True, item_count=1, source_id="x"
+        ),
     )
     result = pipeline().process(tick(), references(), portfolio(), intelligence=wrong)
     assert result.paper_order is not None
@@ -120,7 +147,9 @@ def test_pipeline_ignores_intelligence_for_a_different_asset() -> None:
 
 class FakeVenue:
     async def stream_ticks(self, symbols: tuple[str, ...]) -> AsyncIterator[MarketTick]:
-        yield MarketTick(source=MarketSource.KRAKEN, symbol=symbols[0], bid=99.95, ask=100.05, last=100)
+        yield MarketTick(
+            source=MarketSource.KRAKEN, symbol=symbols[0], bid=99.95, ask=100.05, last=100
+        )
 
 
 class GoodReference:
@@ -131,7 +160,9 @@ class GoodReference:
 @pytest.mark.asyncio
 async def test_runtime_gathers_intelligence_each_cycle() -> None:
     async def news(asset: str) -> NewsSnapshot:
-        return NewsSnapshot(asset=asset, event_score=0.5, adverse_event=False, item_count=2, source_id="news:test")
+        return NewsSnapshot(
+            asset=asset, event_score=0.5, adverse_event=False, item_count=2, source_id="news:test"
+        )
 
     runtime = PaperRuntime(
         venue=FakeVenue(),
