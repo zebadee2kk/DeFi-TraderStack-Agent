@@ -74,11 +74,11 @@
 ## Epic 8 — Execution
 - [ ] Hummingbot API integration
 - [ ] paper account setup
-- [ ] execution planner
-- [ ] idempotent order submission
-- [ ] order/fill state machine
-- [ ] venue reconciliation
-- [ ] retry/timeout handling
+- [x] execution planner
+- [x] idempotent order submission
+- [x] order/fill state machine
+- [x] venue reconciliation
+- [x] retry/timeout handling
 
 ## Epic 9 — Observability
 - [ ] OpenTelemetry traces

@@ -12,6 +12,13 @@ from traderstack.checkpoint import JsonPortfolioCheckpointStore
 from traderstack.config import Settings
 from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
+
+# --- execution hardening (Epic 8) ---
+from traderstack.execution.ledger import ExecutionLedger
+from traderstack.execution.ledger_store import JsonExecutionLedgerStore
+from traderstack.execution.planner import ExecutionPlanner
+from traderstack.execution.reconcile import HummingbotExecutionReconciler
+from traderstack.execution.submitter import IdempotentSubmitter
 from traderstack.intelligence_orchestrator import (
     IntelligenceCache,
     IntelligenceOrchestrator,
@@ -35,6 +42,7 @@ from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.pretrade import PreTradeBacktestGate
+from traderstack.reconciliation import HummingbotPortfolioReconciler
 from traderstack.risk import RiskEngine
 from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
@@ -120,6 +128,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--submit", action="store_true", help="submit approved paper orders")
     parser.add_argument("--audit-path", default="var/audit/runtime.jsonl")
     parser.add_argument("--checkpoint-path", default="var/state/portfolio.json")
+    # --- execution hardening (Epic 8) ---
+    parser.add_argument("--ledger-path", default="var/state/execution_ledger.json")
     parser.add_argument("--cycle-seconds", type=float, default=5.0)
     parser.add_argument("--metrics-port", type=int, default=9108)
     parser.add_argument(
@@ -138,20 +148,61 @@ def build_service(
     portfolio: InMemoryPortfolioBook,
     on_result: ResultHandler,
     checkpoint_store: JsonPortfolioCheckpointStore,
+    # --- execution hardening (Epic 8) ---
+    execution_ledger: ExecutionLedger | None = None,
+    ledger_store: JsonExecutionLedgerStore | None = None,
 ) -> ContinuousPaperService:
     if settings.trading_mode != "paper":
         raise RuntimeError("continuous paper service requires TRADING_MODE=paper")
 
     executor = None
+    # --- execution hardening (Epic 8) ---
+    submitter = None
+    execution_reconciler = None
+    portfolio_reconciler = None
     if submit:
         if settings.hummingbot_api_username is None or settings.hummingbot_api_password is None:
             raise RuntimeError("paper submission requires Hummingbot API credentials")
+        password = settings.hummingbot_api_password.get_secret_value()
         executor = HummingbotPaperExecutor(
             base_url=settings.hummingbot_api_url,
             username=settings.hummingbot_api_username,
-            password=settings.hummingbot_api_password.get_secret_value(),
+            password=password,
             account_name=settings.hummingbot_account_name,
             connector_name=settings.hummingbot_connector_name,
+            timeout_seconds=settings.execution_submit_timeout_seconds,
+        )
+        # Reconcilers double as the retry gate: nothing is resubmitted until one
+        # of them has confirmed the venue does not know the client order id.
+        execution_reconciler = HummingbotExecutionReconciler(
+            base_url=settings.hummingbot_api_url,
+            username=settings.hummingbot_api_username,
+            password=password,
+            account_name=settings.hummingbot_account_name,
+            connector_name=settings.hummingbot_connector_name,
+        )
+        portfolio_reconciler = HummingbotPortfolioReconciler(
+            base_url=settings.hummingbot_api_url,
+            username=settings.hummingbot_api_username,
+            password=password,
+            account_name=settings.hummingbot_account_name,
+            connector_name=settings.hummingbot_connector_name,
+            max_nav_difference_bps=settings.max_nav_drift_bps,
+        )
+        if execution_ledger is None:
+            execution_ledger = ExecutionLedger()
+        submitter = IdempotentSubmitter(
+            executor=executor,
+            ledger=execution_ledger,
+            planner=ExecutionPlanner(
+                lot_step=settings.execution_lot_step,
+                min_notional_usd=settings.execution_min_notional_usd,
+                max_slippage_bps=settings.execution_max_slippage_bps,
+            ),
+            resolver=execution_reconciler,
+            ledger_store=ledger_store,
+            timeout_seconds=settings.execution_submit_timeout_seconds,
+            max_retries=settings.execution_max_retries,
         )
 
     pretrade_gate = None
@@ -200,6 +251,7 @@ def build_service(
         candle_interval=settings.pretrade_candle_interval,
         candle_count=settings.pretrade_candle_count,
         intelligence=intelligence,
+        submitter=submitter,
     )
     return ContinuousPaperService(
         runtime=runtime,
@@ -209,6 +261,12 @@ def build_service(
         cycle_interval_seconds=cycle_seconds,
         on_result=on_result,
         on_portfolio=checkpoint_store.save,
+        # --- execution hardening (Epic 8) ---
+        execution_ledger=execution_ledger,
+        execution_reconciler=execution_reconciler,
+        portfolio_reconciler=portfolio_reconciler,
+        ledger_store=ledger_store,
+        reconcile_interval_seconds=settings.reconcile_interval_seconds,
     )
 
 
@@ -218,6 +276,12 @@ async def _main_async(args: argparse.Namespace) -> None:
     portfolio = await checkpoint_store.load()
     if portfolio is None:
         portfolio = InMemoryPortfolioBook(settings.paper_starting_nav_usd)
+
+    # --- execution hardening (Epic 8) ---
+    # The ledger is the cross-restart idempotency record: loading it is what
+    # stops a decision whose order is already live from being submitted twice.
+    ledger_store = JsonExecutionLedgerStore(Path(args.ledger_path))
+    execution_ledger = await ledger_store.load() or ExecutionLedger()
 
     sinks: list[ResultHandler] = [JsonlAuditSink(Path(args.audit_path))]
     postgres: PostgresRuntimeEventStore | None = None
@@ -236,6 +300,8 @@ async def _main_async(args: argparse.Namespace) -> None:
         portfolio=portfolio,
         on_result=FanoutResultSink(tuple(sinks)),
         checkpoint_store=checkpoint_store,
+        execution_ledger=execution_ledger,
+        ledger_store=ledger_store,
     )
     try:
         await service.run()

@@ -61,6 +61,22 @@ class Settings(BaseSettings):
     pretrade_fee_bps: float = Field(default=10.0, ge=0)
     pretrade_slippage_bps: float = Field(default=5.0, ge=0)
 
+    # --- execution hardening (Epic 8) ---
+    # Venue state is authoritative for execution. The service re-reads venue
+    # orders/fills and NAV on this interval; a failed pass or NAV drift beyond
+    # MAX_NAV_DRIFT_BPS blocks *new* submissions until a later pass is clean.
+    reconcile_interval_seconds: float = Field(default=60.0, gt=0)
+    max_nav_drift_bps: float = Field(default=25.0, gt=0)
+    # Execution planner constraints applied to every approved intent.
+    execution_min_notional_usd: float = Field(default=10.0, gt=0)
+    execution_lot_step: float = Field(default=1e-8, gt=0)
+    execution_max_slippage_bps: float = Field(default=50.0, gt=0)
+    # Submission timeout and bounded retries. A timeout never implies failure:
+    # retries only happen after reconciliation proves the venue does not know
+    # the client order id.
+    execution_submit_timeout_seconds: float = Field(default=10.0, gt=0)
+    execution_max_retries: int = Field(default=2, ge=0)
+
     # Robinhood Chain (EVM-compatible) network identity and on-chain execution
     # policy. rpc_url/chain_id must be sourced from Robinhood's own official chain
     # documentation, never guessed or hardcoded — a wrong chain id or endpoint can

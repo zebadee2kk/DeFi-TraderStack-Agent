@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
+from traderstack.execution.submitter import IdempotentSubmitter
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
 from traderstack.market.models import MarketTick, ReferencePrice
 from traderstack.market.providers import (
@@ -12,7 +13,7 @@ from traderstack.market.providers import (
     ReferencePriceProvider,
     VenueMarketDataProvider,
 )
-from traderstack.models import PortfolioSnapshot
+from traderstack.models import PortfolioSnapshot, Side
 from traderstack.pipeline import PipelineResult, VerticalSlicePipeline
 
 
@@ -25,6 +26,11 @@ class RuntimeResult(BaseModel):
     intelligence_sources: list[str] = []
     intelligence_error: str | None = None
     execution_receipt: HummingbotOrderReceipt | None = None
+    # --- execution hardening (Epic 8) ---
+    # Why a submission did or did not happen, so refusals (duplicate decision,
+    # planner rejection, uncertain venue state) land in the audit trail too.
+    execution_status: str | None = None
+    execution_reason: str | None = None
 
 
 @dataclass
@@ -41,6 +47,10 @@ class PaperRuntime:
     # on-chain pool quoted in a stablecoin (e.g. ETH/USDG).
     candle_quote: str = "USD"
     intelligence: IntelligenceOrchestrator | None = None
+    # --- execution hardening (Epic 8) ---
+    # When wired, the submitter owns planning, idempotency and retry gating and
+    # replaces the bare executor call below.
+    submitter: IdempotentSubmitter | None = None
 
     async def run_once(
         self,
@@ -83,14 +93,30 @@ class PaperRuntime:
             tick, prices, portfolio, candles=history, intelligence=external
         )
         receipt = None
+        # --- execution hardening (Epic 8) ---
+        execution_status: str | None = None
+        execution_reason: str | None = None
         if submit and pipeline_result.paper_order is not None:
-            if self.executor is None:
+            if self.submitter is not None:
+                intent = pipeline_result.paper_order
+                outcome = await self.submitter.submit(
+                    intent,
+                    # Cross the spread: the price actually payable is checked
+                    # against the pipeline's validated last trade by the planner.
+                    execution_price_usd=tick.ask if intent.side is Side.BUY else tick.bid,
+                    reference_price_usd=tick.last,
+                )
+                receipt = outcome.receipt
+                execution_status = outcome.status.value
+                execution_reason = outcome.reason
+            elif self.executor is None:
                 raise RuntimeError("paper execution requested without an executor")
-            receipt = await self.executor.submit(
-                pipeline_result.paper_order,
-                execution_price_usd=tick.last,
-                trading_mode="paper",
-            )
+            else:
+                receipt = await self.executor.submit(
+                    pipeline_result.paper_order,
+                    execution_price_usd=tick.last,
+                    trading_mode="paper",
+                )
 
         return RuntimeResult(
             tick=tick,
@@ -101,6 +127,8 @@ class PaperRuntime:
             intelligence_sources=external.source_ids if external is not None else [],
             intelligence_error=intelligence_error,
             execution_receipt=receipt,
+            execution_status=execution_status,
+            execution_reason=execution_reason,
         )
 
     async def _next_tick(self, symbol: str) -> MarketTick:
