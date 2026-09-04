@@ -34,9 +34,7 @@ async def test_perplexity_news_provider_normalizes_json() -> None:
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(handler), base_url="https://api.perplexity.ai"
     ) as client:
-        snapshot = await PerplexityNewsProvider(
-            api_key="test-key", client=client
-        ).fetch("btc")
+        snapshot = await PerplexityNewsProvider(api_key="test-key", client=client).fetch("btc")
 
     assert snapshot.asset == "BTC"
     assert snapshot.event_score == pytest.approx(0.72)

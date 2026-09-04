@@ -61,7 +61,9 @@ def parse_kraken_ticker(message: dict[str, object]) -> MarketTick | None:
 
 
 class CoinGeckoPriceProvider:
-    def __init__(self, api_key: str | None = None, base_url: str = "https://api.coingecko.com/api/v3") -> None:
+    def __init__(
+        self, api_key: str | None = None, base_url: str = "https://api.coingecko.com/api/v3"
+    ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
 
@@ -82,7 +84,11 @@ class CoinGeckoPriceProvider:
         reverse = {v: k for k, v in COINGECKO_IDS.items()}
         prices: list[ReferencePrice] = []
         for coin_id, row in payload.items():
-            if coin_id in reverse and isinstance(row, dict) and isinstance(row.get("usd"), (int, float)):
+            if (
+                coin_id in reverse
+                and isinstance(row, dict)
+                and isinstance(row.get("usd"), (int, float))
+            ):
                 prices.append(
                     ReferencePrice(
                         source=MarketSource.COINGECKO,
@@ -95,12 +101,18 @@ class CoinGeckoPriceProvider:
 
 
 class CoinMarketCapPriceProvider:
-    def __init__(self, api_key: str | None = None, base_url: str = "https://pro-api.coinmarketcap.com") -> None:
+    def __init__(
+        self, api_key: str | None = None, base_url: str = "https://pro-api.coinmarketcap.com"
+    ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
 
     async def get_prices(self, assets: tuple[str, ...]) -> list[ReferencePrice]:
-        path = "/v3/cryptocurrency/quotes/latest" if self.api_key else "/public-api/v3/cryptocurrency/quotes/latest"
+        path = (
+            "/v3/cryptocurrency/quotes/latest"
+            if self.api_key
+            else "/public-api/v3/cryptocurrency/quotes/latest"
+        )
         headers = {"X-CMC_PRO_API_KEY": self.api_key} if self.api_key else {}
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.get(

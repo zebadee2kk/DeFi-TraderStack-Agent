@@ -8,12 +8,12 @@
 - [ ] Record ADRs for Hummingbot, Freqtrade, database and workflow engine
 
 ## Epic 1 — Repository/Foundation
-- [ ] Python project scaffolding
-- [ ] Docker Compose baseline
-- [ ] typed configuration model
-- [ ] structured logging
-- [ ] CI lint/test/security checks
-- [ ] secrets example files with no credentials
+- [x] Python project scaffolding
+- [x] Docker Compose baseline
+- [x] typed configuration model
+- [x] structured logging
+- [x] CI lint/test/security checks
+- [x] secrets example files with no credentials
 
 ## Epic 2 — Market Data
 - [ ] direct venue WebSocket ingestion

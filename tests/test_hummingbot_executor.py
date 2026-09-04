@@ -69,9 +69,7 @@ async def test_submit_maps_201_receipt() -> None:
 
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(base_url="http://hummingbot", transport=transport) as client:
-        executor = HummingbotPaperExecutor(
-            "http://hummingbot", "user", "pass", client=client
-        )
+        executor = HummingbotPaperExecutor("http://hummingbot", "user", "pass", client=client)
         receipt = await executor.submit(intent(), execution_price_usd=50_000)
     assert receipt.order_id == "paper-order-1"
     assert receipt.status == "submitted"
@@ -84,8 +82,6 @@ async def test_submit_fails_closed_on_http_error() -> None:
 
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(base_url="http://hummingbot", transport=transport) as client:
-        executor = HummingbotPaperExecutor(
-            "http://hummingbot", "user", "pass", client=client
-        )
+        executor = HummingbotPaperExecutor("http://hummingbot", "user", "pass", client=client)
         with pytest.raises(ExecutionSafetyError, match="HTTP 500"):
             await executor.submit(intent(), execution_price_usd=50_000)

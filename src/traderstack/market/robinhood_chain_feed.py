@@ -38,12 +38,30 @@ class OnChainFeedError(RuntimeError):
 # pasted as magic constants.
 
 _ROUND_CONSTANTS = (
-    0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000,
-    0x000000000000808B, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
-    0x000000000000008A, 0x0000000000000088, 0x0000000080008009, 0x000000008000000A,
-    0x000000008000808B, 0x800000000000008B, 0x8000000000008089, 0x8000000000008003,
-    0x8000000000008002, 0x8000000000000080, 0x000000000000800A, 0x800000008000000A,
-    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
+    0x0000000000000001,
+    0x0000000000008082,
+    0x800000000000808A,
+    0x8000000080008000,
+    0x000000000000808B,
+    0x0000000080000001,
+    0x8000000080008081,
+    0x8000000000008009,
+    0x000000000000008A,
+    0x0000000000000088,
+    0x0000000080008009,
+    0x000000008000000A,
+    0x000000008000808B,
+    0x800000000000008B,
+    0x8000000000008089,
+    0x8000000000008003,
+    0x8000000000008002,
+    0x8000000000000080,
+    0x000000000000800A,
+    0x800000008000000A,
+    0x8000000080008081,
+    0x8000000000008080,
+    0x0000000080000001,
+    0x8000000080008008,
 )
 _ROTATIONS = (
     (0, 36, 3, 41, 18),
@@ -62,7 +80,10 @@ def _rotl(value: int, shift: int) -> int:
 
 def _keccak_f(state: list[int]) -> None:
     for rc in _ROUND_CONSTANTS:
-        c = [state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20] for x in range(5)]
+        c = [
+            state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20]
+            for x in range(5)
+        ]
         d = [c[(x - 1) % 5] ^ _rotl(c[(x + 1) % 5], 1) for x in range(5)]
         for x in range(5):
             for y in range(5):
@@ -73,7 +94,9 @@ def _keccak_f(state: list[int]) -> None:
                 b[y + 5 * ((2 * x + 3 * y) % 5)] = _rotl(state[x + 5 * y], _ROTATIONS[x][y])
         for x in range(5):
             for y in range(5):
-                state[x + 5 * y] = b[x + 5 * y] ^ ((~b[(x + 1) % 5 + 5 * y]) & b[(x + 2) % 5 + 5 * y])
+                state[x + 5 * y] = b[x + 5 * y] ^ (
+                    (~b[(x + 1) % 5 + 5 * y]) & b[(x + 2) % 5 + 5 * y]
+                )
         state[0] ^= rc
 
 
@@ -98,7 +121,9 @@ def event_topic(signature: str) -> str:
 
 
 UNISWAP_V3_SWAP_TOPIC = event_topic("Swap(address,address,int256,int256,uint160,uint128,int24)")
-UNISWAP_V4_SWAP_TOPIC = event_topic("Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)")
+UNISWAP_V4_SWAP_TOPIC = event_topic(
+    "Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)"
+)
 
 # --- configuration -------------------------------------------------------------
 
@@ -315,7 +340,9 @@ class RobinhoodChainSwapFeed:
         log_filter = self._subscription_filter(symbols)
         wanted = {symbol.upper() for symbol in symbols}
         async with self.connect(self.ws_url) as ws:
-            await ws.send(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_chainId", "params": []}))
+            await ws.send(
+                json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_chainId", "params": []})
+            )
             chain_response = json.loads(await ws.recv())
             if "error" in chain_response or "result" not in chain_response:
                 raise OnChainFeedError(f"eth_chainId failed: {chain_response}")
@@ -327,7 +354,12 @@ class RobinhoodChainSwapFeed:
 
             await ws.send(
                 json.dumps(
-                    {"jsonrpc": "2.0", "id": 2, "method": "eth_subscribe", "params": ["logs", log_filter]}
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "method": "eth_subscribe",
+                        "params": ["logs", log_filter],
+                    }
                 )
             )
             subscribe_response = json.loads(await ws.recv())

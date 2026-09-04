@@ -113,7 +113,9 @@ class IntelligenceOrchestrator:
             return cached
         if not self.news:
             return None
-        results = await asyncio.gather(*(fetcher(asset) for fetcher in self.news), return_exceptions=True)
+        results = await asyncio.gather(
+            *(fetcher(asset) for fetcher in self.news), return_exceptions=True
+        )
         snapshots = [result for result in results if isinstance(result, NewsSnapshot)]
         if not snapshots:
             return None

@@ -26,4 +26,6 @@ def is_reference_consistent(
     eligible = [r for r in references if r.source != MarketSource.KRAKEN]
     if not eligible:
         return False
-    return all(calculate_divergence(primary, ref).divergence_bps <= max_divergence_bps for ref in eligible)
+    return all(
+        calculate_divergence(primary, ref).divergence_bps <= max_divergence_bps for ref in eligible
+    )

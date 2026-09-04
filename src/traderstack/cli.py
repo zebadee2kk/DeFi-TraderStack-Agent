@@ -102,7 +102,9 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
             ).fetch
         )
     if settings.perplexity_api_key is not None:
-        news.append(PerplexityNewsProvider(api_key=settings.perplexity_api_key.get_secret_value()).fetch)
+        news.append(
+            PerplexityNewsProvider(api_key=settings.perplexity_api_key.get_secret_value()).fetch
+        )
 
     if onchain is None and social is None and not news:
         return None
@@ -162,7 +164,9 @@ def build_service(
 
     intelligence = build_intelligence(settings)
     if settings.intelligence_required and intelligence is None:
-        raise RuntimeError("INTELLIGENCE_REQUIRED=true but no intelligence provider has credentials")
+        raise RuntimeError(
+            "INTELLIGENCE_REQUIRED=true but no intelligence provider has credentials"
+        )
 
     pipeline = VerticalSlicePipeline(
         risk_engine=RiskEngine(settings),

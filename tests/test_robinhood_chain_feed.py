@@ -45,24 +45,46 @@ def sqrt_price_for(price_token1_per_token0: float, dec0: int, dec1: int) -> int:
 
 def v3_pool() -> PoolConfig:
     return PoolConfig(
-        symbol="ETH/USDG", version="v3", pool=V3_POOL,
-        token0_decimals=18, token1_decimals=6, base_is_token0=True, fee_bps=5,
+        symbol="ETH/USDG",
+        version="v3",
+        pool=V3_POOL,
+        token0_decimals=18,
+        token1_decimals=6,
+        base_is_token0=True,
+        fee_bps=5,
     )
 
 
 def v4_pool() -> PoolConfig:
     # USDG is token0 here, so the base (ETH) is token1.
     return PoolConfig(
-        symbol="ETH/USDG", version="v4", pool=V4_POOL_ID,
-        token0_decimals=6, token1_decimals=18, base_is_token0=False, fee_bps=30,
+        symbol="ETH/USDG",
+        version="v4",
+        pool=V4_POOL_ID,
+        token0_decimals=6,
+        token1_decimals=18,
+        base_is_token0=False,
+        fee_bps=30,
     )
 
 
-def v3_swap_log(amount0: int, amount1: int, sqrt_price: int, *, removed: bool = False) -> dict[str, Any]:
-    data = word_int(amount0) + word_int(amount1) + word_int(sqrt_price) + word_int(10**20) + word_int(-12345)
+def v3_swap_log(
+    amount0: int, amount1: int, sqrt_price: int, *, removed: bool = False
+) -> dict[str, Any]:
+    data = (
+        word_int(amount0)
+        + word_int(amount1)
+        + word_int(sqrt_price)
+        + word_int(10**20)
+        + word_int(-12345)
+    )
     return {
         "address": V3_POOL,
-        "topics": [UNISWAP_V3_SWAP_TOPIC, "0x" + "00" * 12 + "11" * 20, "0x" + "00" * 12 + "22" * 20],
+        "topics": [
+            UNISWAP_V3_SWAP_TOPIC,
+            "0x" + "00" * 12 + "11" * 20,
+            "0x" + "00" * 12 + "22" * 20,
+        ],
         "data": "0x" + data.hex(),
         "blockNumber": "0x10",
         "transactionHash": "0xabc",
@@ -73,8 +95,12 @@ def v3_swap_log(amount0: int, amount1: int, sqrt_price: int, *, removed: bool = 
 
 def v4_swap_log(amount0: int, amount1: int, sqrt_price: int) -> dict[str, Any]:
     data = (
-        word_int(amount0) + word_int(amount1) + word_int(sqrt_price)
-        + word_int(10**20) + word_int(777) + word_int(3000)
+        word_int(amount0)
+        + word_int(amount1)
+        + word_int(sqrt_price)
+        + word_int(10**20)
+        + word_int(777)
+        + word_int(3000)
     )
     return {
         "address": POOL_MANAGER,
@@ -90,12 +116,17 @@ def v4_swap_log(amount0: int, amount1: int, sqrt_price: int) -> dict[str, Any]:
 
 
 def test_keccak_known_answers() -> None:
-    assert keccak256(b"").hex() == "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+    assert (
+        keccak256(b"").hex() == "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+    )
     assert (
         event_topic("Transfer(address,address,uint256)")
         == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
     )
-    assert UNISWAP_V3_SWAP_TOPIC == "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"
+    assert (
+        UNISWAP_V3_SWAP_TOPIC
+        == "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"
+    )
     assert UNISWAP_V4_SWAP_TOPIC.startswith("0x") and len(UNISWAP_V4_SWAP_TOPIC) == 66
 
 
@@ -113,7 +144,7 @@ def test_pool_price_handles_decimals_and_base_orientation() -> None:
 def test_parse_v3_swap_log_buy() -> None:
     pools = {V3_POOL: v3_pool()}
     sqrt_price = sqrt_price_for(3000.0, 18, 6)
-    event = parse_swap_log(v3_swap_log(-10**18, 3_000_000_000, sqrt_price), pools)
+    event = parse_swap_log(v3_swap_log(-(10**18), 3_000_000_000, sqrt_price), pools)
     assert event is not None
     assert event.symbol == "ETH/USDG"
     assert event.version == "v3"
@@ -139,8 +170,11 @@ def test_parse_v3_swap_log_sell_and_ignores_unknown_pool() -> None:
 def test_parse_ignores_removed_reorged_logs_and_other_topics() -> None:
     pools = {V3_POOL: v3_pool()}
     sqrt_price = sqrt_price_for(3000.0, 18, 6)
-    assert parse_swap_log(v3_swap_log(-10**18, 3_000_000_000, sqrt_price, removed=True), pools) is None
-    other = v3_swap_log(-10**18, 3_000_000_000, sqrt_price)
+    assert (
+        parse_swap_log(v3_swap_log(-(10**18), 3_000_000_000, sqrt_price, removed=True), pools)
+        is None
+    )
+    other = v3_swap_log(-(10**18), 3_000_000_000, sqrt_price)
     other["topics"][0] = event_topic("Transfer(address,address,uint256)")
     assert parse_swap_log(other, pools) is None
 
@@ -149,7 +183,7 @@ def test_parse_v4_swap_log_uses_pool_id_topic() -> None:
     pools = {V4_POOL_ID: v4_pool()}
     sqrt_price = sqrt_price_for(1 / 3000.0, 6, 18)
     # USDG (token0) into the pool, ETH (token1) out => buy of ETH.
-    event = parse_swap_log(v4_swap_log(3_000_000_000, -10**18, sqrt_price), pools)
+    event = parse_swap_log(v4_swap_log(3_000_000_000, -(10**18), sqrt_price), pools)
     assert event is not None
     assert event.version == "v4"
     assert event.side == "buy"
@@ -157,14 +191,16 @@ def test_parse_v4_swap_log_uses_pool_id_topic() -> None:
     assert event.base_amount == pytest.approx(1.0)
     assert event.tick == 777
 
-    wrong_id = v4_swap_log(3_000_000_000, -10**18, sqrt_price)
+    wrong_id = v4_swap_log(3_000_000_000, -(10**18), sqrt_price)
     wrong_id["topics"][1] = "0x" + "cd" * 32
     assert parse_swap_log(wrong_id, pools) is None
 
 
 def test_tick_from_swap_uses_fee_as_spread() -> None:
     pool = v3_pool()
-    event = parse_swap_log(v3_swap_log(-10**18, 3_000_000_000, sqrt_price_for(3000.0, 18, 6)), {V3_POOL: pool})
+    event = parse_swap_log(
+        v3_swap_log(-(10**18), 3_000_000_000, sqrt_price_for(3000.0, 18, 6)), {V3_POOL: pool}
+    )
     assert event is not None
     tick = tick_from_swap(event, pool)
     assert tick.source is MarketSource.ROBINHOOD_CHAIN
@@ -194,9 +230,19 @@ class FakeSocket:
     async def __aiter__(self) -> AsyncIterator[str]:
         for log in self._logs:
             yield json.dumps(
-                {"jsonrpc": "2.0", "method": "eth_subscription", "params": {"subscription": "0xsub1", "result": log}}
+                {
+                    "jsonrpc": "2.0",
+                    "method": "eth_subscription",
+                    "params": {"subscription": "0xsub1", "result": log},
+                }
             )
-        yield json.dumps({"jsonrpc": "2.0", "method": "eth_subscription", "params": {"subscription": "0xother", "result": {}}})
+        yield json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "eth_subscription",
+                "params": {"subscription": "0xother", "result": {}},
+            }
+        )
 
     async def __aenter__(self) -> Self:
         return self
@@ -205,7 +251,9 @@ class FakeSocket:
         return None
 
 
-def feed_with(socket: FakeSocket, pools: tuple[PoolConfig, ...], chain_id: int = 4663) -> RobinhoodChainSwapFeed:
+def feed_with(
+    socket: FakeSocket, pools: tuple[PoolConfig, ...], chain_id: int = 4663
+) -> RobinhoodChainSwapFeed:
     return RobinhoodChainSwapFeed(
         ws_url="wss://example",
         expected_chain_id=chain_id,
@@ -218,7 +266,7 @@ def feed_with(socket: FakeSocket, pools: tuple[PoolConfig, ...], chain_id: int =
 @pytest.mark.asyncio
 async def test_feed_verifies_chain_subscribes_and_streams_ticks() -> None:
     sqrt_price = sqrt_price_for(3000.0, 18, 6)
-    socket = FakeSocket(hex(4663), [v3_swap_log(-10**18, 3_000_000_000, sqrt_price)])
+    socket = FakeSocket(hex(4663), [v3_swap_log(-(10**18), 3_000_000_000, sqrt_price)])
     feed = feed_with(socket, (v3_pool(), v4_pool()))
 
     ticks = [tick async for tick in feed.stream_ticks(("ETH/USDG",))]
@@ -230,7 +278,10 @@ async def test_feed_verifies_chain_subscribes_and_streams_ticks() -> None:
     assert subscribe["method"] == "eth_subscribe"
     assert subscribe["params"][0] == "logs"
     assert set(subscribe["params"][1]["address"]) == {V3_POOL, POOL_MANAGER}
-    assert set(subscribe["params"][1]["topics"][0]) == {UNISWAP_V3_SWAP_TOPIC, UNISWAP_V4_SWAP_TOPIC}
+    assert set(subscribe["params"][1]["topics"][0]) == {
+        UNISWAP_V3_SWAP_TOPIC,
+        UNISWAP_V4_SWAP_TOPIC,
+    }
 
 
 @pytest.mark.asyncio
@@ -268,7 +319,9 @@ class RecordingCandles:
     def __init__(self) -> None:
         self.requested: list[str] = []
 
-    async def fetch(self, symbol: str, resolution: str = "1h", *, count: int = 400) -> tuple[Candle, ...]:
+    async def fetch(
+        self, symbol: str, resolution: str = "1h", *, count: int = 400
+    ) -> tuple[Candle, ...]:
         self.requested.append(symbol)
         start = datetime.now(UTC) - timedelta(hours=count)
         candles: list[Candle] = []
@@ -277,9 +330,14 @@ class RecordingCandles:
             close = 1000.0 + index * 10.0
             candles.append(
                 Candle(
-                    symbol=symbol, interval=resolution, opened_at=start + timedelta(hours=index),
-                    open=previous, high=max(previous, close) * 1.001, low=min(previous, close) * 0.999,
-                    close=close, volume=1_000.0,
+                    symbol=symbol,
+                    interval=resolution,
+                    opened_at=start + timedelta(hours=index),
+                    open=previous,
+                    high=max(previous, close) * 1.001,
+                    low=min(previous, close) * 0.999,
+                    close=close,
+                    volume=1_000.0,
                 )
             )
             previous = close
@@ -289,7 +347,7 @@ class RecordingCandles:
 @pytest.mark.asyncio
 async def test_runtime_accepts_swap_feed_as_primary_venue() -> None:
     sqrt_price = sqrt_price_for(3000.0, 18, 6)
-    socket = FakeSocket(hex(4663), [v3_swap_log(-10**18, 3_000_000_000, sqrt_price)])
+    socket = FakeSocket(hex(4663), [v3_swap_log(-(10**18), 3_000_000_000, sqrt_price)])
     candles = RecordingCandles()
     runtime = PaperRuntime(
         venue=feed_with(socket, (v3_pool(),)),
@@ -297,14 +355,20 @@ async def test_runtime_accepts_swap_feed_as_primary_venue() -> None:
         pipeline=VerticalSlicePipeline(
             risk_engine=RiskEngine(Settings(kill_switch=False)),
             pretrade_gate=PreTradeBacktestGate(
-                min_excess_return=-1.0, max_drawdown=1.0, min_sharpe=-100.0, min_trades=0,
-                require_walkforward=False, min_walkforward_excess_return=-1.0,
+                min_excess_return=-1.0,
+                max_drawdown=1.0,
+                min_sharpe=-100.0,
+                min_trades=0,
+                require_walkforward=False,
+                min_walkforward_excess_return=-1.0,
             ),
         ),
         candles=candles,
         candle_count=300,
     )
-    portfolio = PortfolioSnapshot(nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000)
+    portfolio = PortfolioSnapshot(
+        nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000
+    )
 
     result = await runtime.run_once("ETH/USDG", portfolio)
 
@@ -319,7 +383,9 @@ async def test_runtime_accepts_swap_feed_as_primary_venue() -> None:
 
 
 def test_parse_pool_specs() -> None:
-    pools = parse_pool_specs(f"eth/usdg:v3:{V3_POOL}:18:6:token0:5, BTC/USDG:v4:{V4_POOL_ID}:8:6:token0:30")
+    pools = parse_pool_specs(
+        f"eth/usdg:v3:{V3_POOL}:18:6:token0:5, BTC/USDG:v4:{V4_POOL_ID}:8:6:token0:30"
+    )
     assert [p.symbol for p in pools] == ["ETH/USDG", "BTC/USDG"]
     assert pools[0].base_is_token0 is True and pools[0].fee_bps == 5
     assert pools[1].version == "v4" and pools[1].token0_decimals == 8

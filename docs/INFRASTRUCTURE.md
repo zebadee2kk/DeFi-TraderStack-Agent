@@ -82,6 +82,23 @@ Prefer a dedicated secret manager for production. Vaultwarden may be used for hu
 
 OpenTelemetry is the common instrumentation layer. Capture traces across event -> agent -> risk -> order -> fill using the same correlation ID.
 
+## Container hardening
+
+The `app` image (`Dockerfile`) is a two-stage build — a `builder` stage resolves
+dependencies into an isolated venv, and the `runtime` stage carries only that venv
+plus the app, on a digest-pinned `python:3.12-slim` base, running as the existing
+non-root `traderstack` user with `PIP_NO_CACHE_DIR=1`. It ships a `HEALTHCHECK`
+against its own Prometheus endpoint (`/metrics` on port 9108, via `urllib` since
+the slim image has no `curl`), and a `.dockerignore` keeps build context to source
++ `pyproject.toml`.
+
+`docker-compose.yml`'s `app` service runs with `read_only: true` (a `tmpfs` mount
+covers `/tmp`; the `app_state` volume remains the one writable path, at
+`/app/var`), `security_opt: [no-new-privileges:true]`, a matching `healthcheck:`,
+and CPU/memory limits (`deploy.resources.limits`). See `docs/RUNBOOK.md` for
+day-to-day operation and `docs/SECURITY-THREAT-MODEL.md` for the controls this
+implements.
+
 ## Deployment Principle
 
 Infrastructure must be disposable; state must be recoverable. No irreplaceable configuration should exist only inside a running container or UI.

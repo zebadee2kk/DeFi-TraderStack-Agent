@@ -149,7 +149,9 @@ def test_gate_uses_shared_backtester_costs() -> None:
     costly_check = costly.evaluate(candles, Side.BUY, now=end_time(candles))
     assert free_check.metrics is not None and costly_check.metrics is not None
     assert free_check.metrics.ending_equity > costly_check.metrics.ending_equity
-    assert free_check.metrics.benchmark_return == pytest.approx(costly_check.metrics.benchmark_return)
+    assert free_check.metrics.benchmark_return == pytest.approx(
+        costly_check.metrics.benchmark_return
+    )
 
 
 # --- pipeline integration -------------------------------------------------
@@ -160,7 +162,9 @@ def portfolio() -> PortfolioSnapshot:
 
 
 def tick() -> MarketTick:
-    return MarketTick(source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000)
+    return MarketTick(
+        source=MarketSource.KRAKEN, symbol="BTC/USD", bid=999.5, ask=1000.5, last=1000
+    )
 
 
 def references() -> list[ReferencePrice]:
@@ -224,7 +228,9 @@ def test_pipeline_without_gate_ignores_candles_gracefully() -> None:
 
 class FakeVenue:
     async def stream_ticks(self, symbols: tuple[str, ...]) -> AsyncIterator[MarketTick]:
-        yield MarketTick(source=MarketSource.KRAKEN, symbol=symbols[0], bid=99.95, ask=100.05, last=100)
+        yield MarketTick(
+            source=MarketSource.KRAKEN, symbol=symbols[0], bid=99.95, ask=100.05, last=100
+        )
 
 
 class GoodReference:

@@ -36,12 +36,16 @@ def intent(**overrides: Any) -> PaperOrderIntent:
 
 
 def chain() -> ChainConfig:
-    return ChainConfig(name="robinhood-chain", chain_id=13371, rpc_url="https://rpc.robinhood-chain.example")
+    return ChainConfig(
+        name="robinhood-chain", chain_id=13371, rpc_url="https://rpc.robinhood-chain.example"
+    )
 
 
 def policy(**overrides: Any) -> RobinhoodChainExecutionPolicy:
     base = {
-        "allowed_tokens": {"BTC": TokenAllowlistEntry(symbol="BTC", contract_address=TOKEN, decimals=18)},
+        "allowed_tokens": {
+            "BTC": TokenAllowlistEntry(symbol="BTC", contract_address=TOKEN, decimals=18)
+        },
         "allowed_routers": frozenset({ROUTER.lower()}),
         "max_notional_usd": 1_000,
         "max_gas_limit": 300_000,
@@ -86,7 +90,9 @@ def rpc_handler(
             result = hex(gas_price)
         elif method == "eth_call":
             if call_error:
-                return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "error": {"message": call_error}})
+                return httpx.Response(
+                    200, json={"jsonrpc": "2.0", "id": 1, "error": {"message": call_error}}
+                )
             result = "0x"
         else:
             raise AssertionError(f"unexpected RPC method {method}")
@@ -124,14 +130,18 @@ async def test_rejects_venue_mismatch() -> None:
     async with httpx.AsyncClient(transport=transport) as client:
         executor = RobinhoodChainExecutor(chain=chain(), policy=policy(), rpc=make_rpc(client))
         with pytest.raises(ExecutionSafetyError, match="venue does not match"):
-            await executor.prepare_swap(intent(venue="kraken_paper_trade"), WALLET, ROUTER, "0xdeadbeef")
+            await executor.prepare_swap(
+                intent(venue="kraken_paper_trade"), WALLET, ROUTER, "0xdeadbeef"
+            )
 
 
 @pytest.mark.asyncio
 async def test_rejects_notional_over_policy_cap() -> None:
     transport = httpx.MockTransport(rpc_handler())
     async with httpx.AsyncClient(transport=transport) as client:
-        executor = RobinhoodChainExecutor(chain=chain(), policy=policy(max_notional_usd=50), rpc=make_rpc(client))
+        executor = RobinhoodChainExecutor(
+            chain=chain(), policy=policy(max_notional_usd=50), rpc=make_rpc(client)
+        )
         with pytest.raises(ExecutionSafetyError, match="exceeds on-chain policy cap"):
             await executor.prepare_swap(intent(notional_usd=100), WALLET, ROUTER, "0xdeadbeef")
 

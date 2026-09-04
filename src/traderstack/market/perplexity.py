@@ -39,9 +39,7 @@ class PerplexityNewsProvider:
         if self.client is not None:
             response = await self.client.post("/v1/sonar", headers=headers, json=payload)
         else:
-            async with httpx.AsyncClient(
-                base_url=self.base_url.rstrip("/"), timeout=20
-            ) as client:
+            async with httpx.AsyncClient(base_url=self.base_url.rstrip("/"), timeout=20) as client:
                 response = await client.post("/v1/sonar", headers=headers, json=payload)
         response.raise_for_status()
         body = response.json()

@@ -16,10 +16,14 @@ async def test_dune_provider_maps_configured_query_fields() -> None:
         assert request.headers["X-Dune-Api-Key"] == "secret"
         return httpx.Response(
             200,
-            json={"result": {"rows": [{"exchange_netflow_z": -1.2, "large_wallet_accumulation": 0.7}]}},
+            json={
+                "result": {"rows": [{"exchange_netflow_z": -1.2, "large_wallet_accumulation": 0.7}]}
+            },
         )
 
-    async with httpx.AsyncClient(base_url="https://api.dune.com", transport=httpx.MockTransport(handler)) as client:
+    async with httpx.AsyncClient(
+        base_url="https://api.dune.com", transport=httpx.MockTransport(handler)
+    ) as client:
         provider = DuneOnChainProvider(api_key="secret", query_ids={"BTC": 123}, client=client)
         result = await provider.fetch("BTC")
 
@@ -34,7 +38,9 @@ async def test_lunarcrush_provider_normalizes_sentiment() -> None:
         assert request.headers["Authorization"] == "Bearer lunar"
         return httpx.Response(200, json={"data": [{"symbol": "BTC", "sentiment": 75}]})
 
-    async with httpx.AsyncClient(base_url="https://lunarcrush.com", transport=httpx.MockTransport(handler)) as client:
+    async with httpx.AsyncClient(
+        base_url="https://lunarcrush.com", transport=httpx.MockTransport(handler)
+    ) as client:
         provider = LunarCrushSocialProvider(api_key="lunar", client=client)
         result = await provider.fetch("BTC")
 
@@ -56,7 +62,9 @@ async def test_cryptopanic_provider_derives_adverse_event() -> None:
             },
         )
 
-    async with httpx.AsyncClient(base_url="https://cryptopanic.com", transport=httpx.MockTransport(handler)) as client:
+    async with httpx.AsyncClient(
+        base_url="https://cryptopanic.com", transport=httpx.MockTransport(handler)
+    ) as client:
         provider = CryptoPanicNewsProvider(auth_token="panic", client=client)
         result = await provider.fetch("BTC")
 

@@ -25,11 +25,84 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_started}
-    command: ["traderstack-paper", "--persistent-events", "--checkpoint-path", "/app/var/state/portfolio.json", "--audit-path", "/app/var/audit/runtime.jsonl"]
+    # Dockerfile ENTRYPOINT is already `traderstack-paper`; these are its args.
+    command: ["--persistent-events", "--checkpoint-path", "/app/var/state/portfolio.json", "--audit-path", "/app/var/audit/runtime.jsonl"]
     ports: ["9108:9108"]
-    volumes: ["app_state:/app/var"]
+    volumes:
+      - app_state:/app/var
+    tmpfs:
+      - /tmp
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9108/metrics', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     restart: unless-stopped
     profiles: ["app"]
+
+  # --- Optional: Hummingbot API execution spine (profile "execution") ---------------
+  # Verified against hummingbot.org/hummingbot-api and github.com/hummingbot/hummingbot-api
+  # (docker-compose.yml, 2026-09-04): image hummingbot/hummingbot-api:latest, REST API on
+  # port 8000, HTTP Basic Auth via USERNAME/PASSWORD, CONFIG_PASSWORD encrypts bot
+  # credentials at rest, and it requires its own Postgres database + EMQX message broker
+  # (separate from traderstack's own `postgres`/`redis`, which back the event store).
+  # Not started by `docker compose up`; enable with `--profile execution`.
+  hummingbot-broker:
+    image: emqx:5
+    restart: unless-stopped
+    profiles: ["execution"]
+
+  hummingbot-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: hummingbot_api
+      POSTGRES_USER: hbot
+      POSTGRES_PASSWORD: ${HUMMINGBOT_DB_PASSWORD:-dev-only-change-me}
+    volumes:
+      - hummingbot_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hbot -d hummingbot_api"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    profiles: ["execution"]
+
+  hummingbot-api:
+    image: hummingbot/hummingbot-api:latest
+    env_file: [.env]
+    environment:
+      # HTTP Basic Auth for the REST API our HummingbotPaperExecutor calls.
+      - USERNAME=${HUMMINGBOT_API_USERNAME:-}
+      - PASSWORD=${HUMMINGBOT_API_PASSWORD:-}
+      # Encrypts bot credential files at rest; set a real value in .env for anything
+      # beyond local paper-trading experimentation.
+      - CONFIG_PASSWORD=${HUMMINGBOT_CONFIG_PASSWORD:-dev-only-change-me}
+      - BROKER_HOST=hummingbot-broker
+      - DATABASE_URL=postgresql+asyncpg://hbot:${HUMMINGBOT_DB_PASSWORD:-dev-only-change-me}@hummingbot-postgres:5432/hummingbot_api
+    depends_on:
+      hummingbot-postgres: {condition: service_healthy}
+      hummingbot-broker: {condition: service_started}
+    ports: ["8000:8000"]
+    volumes:
+      - hummingbot_bots:/hummingbot-api/bots
+      # NOT mounted: /var/run/docker.sock. Upstream's own compose mounts the host
+      # Docker socket so hummingbot-api can launch bot containers itself; that grants
+      # the container root-equivalent host access and violates this repo's minimal-
+      # egress/least-privilege control (docs/SECURITY-THREAT-MODEL.md). Only add it
+      # after reviewing hummingbot-api's own security model, and prefer a scoped
+      # Docker-socket proxy over the raw socket if you do.
+    restart: unless-stopped
+    profiles: ["execution"]
 
   prometheus:
     image: prom/prometheus:latest
@@ -46,3 +119,5 @@ volumes:
   postgres_data:
   redis_data:
   app_state:
+  hummingbot_postgres_data:
+  hummingbot_bots:

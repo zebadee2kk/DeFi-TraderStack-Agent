@@ -36,7 +36,11 @@ class RiskEngine:
             return self._result(proposal, RiskDecision.REJECT, 0, reasons)
 
         approved = min(proposal.requested_notional_usd, remaining)
-        decision = RiskDecision.ALLOW if approved == proposal.requested_notional_usd else RiskDecision.REDUCE
+        decision = (
+            RiskDecision.ALLOW
+            if approved == proposal.requested_notional_usd
+            else RiskDecision.REDUCE
+        )
         if decision is RiskDecision.REDUCE:
             reasons.append("position_size_reduced")
         return self._result(proposal, decision, approved, reasons)
