@@ -27,10 +27,12 @@ from __future__ import annotations
 import argparse
 import os
 import signal
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType
+from typing import Protocol, runtime_checkable
 
 from prometheus_client import Gauge
 
@@ -83,10 +85,16 @@ def _reset_signal_latch_for_tests() -> None:
     _signal_engaged = False
 
 
-class RedisKeyProbe:
-    """Minimal protocol for the Redis client the kill switch reads."""
+@runtime_checkable
+class RedisKeyProbe(Protocol):
+    """Minimal protocol for the Redis client the kill switch reads.
 
-    async def get(self, key: str) -> object: ...  # pragma: no cover - protocol only
+    A real ``redis.asyncio.Redis`` satisfies this structurally, which is what
+    lets the CLI wire the halt channel to a live client without this module
+    importing (or depending on) redis at all.
+    """
+
+    def get(self, key: str, /) -> Awaitable[object]: ...  # pragma: no cover - protocol only
 
 
 @dataclass
@@ -108,13 +116,18 @@ class KillSwitch:
     def from_settings(
         cls, settings: Settings, *, redis_client: RedisKeyProbe | None = None
     ) -> KillSwitch:
+        enabled = settings.kill_switch_redis_enabled
+        # An operator who turned the Redis halt channel on must not silently get
+        # no halt channel: a configured-but-unwired probe is an unreachable one,
+        # and an unreachable halt channel is engaged.
+        missing_client = enabled and redis_client is None
         return cls(
             settings_flag=settings.kill_switch,
             sentinel_path=Path(settings.kill_switch_file),
-            redis_key=settings.kill_switch_redis_key
-            if settings.kill_switch_redis_enabled
-            else None,
-            redis_client=redis_client if settings.kill_switch_redis_enabled else None,
+            redis_key=settings.kill_switch_redis_key if enabled else None,
+            redis_client=redis_client if enabled else None,
+            redis_engaged=missing_client,
+            redis_error="no redis client configured" if missing_client else None,
         )
 
     # --- evaluation ----------------------------------------------------

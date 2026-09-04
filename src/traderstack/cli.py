@@ -5,6 +5,7 @@ from pathlib import Path
 
 from prometheus_client import start_http_server
 from pydantic import SecretStr
+from redis.asyncio import Redis
 
 from traderstack.agents.claude import AnthropicMetaAgentClient
 from traderstack.agents.review import (
@@ -458,7 +459,14 @@ async def _main_async(args: argparse.Namespace) -> None:
     configure_tracing()  # observability (Epic 9): no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set
     # --- risk plane (Epic 7) ---
     install_signal_handler()
-    kill_switch = KillSwitch.from_settings(settings)
+    # The Redis halt channel only exists if a client is actually wired; without
+    # one KillSwitch.from_settings fails closed rather than pretending.
+    kill_switch_redis = (
+        Redis.from_url(settings.redis_url, decode_responses=True)
+        if settings.kill_switch_redis_enabled
+        else None
+    )
+    kill_switch = KillSwitch.from_settings(settings, redis_client=kill_switch_redis)
     circuit_breaker = StrategyCircuitBreaker.from_settings(settings)
     risk_audit = JsonlRiskAuditTrail(Path(args.risk_audit_path))
     checkpoint_store = JsonPortfolioCheckpointStore(
@@ -516,6 +524,8 @@ async def _main_async(args: argparse.Namespace) -> None:
             await redis.close()
         if candle_store is not None:  # persistence (Epic 2)
             await candle_store.close()
+        if kill_switch_redis is not None:  # --- risk plane (Epic 7) ---
+            await kill_switch_redis.aclose()
 
 
 def main() -> None:

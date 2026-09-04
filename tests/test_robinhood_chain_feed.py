@@ -183,7 +183,7 @@ def test_parse_v4_swap_log_uses_pool_id_topic() -> None:
     pools = {V4_POOL_ID: v4_pool()}
     sqrt_price = sqrt_price_for(1 / 3000.0, 6, 18)
     # USDG (token0) into the pool, ETH (token1) out => buy of ETH.
-    event = parse_swap_log(v4_swap_log(3_000_000_000, -(10**18), sqrt_price), pools)
+    event = parse_swap_log(v4_swap_log(3_000_000_000, -(10**18), sqrt_price), pools, POOL_MANAGER)
     assert event is not None
     assert event.version == "v4"
     assert event.side == "buy"
@@ -193,7 +193,7 @@ def test_parse_v4_swap_log_uses_pool_id_topic() -> None:
 
     wrong_id = v4_swap_log(3_000_000_000, -(10**18), sqrt_price)
     wrong_id["topics"][1] = "0x" + "cd" * 32
-    assert parse_swap_log(wrong_id, pools) is None
+    assert parse_swap_log(wrong_id, pools, POOL_MANAGER) is None
 
 
 def test_tick_from_swap_uses_fee_as_spread() -> None:

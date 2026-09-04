@@ -19,8 +19,12 @@ class MetaAgentDecision(BaseModel):
 
     approve: bool
     confidence_delta: float = Field(ge=-0.15, le=0.15)
-    rationale: str
-    risk_flags: list[str] = Field(default_factory=list)
+    # Model-authored free text. It cannot change a decision, but it *is*
+    # persisted verbatim into TradeProposal.thesis, the hash-chained risk audit,
+    # the runtime JSONL/Postgres/Redis event stream and log lines, so it is
+    # bounded here at the trust boundary rather than at each sink.
+    rationale: str = Field(max_length=2_000)
+    risk_flags: list[str] = Field(default_factory=list, max_length=16)
 
 
 # --- meta-agent (Epic 6) ---

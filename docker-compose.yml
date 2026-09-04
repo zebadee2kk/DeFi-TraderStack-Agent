@@ -5,7 +5,9 @@ services:
       POSTGRES_DB: traderstack
       POSTGRES_USER: traderstack
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-change-me}
-    ports: ["5432:5432"]
+    # Loopback only: these services hold credentials and trading state and have
+    # no business being reachable from the rest of the network.
+    ports: ["127.0.0.1:5432:5432"]
     volumes: ["postgres_data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U traderstack -d traderstack"]
@@ -16,7 +18,7 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]
     volumes: ["redis_data:/data"]
 
   app:
@@ -27,7 +29,7 @@ services:
       redis: {condition: service_started}
     # Dockerfile ENTRYPOINT is already `traderstack-paper`; these are its args.
     command: ["--persistent-events", "--checkpoint-path", "/app/var/state/portfolio.json", "--audit-path", "/app/var/audit/runtime.jsonl"]
-    ports: ["9108:9108"]
+    ports: ["127.0.0.1:9108:9108"]
     volumes:
       - app_state:/app/var
     tmpfs:
@@ -79,7 +81,12 @@ services:
 
   hummingbot-api:
     image: hummingbot/hummingbot-api:latest
-    env_file: [.env]
+    # Deliberately NOT `env_file: [.env]`. That file carries every provider and
+    # model credential this stack owns (Anthropic, Dune, Perplexity, CryptoPanic,
+    # exchange, database); a third-party image needs none of them, and handing
+    # them over widens the blast radius of a compromised upstream build far
+    # beyond what docs/SECURITY-THREAT-MODEL.md permits. Only the variables
+    # below are passed.
     environment:
       # HTTP Basic Auth for the REST API our HummingbotPaperExecutor calls.
       - USERNAME=${HUMMINGBOT_API_USERNAME:-}
@@ -92,7 +99,12 @@ services:
     depends_on:
       hummingbot-postgres: {condition: service_healthy}
       hummingbot-broker: {condition: service_started}
-    ports: ["8000:8000"]
+    # Loopback only. This API can place orders and holds exchange credentials,
+    # and it is guarded solely by HTTP Basic Auth whose USERNAME/PASSWORD above
+    # default to empty when .env does not set them.
+    ports: ["127.0.0.1:8000:8000"]
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - hummingbot_bots:/hummingbot-api/bots
       # NOT mounted: /var/run/docker.sock. Upstream's own compose mounts the host
@@ -107,12 +119,15 @@ services:
   prometheus:
     image: prom/prometheus:latest
     volumes: ["./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
-    ports: ["9090:9090"]
+    ports: ["127.0.0.1:9090:9090"]
     profiles: ["observability"]
 
   grafana:
     image: grafana/grafana:latest
-    ports: ["3000:3000"]
+    # Anonymous Viewer access is left on for local convenience, so the port must
+    # stay on loopback: the dashboards show live NAV, positions and risk state.
+    # Turn anonymous access off before exposing this beyond localhost.
+    ports: ["127.0.0.1:3000:3000"]
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
@@ -127,7 +142,7 @@ services:
   # --- Loki logs (Epic 9), observability profile only ---
   loki:
     image: grafana/loki:latest
-    ports: ["3100:3100"]
+    ports: ["127.0.0.1:3100:3100"]
     volumes: ["loki_data:/loki"]
     profiles: ["observability"]
 

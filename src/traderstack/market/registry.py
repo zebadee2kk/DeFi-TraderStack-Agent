@@ -41,6 +41,7 @@ from typing import Any
 from prometheus_client import Counter, Gauge
 
 from traderstack.candles import Candle
+from traderstack.logging_config import scrub_secret_query_params
 from traderstack.market.models import ReferencePrice
 from traderstack.market.providers import CandleHistoryProvider, ReferencePriceProvider
 
@@ -204,7 +205,10 @@ class ProviderRegistry:
 
     def _record_failure(self, exc: BaseException) -> None:
         self._consecutive_failures += 1
-        self._last_error = f"{type(exc).__name__}: {exc}"
+        # httpx embeds the full request URL in its exception messages, and some
+        # providers (CryptoPanic) authenticate with a query parameter rather
+        # than a header, so a recorded provider error can carry an API key.
+        self._last_error = scrub_secret_query_params(f"{type(exc).__name__}: {exc}")
         provider_calls_total.labels(provider=self.name, outcome="error").inc()
         if (
             self._state is BreakerState.HALF_OPEN

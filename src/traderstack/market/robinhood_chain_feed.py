@@ -212,7 +212,11 @@ def pool_price(pool: PoolConfig, sqrt_price_x96: int) -> float:
     return 1.0 / token1_per_token0
 
 
-def parse_swap_log(log: dict[str, Any], pools: dict[str, PoolConfig]) -> SwapEvent | None:
+def parse_swap_log(
+    log: dict[str, Any],
+    pools: dict[str, PoolConfig],
+    v4_pool_manager: str | None = None,
+) -> SwapEvent | None:
     if log.get("removed"):
         return None
     topics = log.get("topics")
@@ -233,6 +237,14 @@ def parse_swap_log(log: dict[str, Any], pools: dict[str, PoolConfig]) -> SwapEve
         tick = _int(data, 4, 24)
     elif topic0 == UNISWAP_V4_SWAP_TOPIC:
         if len(topics) < 2:
+            return None
+        # For v3 the emitting contract *is* the allowlisted pool, so the address
+        # lookup below is itself the check. A v4 Swap carries only a pool id in
+        # topics[1], which any contract can emit, so the emitter must be the
+        # configured PoolManager. The subscription filter asks the endpoint for
+        # that, but this module already declines to trust the endpoint (it
+        # verifies the chain id), so it must not trust it here either.
+        if v4_pool_manager is None or address != v4_pool_manager.lower():
             return None
         pool = pools.get(str(topics[1]).lower())
         if pool is None or pool.version != "v4":
@@ -377,7 +389,7 @@ class RobinhoodChainSwapFeed:
                 log = params.get("result")
                 if not isinstance(log, dict):
                     continue
-                event = parse_swap_log(log, self._pools_by_key)
+                event = parse_swap_log(log, self._pools_by_key, self.v4_pool_manager)
                 if event is not None and event.symbol.upper() in wanted:
                     yield event
 

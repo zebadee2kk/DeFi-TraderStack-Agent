@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from traderstack.models import Side
 
@@ -123,6 +123,11 @@ def is_legal_transition(current: OrderLifecycleState, requested: OrderLifecycleS
 
 
 class ExecutionFill(BaseModel):
+    # `Field(gt=0)` alone still admits +Infinity, which would propagate into
+    # `InMemoryPortfolioBook` and make NAV non-finite for the life of the
+    # checkpoint. A non-finite fill is corrupt venue state.
+    model_config = ConfigDict(allow_inf_nan=False)
+
     fill_id: str
     order_id: str
     asset: str

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import httpx
@@ -235,8 +236,18 @@ class HummingbotExecutionReconciler:
         if isinstance(payload, list):
             rows = payload
         elif isinstance(payload, dict):
-            candidate = payload.get("data", payload.get("orders", payload.get("trades", [])))
-            rows = candidate if isinstance(candidate, list) else []
+            # A body we cannot read is unknown venue state, never "no orders":
+            # `venue_knows_order` turns an empty row list into "the venue never
+            # saw it", which licenses a resubmission. Fail closed instead.
+            for key in ("data", "orders", "trades"):
+                if key in payload:
+                    candidate = payload[key]
+                    break
+            else:
+                raise TypeError("unexpected Hummingbot response envelope")
+            if not isinstance(candidate, list):
+                raise TypeError("unexpected Hummingbot response envelope")
+            rows = candidate
         else:
             raise TypeError("unexpected Hummingbot response type")
         if not all(isinstance(row, dict) for row in rows):
@@ -299,13 +310,23 @@ class HummingbotExecutionReconciler:
     ) -> float:
         for key in keys:
             value = row.get(key)
-            if isinstance(value, int | float):
-                return float(value)
-            if isinstance(value, str):
+            number: float | None = None
+            if isinstance(value, int | float) and not isinstance(value, bool):
+                number = float(value)
+            elif isinstance(value, str):
                 try:
-                    return float(value)
+                    number = float(value)
                 except ValueError:
-                    pass
+                    number = None
+            if number is None:
+                continue
+            # NaN/Infinity survive both JSON parsing (`1e400`, `NaN`) and
+            # `float("inf")`, and would flow straight into a fill quantity or
+            # price and from there into NAV. A non-finite venue number is
+            # corrupt state, not a value.
+            if not math.isfinite(number):
+                raise ValueError(f"non-finite numeric field from {keys}")
+            return number
         if required:
             raise ValueError(f"missing numeric field from {keys}")
         return 0.0

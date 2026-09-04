@@ -5,7 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # `frozen=True` is part of the Zone C guarantee in docs/RISK-PRINCIPLES.md:
+    # risk policy is version-controlled configuration, so nothing in-process --
+    # an agent, a tool result, a compromised adapter -- can rewrite a limit on a
+    # live `Settings` the `RiskEngine` already holds. Changing a limit requires a
+    # configuration change and a restart, which is the promotion gate.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
 
     app_env: str = "development"
     log_level: str = "INFO"
