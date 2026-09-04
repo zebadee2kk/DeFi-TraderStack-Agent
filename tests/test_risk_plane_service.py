@@ -5,10 +5,12 @@ start of every cycle, and every risk decision the cycle produced is appended to
 the immutable audit trail.
 """
 
+import json
 from datetime import UTC, datetime
 
 import pytest
 
+from traderstack.agents.review import MetaAgentMode, MetaAgentReview
 from traderstack.checkpoint import JsonPortfolioCheckpointStore
 from traderstack.circuit_breaker import StrategyCircuitBreaker
 from traderstack.config import Settings
@@ -178,6 +180,46 @@ async def test_service_without_an_audit_trail_still_runs(tmp_path) -> None:
     svc = service(FakeRuntime(result))
     await svc._run_symbol_safely("BTC/USD")
     assert svc.health.healthy
+
+
+@pytest.mark.asyncio
+async def test_a_meta_agent_veto_is_visible_on_the_recorded_audit_line(tmp_path) -> None:
+    """The service must carry RuntimeResult.meta_review/execution_status into
+    the audit record, not only the risk engine's own (pre-veto) decision.
+    """
+
+    path = tmp_path / "risk.jsonl"
+    result, _, risk_result = runtime_result_with_decision()
+    assert risk_result.decision is RiskDecision.ALLOW
+    vetoed = result.model_copy(
+        update={
+            "meta_review": MetaAgentReview(
+                mode=MetaAgentMode.VETO,
+                called=True,
+                approved=False,
+                prompt_version="v1",
+                prompt_hash="sha256:deadbeef",
+                suppressed_order=True,
+                suppression_reason="meta_agent_veto",
+            ),
+            "execution_status": None,
+            "execution_reason": "meta_agent_veto",
+        }
+    )
+    svc = service(
+        FakeRuntime(vetoed),
+        risk_audit=JsonlRiskAuditTrail(path),
+        settings=Settings(kill_switch=False),
+    )
+
+    await svc._run_symbol_safely("BTC/USD")
+
+    line = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert line["result"]["decision"] == "allow"
+    assert line["meta_review"]["suppressed_order"] is True
+    assert line["meta_review"]["suppression_reason"] == "meta_agent_veto"
+    assert line["execution_status"] is None
+    assert line["execution_reason"] == "meta_agent_veto"
 
 
 # --- breaker state is persisted in the checkpoint -------------------------

@@ -11,20 +11,12 @@ logs.
 
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass, field
 
 from pydantic import SecretStr
 
 from traderstack.config import Settings
-
-# Environment variables consumed directly (not via `Settings`) but still worth
-# reporting on. Values are never read here, only presence in the process
-# environment — this module must not import anything that would populate them
-# into a printable object.
-_ANTHROPIC_ENV = "ANTHROPIC_API_KEY"
-_ALTFINS_ENV = "ALTFINS_API_KEY"
 
 
 @dataclass(frozen=True)
@@ -50,10 +42,6 @@ def _flag(value: bool) -> str:
 
 def _has_secret(value: SecretStr | None) -> bool:
     return value is not None and bool(value.get_secret_value().strip())
-
-
-def _env_present(name: str) -> bool:
-    return bool(os.environ.get(name, "").strip())
 
 
 def build_report(settings: Settings) -> ConfigReport:
@@ -124,6 +112,7 @@ def build_report(settings: Settings) -> ConfigReport:
         ("LunarCrush (social)", settings.lunarcrush_api_key, True),
         ("CryptoPanic (news)", settings.cryptopanic_api_key, True),
         ("Perplexity (news)", settings.perplexity_api_key, True),
+        ("altFINS (technical signal)", settings.altfins_api_key, True),
     )
     any_intelligence = False
     for label, key, extra_ok in intelligence_providers:
@@ -169,21 +158,34 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
 
-    # --- Providers not yet wired into Settings (informational only) --------------------
-    items.append(
-        CheckItem(
-            "Claude meta-agent (ANTHROPIC_API_KEY)",
-            _flag(_env_present(_ANTHROPIC_ENV)),
-            "present in environment; not yet wired into the continuous runtime (Epic 6)",
+    # --- Constrained meta-agent (Epic 6) ------------------------------------------------
+    items.append(CheckItem("Meta-agent mode", settings.meta_agent_mode))
+    anthropic_key_present = _has_secret(settings.anthropic_api_key)
+    if settings.meta_agent_mode != "off":
+        items.append(CheckItem("  model", settings.meta_agent_model))
+        items.append(CheckItem("  ANTHROPIC_API_KEY present", _flag(anthropic_key_present)))
+        items.append(
+            CheckItem(
+                "  daily budget (calls/tokens)",
+                f"{settings.meta_agent_max_calls_per_day or '∞'}/"
+                f"{settings.meta_agent_max_tokens_per_day or '∞'}",
+            )
         )
-    )
-    items.append(
-        CheckItem(
-            "altFINS (ALTFINS_API_KEY)",
-            _flag(_env_present(_ALTFINS_ENV)),
-            "present in environment; no adapter wired yet",
+        items.append(CheckItem("  evidence cache seconds", str(settings.meta_agent_cache_seconds)))
+    if settings.meta_agent_mode == "veto" and not anthropic_key_present:
+        warnings.append(
+            "META_AGENT_MODE=veto but ANTHROPIC_API_KEY is not set: the runtime raises at "
+            "startup rather than running a veto gate with no reviewer behind it "
+            "(see docs/RUNBOOK.md, 'Meta-agent modes and budgets')."
         )
-    )
+    elif settings.meta_agent_mode == "advisory":
+        items.append(
+            CheckItem(
+                "  advisory-mode effect",
+                "recorded only",
+                "does not change confidence, sizing, or whether the order is sent",
+            )
+        )
 
     # --- Robinhood Chain execution scaffolding ------------------------------------------
     robinhood_execution_configured = bool(
@@ -227,6 +229,74 @@ def build_report(settings: Settings) -> ConfigReport:
     )
     items.append(CheckItem("  account", settings.hummingbot_account_name))
     items.append(CheckItem("  connector", settings.hummingbot_connector_name))
+
+    # --- Execution hardening (Epic 8): reconciliation gate & retries -------------------
+    items.append(CheckItem("Reconcile interval (s)", str(settings.reconcile_interval_seconds)))
+    items.append(CheckItem("Max NAV drift (bps)", str(settings.max_nav_drift_bps)))
+    items.append(
+        CheckItem(
+            "Execution submit timeout / retries",
+            f"{settings.execution_submit_timeout_seconds}s / {settings.execution_max_retries}",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  min notional / lot step / max slippage (bps)",
+            f"${settings.execution_min_notional_usd} / {settings.execution_lot_step} / "
+            f"{settings.execution_max_slippage_bps}",
+        )
+    )
+
+    # --- Provider health, quota and caching wrapper (Epic 2/3) -------------------------
+    items.append(
+        CheckItem(
+            "Provider timeout / failure threshold / cooldown (s)",
+            f"{settings.provider_timeout_seconds}s / {settings.provider_failure_threshold} / "
+            f"{settings.provider_breaker_cooldown_seconds}",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  CoinGecko quota (per min/day)",
+            f"{settings.coingecko_calls_per_minute or 'unlimited'}/"
+            f"{settings.coingecko_calls_per_day or 'unlimited'}",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  CoinMarketCap quota (per min/day)",
+            f"{settings.coinmarketcap_calls_per_minute or 'unlimited'}/"
+            f"{settings.coinmarketcap_calls_per_day or 'unlimited'}",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  candle provider quota (per min)",
+            str(settings.candle_provider_calls_per_minute or "unlimited"),
+        )
+    )
+    items.append(
+        CheckItem(
+            "  intelligence provider quota (per min)",
+            str(settings.intelligence_provider_calls_per_minute or "unlimited"),
+        )
+    )
+
+    # --- Kill switch channels (Epic 7): all four are independently sufficient ----------
+    items.append(CheckItem("  sentinel file path", settings.kill_switch_file))
+    items.append(
+        CheckItem(
+            "  Redis channel",
+            _flag(settings.kill_switch_redis_enabled),
+            settings.kill_switch_redis_key if settings.kill_switch_redis_enabled else "",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  channels",
+            "settings flag, sentinel file, Redis key (if enabled), SIGUSR1 — any one halts",
+        )
+    )
 
     # --- Risk policy limits (values only, no secrets) -----------------------------------
     items.append(CheckItem("Assets allowlisted", ", ".join(settings.assets) or "(none)"))

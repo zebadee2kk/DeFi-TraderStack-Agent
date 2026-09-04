@@ -7,6 +7,12 @@ hash-chained record. Each record carries:
 * the full ``RiskResult`` (decision, approved notional, every reason string),
 * the policy version in force,
 * the risk limits in force, inline *and* as a SHA-256 digest,
+* the meta-agent's review of this same cycle, when one ran (Epic 6) -- so a
+  veto or an unavailable-review suppression that nulled the paper order after
+  the risk engine approved it is visible on the *same* record, not only
+  inferable by cross-referencing a separate log,
+* the execution outcome (``execution_status``/``execution_reason``) the cycle
+  actually reached, when a submission was attempted,
 * ``previous_hash`` -- the ``record_hash`` of the preceding record,
 * ``record_hash`` -- SHA-256 over the canonical JSON of everything above.
 
@@ -15,7 +21,12 @@ invalidates every record after it. ``verify_chain`` reports the first sequence
 number where the chain breaks. The file is append-only by construction: this
 module never opens it for anything but ``"a"``, and offers no update or delete.
 
-This is evidence, not control flow: recording a decision never changes it.
+This is evidence, not control flow: recording a decision never changes it. A
+record showing ``result.decision == ALLOW`` together with
+``meta_review.suppressed_order == True`` is not a contradiction: it is the
+whole point of recording both -- the deterministic risk engine approved the
+notional, and the bounded meta-agent review withheld it before execution. An
+auditor reading only ``result`` would otherwise believe the order was sent.
 """
 
 from __future__ import annotations
@@ -30,6 +41,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from traderstack.agents.review import MetaAgentReview
 from traderstack.config import Settings
 from traderstack.models import RiskResult, TradeProposal
 from traderstack.risk import risk_limits, risk_limits_hash
@@ -45,6 +57,14 @@ class RiskAuditRecord(BaseModel):
     risk_limits_hash: str
     proposal: TradeProposal
     result: RiskResult
+    # --- meta-agent (Epic 6): the review that ran against this same proposal,
+    # when the reviewer was in play. None when the meta-agent was off or never
+    # reached (e.g. the deterministic layer already rejected the cycle).
+    meta_review: MetaAgentReview | None = None
+    # The execution outcome this cycle actually reached, when a submission was
+    # attempted (None when submission was disabled or never eligible).
+    execution_status: str | None = None
+    execution_reason: str | None = None
     previous_hash: str
     record_hash: str
 
@@ -114,6 +134,9 @@ class JsonlRiskAuditTrail:
         settings: Settings,
         *,
         at: datetime | None = None,
+        meta_review: MetaAgentReview | None = None,
+        execution_status: str | None = None,
+        execution_reason: str | None = None,
     ) -> RiskAuditRecord:
         self._resume()
         body = {
@@ -124,6 +147,9 @@ class JsonlRiskAuditTrail:
             "risk_limits_hash": risk_limits_hash(settings),
             "proposal": proposal.model_dump(mode="json"),
             "result": result.model_dump(mode="json"),
+            "meta_review": meta_review.model_dump(mode="json") if meta_review is not None else None,
+            "execution_status": execution_status,
+            "execution_reason": execution_reason,
             "previous_hash": self._last_hash,
         }
         # Hash the model's own canonical JSON so a record written here and the
@@ -143,8 +169,20 @@ class JsonlRiskAuditTrail:
         settings: Settings,
         *,
         at: datetime | None = None,
+        meta_review: MetaAgentReview | None = None,
+        execution_status: str | None = None,
+        execution_reason: str | None = None,
     ) -> RiskAuditRecord:
-        return await asyncio.to_thread(self.record, proposal, result, settings, at=at)
+        return await asyncio.to_thread(
+            self.record,
+            proposal,
+            result,
+            settings,
+            at=at,
+            meta_review=meta_review,
+            execution_status=execution_status,
+            execution_reason=execution_reason,
+        )
 
     def _append(self, record: RiskAuditRecord) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

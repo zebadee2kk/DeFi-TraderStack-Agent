@@ -99,7 +99,14 @@ class ContinuousPaperService:
             await self.kill_switch.refresh()
 
     async def _record_risk_decision(self, result: RuntimeResult) -> None:
-        """Append this cycle's risk decision to the immutable audit trail."""
+        """Append this cycle's risk decision to the immutable audit trail.
+
+        The record carries the meta-agent review and execution outcome
+        alongside the risk engine's own decision, so a record showing
+        ``result.decision == ALLOW`` next to a meta-agent veto is legible on
+        its own -- the risk engine approved the notional, and the review
+        withheld it before anything reached the venue.
+        """
 
         if self.risk_audit is None or self.settings is None:
             return
@@ -107,7 +114,14 @@ class ContinuousPaperService:
         risk_result = result.pipeline.risk_result
         if proposal is None or risk_result is None:
             return
-        await self.risk_audit.arecord(proposal, risk_result, self.settings)
+        await self.risk_audit.arecord(
+            proposal,
+            risk_result,
+            self.settings,
+            meta_review=result.meta_review,
+            execution_status=result.execution_status,
+            execution_reason=result.execution_reason,
+        )
 
     async def _run_symbol_safely(self, symbol: str) -> None:
         self._cycle += 1  # observability (Epic 9)

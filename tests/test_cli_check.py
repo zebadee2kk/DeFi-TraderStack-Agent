@@ -129,6 +129,43 @@ def test_main_exits_non_zero_on_unsafe_combination(monkeypatch, capsys) -> None:
     assert "unsafe combination" in out
 
 
+def test_meta_agent_veto_without_anthropic_key_is_unsafe() -> None:
+    report = build_report(settings(meta_agent_mode="veto"))
+    assert not report.safe
+    assert any("META_AGENT_MODE=veto" in w for w in report.warnings)
+
+
+def test_meta_agent_veto_with_anthropic_key_is_safe_on_that_axis() -> None:
+    report = build_report(settings(meta_agent_mode="veto", anthropic_api_key="secret-key"))
+    assert not any("META_AGENT_MODE=veto" in w for w in report.warnings)
+
+
+def test_meta_agent_off_reports_mode_without_extra_detail() -> None:
+    report = build_report(settings(meta_agent_mode="off"))
+    assert report.safe
+    mode_item = next(item for item in report.items if item.label == "Meta-agent mode")
+    assert mode_item.value == "off"
+    assert not any("model" in item.label for item in report.items)
+
+
+def test_altfins_is_reported_as_an_intelligence_provider() -> None:
+    without = build_report(settings())
+    with_key = build_report(settings(altfins_api_key="secret-key"))
+    without_item = next(i for i in without.items if "altFINS" in i.label)
+    with_item = next(i for i in with_key.items if "altFINS" in i.label)
+    assert without_item.value == "no"
+    assert with_item.value == "yes"
+
+
+def test_report_covers_provider_quotas_execution_and_kill_switch_channels() -> None:
+    report = build_report(settings())
+    labels = {item.label.strip() for item in report.items}
+    assert "Reconcile interval (s)" in labels
+    assert "Max NAV drift (bps)" in labels
+    assert any("CoinGecko quota" in label for label in labels)
+    assert any("sentinel file path" in label for label in labels)
+
+
 def test_main_exits_zero_on_safe_defaults(monkeypatch, capsys) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://x:x@localhost/x")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")

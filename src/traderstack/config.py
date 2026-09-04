@@ -97,6 +97,13 @@ class Settings(BaseSettings):
     mvp_assets: str = "BTC,ETH,SOL"
     max_reference_divergence_bps: float = Field(default=50.0, gt=0)
     max_market_data_age_seconds: float = Field(default=5.0, gt=0)
+    # Market-data quality gate on the raw venue tick, evaluated by the pipeline
+    # BEFORE any feature vector or proposal exists (rejection: spread_limit_exceeded).
+    # Distinct from the risk engine's RISK_MAX_SPREAD_BPS below, which gates the
+    # feature vector's spread reading as tier 4 of the risk policy (Zone C,
+    # version-controlled, folded into RiskEngine.policy_version). See
+    # docs/EXECUTION-ARCHITECTURE.md, "Two spread limits, deliberately".
+    max_spread_bps: float = Field(default=30.0, gt=0)
     max_position_pct: float = Field(default=0.10, gt=0, le=1)
     max_daily_loss_pct: float = Field(default=0.02, gt=0, le=1)
     max_account_drawdown_pct: float = Field(default=0.10, gt=0, le=1)

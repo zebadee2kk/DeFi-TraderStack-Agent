@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from traderstack.agents.review import MetaAgentMode, MetaAgentReview
 from traderstack.config import Settings
 from traderstack.models import PortfolioSnapshot, RiskDecision, Side, TradeProposal
 from traderstack.risk import RiskEngine, risk_limits, risk_limits_hash
@@ -221,3 +222,89 @@ def test_from_settings_uses_the_configured_path(tmp_path) -> None:
     path = tmp_path / "audit" / "risk.jsonl"
     trail = JsonlRiskAuditTrail.from_settings(settings(risk_audit_path=str(path)))
     assert trail.path == path
+
+
+# --- meta-agent veto visibility (Epic 6 x Epic 7) ---------------------------
+
+
+def test_record_carries_meta_agent_veto_alongside_the_allowed_risk_result(tmp_path) -> None:
+    """A veto suppresses execution but must never be invisible in the audit.
+
+    The risk engine can ALLOW a proposal while the meta-agent's review, run
+    afterwards, withholds it before anything reaches the venue. Both facts
+    must land on the same record so an auditor reading only ``result`` is
+    never misled into thinking the order was sent.
+    """
+
+    path = tmp_path / "decisions.jsonl"
+    config = settings()
+    engine = RiskEngine(config)
+    trail = JsonlRiskAuditTrail(path)
+    item = proposal()
+    result = engine.evaluate(item, portfolio())
+    assert result.decision is RiskDecision.ALLOW
+
+    review = MetaAgentReview(
+        mode=MetaAgentMode.VETO,
+        called=True,
+        approved=False,
+        prompt_version="v1",
+        prompt_hash="sha256:deadbeef",
+        suppressed_order=True,
+        suppression_reason="meta_agent_veto",
+    )
+
+    record = trail.record(
+        item,
+        result,
+        config,
+        meta_review=review,
+        execution_status=None,
+        execution_reason="meta_agent_veto",
+    )
+
+    assert record.result.decision is RiskDecision.ALLOW
+    assert record.meta_review is not None
+    assert record.meta_review.suppressed_order is True
+    assert record.meta_review.suppression_reason == "meta_agent_veto"
+    assert record.execution_status is None
+    assert record.execution_reason == "meta_agent_veto"
+    assert verify_chain(path).valid
+
+    payload = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert payload["meta_review"]["suppressed_order"] is True
+    assert payload["result"]["decision"] == "allow"
+
+
+@pytest.mark.asyncio
+async def test_arecord_persists_execution_status(tmp_path) -> None:
+    path = tmp_path / "decisions.jsonl"
+    config = settings()
+    engine = RiskEngine(config)
+    trail = JsonlRiskAuditTrail(path)
+    item = proposal()
+    result = engine.evaluate(item, portfolio())
+
+    record = await trail.arecord(
+        item, result, config, execution_status="submitted", execution_reason=None
+    )
+
+    assert record.execution_status == "submitted"
+    assert record.meta_review is None
+    assert verify_chain(path).valid
+
+
+def test_record_with_no_meta_review_defaults_to_none(tmp_path) -> None:
+    """Cycles from before the meta-agent existed still validate off disk."""
+
+    path = tmp_path / "decisions.jsonl"
+    config = settings()
+    engine = RiskEngine(config)
+    trail = JsonlRiskAuditTrail(path)
+    item = proposal()
+
+    record = trail.record(item, engine.evaluate(item, portfolio()), config)
+
+    assert record.meta_review is None
+    assert record.execution_status is None
+    assert record.execution_reason is None

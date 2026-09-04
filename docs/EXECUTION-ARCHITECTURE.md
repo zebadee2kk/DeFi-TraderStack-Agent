@@ -8,12 +8,12 @@ Use Hummingbot as the preferred execution abstraction for the MVP, with direct e
 
 ```text
 Validated market data (tick + independent references + candle history)
-   + External intelligence (Dune on-chain, LunarCrush social, CryptoPanic/Perplexity news)
+   + External intelligence (Dune on-chain, LunarCrush social, CryptoPanic/Perplexity news, altFINS technical signal)
    -> Feature vector merge + deterministic news rule (adverse event => no new risk)
    -> Pre-trade backtest gate (strategy confirmation, backtest, walk-forward)
    -> Trade Proposal
-   -> Portfolio Allocator
    -> Deterministic Risk Engine
+   -> Constrained meta-agent review (withhold-only; off/advisory/veto)
    -> Execution Planner
    -> Hummingbot API / Gateway
    -> Venue
@@ -36,9 +36,40 @@ applies two deterministic rules before any proposal exists:
 
 Providers are assembled from whichever credentials are present
 (`DUNE_API_KEY` + `DUNE_QUERY_IDS`, `LUNARCRUSH_API_KEY`, `CRYPTOPANIC_API_KEY`,
-`PERPLEXITY_API_KEY`). Retrieved text never reaches the pipeline: each adapter
-reduces its source to bounded numeric features, which is the prompt-injection
-boundary from the threat model.
+`PERPLEXITY_API_KEY`, `ALTFINS_API_KEY`). Retrieved text never reaches the
+pipeline: each adapter reduces its source to bounded numeric features, which
+is the prompt-injection boundary from the threat model.
+
+### Two spread limits, deliberately (not a duplicate to consolidate)
+
+`VerticalSlicePipeline.max_spread_bps` (`Settings.max_spread_bps`,
+`MAX_SPREAD_BPS`) and `RiskEngine`'s `RISK_MAX_SPREAD_BPS` look like the same
+check twice. They are not:
+
+- The pipeline's check (`spread_limit_exceeded`) runs on the raw venue tick
+  **before any feature vector or proposal exists** -- it is a market-data
+  quality gate, the same tier as `stale_primary_tick` and
+  `reference_price_divergence`. It can reject before there is anything for
+  the risk engine to evaluate at all.
+- The risk engine's check (`spread_too_wide`) runs on the *feature vector's*
+  spread reading as tier 4 of the documented control hierarchy
+  (`docs/RISK-PRINCIPLES.md`) -- Zone C, version-controlled, never bypassable
+  by an LLM, and stamped into `RiskEngine.policy_version` /
+  `RISK_LIMIT_FIELDS`. `max_spread_bps` is not a risk-policy field and does
+  not move the policy version (the same is true of `max_reference_divergence_bps`
+  and `max_market_data_age_seconds`, its siblings in the same market-data tier).
+
+A third, unrelated spread threshold lives in
+`agents.specialists.SpecialistCommittee` (`max_spread_bps: float = 25.0`,
+hardcoded, no `Settings` field). It never gates anything -- it only shapes one
+specialist's advisory signal that the meta-agent reviewer sees as evidence, so
+it carries no risk consequence and needs no operator control. Do not confuse
+it with either gate above.
+
+Both real gates exist because they answer different questions: "is this tick
+usable at all" (pipeline) vs. "is this proposal's execution-quality risk
+acceptable" (risk engine, part of the auditable policy). Keep both; do not
+fold one into the other.
 
 ### Pre-trade backtest gate
 
@@ -61,6 +92,108 @@ The gate can only add rejections. It never relaxes the risk engine, and its
 thresholds live in version-controlled configuration, not in any agent's
 runtime state. The full `PreTradeCheck` (metrics, folds, reasons) is attached
 to every `PipelineResult` so each decision is auditable.
+
+## Cycle order of operations
+
+This is the actual, traced order of `ContinuousPaperService.run` ->
+`_run_symbol_safely` -> `PaperRuntime.run_once` for the integrated MVP
+(`src/traderstack/service.py`, `src/traderstack/runtime.py`). It exists so a
+change to any of the shared files below can be checked against it rather than
+against memory.
+
+```text
+ContinuousPaperService.run()  (loops until stopped or unhealthy)
+ 1. _maybe_reconcile()                          -- once per RECONCILE_INTERVAL_SECONDS,
+    -> execution + portfolio reconcilers          for the whole cycle, BEFORE any symbol
+    -> sets/clears RuntimeHealth.reconciliation_blocked runs. A failed pass or NAV drift
+                                                    past MAX_NAV_DRIFT_BPS blocks *new
+                                                    submissions* for every symbol this cycle
+                                                    (decisions/audit keep running).
+ 2. for each symbol:
+    _run_symbol_safely(symbol):
+    2a. _refresh_kill_switch()                  -- re-probes file/Redis/signal channels
+                                                    BEFORE the pipeline runs. An unreachable
+                                                    Redis channel is treated as engaged.
+    2b. submission_enabled = submit AND NOT reconciliation_blocked
+                                                    -- the reconciliation gate is evaluated
+                                                    and applied HERE, before run_once is even
+                                                    called with submit=True/False. Submission
+                                                    is gated before it is attempted, not
+                                                    cleaned up after.
+    2c. PaperRuntime.run_once(symbol, portfolio.snapshot(), submit=submission_enabled):
+        i.   fetch venue tick (primary market data)
+        ii.  fetch reference prices (CoinGecko/CoinMarketCap, concurrent, isolated failures)
+        iii. fetch candle history (if the pre-trade gate is enabled)
+        iv.  best-effort candle persistence (--persistent-events; failure never fails the cycle)
+        v.   fetch external intelligence (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS,
+             concurrent, isolated failures, cached)
+        vi.  fetch order-book snapshot (Kraken only, opt-in, informational -- not consumed
+             by the pipeline or risk engine today)
+        vii. VerticalSlicePipeline.process(...):
+             - market-data validation (stale tick, spread, reference divergence)
+             - intelligence merge + adverse-news gate (deterministic, before any proposal)
+             - pre-trade backtest gate (strategy re-confirmation, backtest, walk-forward)
+             - TradeProposal construction
+             - RiskEngine.evaluate(...)          -- Zone C. Kill switch is check #1 here,
+                                                     checked on *every* evaluated proposal,
+                                                     submission or not. This is the layer that
+                                                     can never be relaxed by an LLM.
+             - PaperOrderIntent, if ALLOW/REDUCE with approved_notional_usd > 0
+        viii. MetaAgentReviewer.run(symbol, pipeline_result)   -- Epic 6. Runs strictly AFTER
+             risk sizing is fixed, strictly BEFORE submission. It can only *withhold* an
+             already-approved order (null paper_order, append a rejection reason -- veto mode)
+             or nudge confidence within a bounded delta (advisory mode changes nothing at all).
+             It never re-sizes, re-sides or authorises anything risk did not already approve.
+        ix.  record_pipeline_result(...)          -- metrics recorded against the RESULT OF
+             STEP viii (post meta-agent), so a vetoed cycle counts its veto reason, not the
+             pre-veto risk decision alone.
+        x.   if submit and paper_order is not None: submit via IdempotentSubmitter (ledger
+             write PLANNED before the venue call; planner checks lot/notional/slippage;
+             timeout/5xx -> SUBMISSION_UNCERTAIN, no retry until reconciliation resolves it)
+        xi.  return RuntimeResult(tick, pipeline_result, meta_review, execution_receipt,
+             execution_status, execution_reason, ...)
+    2d. mark the portfolio at the tick's last price; compute + publish the NAV/cash gauges
+    2e. register the execution receipt in the ledger (bare-executor path only -- the
+        submitter already registered it under the client order id before the venue call)
+    2f. _record_risk_decision(result)             -- append to the hash-chained risk audit
+        trail. The record carries `result` (the risk engine's own decision) AND
+        `meta_review`/`execution_status`/`execution_reason` from the SAME cycle, so an ALLOW
+        that was subsequently vetoed is legible on one line, not only inferable by
+        cross-referencing the runtime audit log separately.
+    2g. checkpoint the portfolio (on_portfolio)    -- BEFORE the event fan-out (Epic 10).
+        This is the durable local state a restart resumes from; on_result fans out to
+        remote sinks (Postgres/Redis) that can be down far longer than a local write. Saving
+        the checkpoint first means a downstream sink outage can never leave the checkpoint
+        ahead of -- or silently behind -- the execution ledger, which the submitter persists
+        regardless of the sinks' health.
+    2h. fan out RuntimeResult to on_result sinks   -- JsonlAuditSink always; Postgres +
+        Redis additionally under --persistent-events. A sink failure is counted
+        (record_event_sink_failure) and re-raised, which trips health.record_error below.
+    2i. health.record_success(symbol)
+    -- on any exception in 2a-2i: health.record_error(symbol, exc); back off
+       error_backoff_seconds. 5 consecutive errors on one symbol stops the whole service
+       (ContinuousPaperService.run), not only that symbol.
+ 3. sleep cycle_interval_seconds (or until stopped), then repeat from 1.
+```
+
+**Invariants this order encodes, and that any change to `service.py`,
+`runtime.py`, `pipeline.py`, `health.py` or `risk_audit.py` must preserve:**
+
+1. The kill switch and the reconciliation gate are both evaluated **before**
+   any submission is attempted this cycle -- the kill switch inside
+   `RiskEngine.evaluate` (step vii, Zone C, unconditionally on every
+   proposal), and reconciliation via `submission_enabled` (step 2b, computed
+   before `run_once` is even called with `submit=`). Neither is a
+   post-submission cleanup step.
+2. The meta-agent (step viii) runs strictly after risk sizing is fixed and
+   strictly before submission (step x), so it can only ever remove risk the
+   deterministic engine already approved, never add or resize it.
+3. Every metric and audit record that reflects "what happened this cycle"
+   (`record_pipeline_result`, the risk audit trail) is built from the
+   **post-review** result, not the pre-review one -- a veto is never silently
+   dropped between the risk engine's decision and what gets recorded.
+4. The portfolio checkpoint is written before the event fan-out, so the
+   locally-resumable state never depends on a remote sink's availability.
 
 ## Responsibilities
 

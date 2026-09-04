@@ -398,6 +398,7 @@ def build_service(
         # static settings flag alone.
         risk_engine=RiskEngine(settings, kill_switch=kill_switch, circuit_breaker=circuit_breaker),
         max_tick_age_seconds=settings.max_market_data_age_seconds,
+        max_spread_bps=settings.max_spread_bps,
         max_reference_divergence_bps=settings.max_reference_divergence_bps,
         pretrade_gate=pretrade_gate,
         feature_builder=CandleMarketFeatureBuilder() if pretrade_gate else None,

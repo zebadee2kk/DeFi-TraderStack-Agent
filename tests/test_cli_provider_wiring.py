@@ -47,6 +47,24 @@ def test_build_intelligence_includes_altfins_alone() -> None:
     assert orchestrator.news == ()
 
 
+def test_build_service_carries_pipeline_max_spread_bps_from_settings(tmp_path: Path) -> None:
+    """MAX_SPREAD_BPS must reach VerticalSlicePipeline, not stay at its dataclass
+    default -- it was previously constructed without this argument at all.
+    """
+
+    settings = base_settings(max_spread_bps=17.5)
+    checkpoint_store = JsonPortfolioCheckpointStore(tmp_path / "portfolio.json")
+    service = build_service(
+        settings,
+        submit=False,
+        cycle_seconds=5.0,
+        portfolio=InMemoryPortfolioBook(settings.paper_starting_nav_usd),
+        on_result=_noop,
+        checkpoint_store=checkpoint_store,
+    )
+    assert service.runtime.pipeline.max_spread_bps == 17.5
+
+
 def test_build_service_wraps_reference_and_candle_providers_through_the_registry(
     tmp_path: Path,
 ) -> None:
