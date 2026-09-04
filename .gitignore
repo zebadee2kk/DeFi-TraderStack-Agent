@@ -12,3 +12,7 @@ htmlcov/
 .DS_Store
 *.sqlite3
 *.db
+
+# Claude Code agent worktrees and local state
+.claude/worktrees/
+var/
