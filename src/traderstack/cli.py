@@ -42,8 +42,10 @@ from traderstack.logging_config import configure_logging  # observability (Epic 
 from traderstack.market.adapters import (
     CoinGeckoPriceProvider,
     CoinMarketCapPriceProvider,
+    KrakenBookProvider,
     KrakenTickerProvider,
 )
+from traderstack.market.altfins import AltFinsSignalProvider
 from traderstack.market.intelligence_providers import (
     CryptoPanicNewsProvider,
     DuneOnChainProvider,
@@ -51,7 +53,13 @@ from traderstack.market.intelligence_providers import (
 )
 from traderstack.market.kraken_candles import KrakenCandleProvider
 from traderstack.market.perplexity import PerplexityNewsProvider
-from traderstack.market.providers import VenueMarketDataProvider
+from traderstack.market.providers import BookSnapshotProvider, VenueMarketDataProvider
+from traderstack.market.registry import (
+    ProviderRegistry,
+    RegisteredCandleHistoryProvider,
+    RegisteredReferencePriceProvider,
+    registered_fetcher,
+)
 from traderstack.market.robinhood_chain_feed import swap_feed_from_settings
 from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.pipeline import VerticalSlicePipeline
@@ -90,6 +98,31 @@ def _secret(value: SecretStr | None) -> str | None:
     return value.get_secret_value() if value is not None else None
 
 
+# --- providers (Epic 2/3): provider health, quota and caching wrapper ----------
+
+
+def build_provider_registry(
+    settings: Settings,
+    name: str,
+    *,
+    calls_per_minute: int | None = None,
+    calls_per_day: int | None = None,
+    cache_ttl_seconds: float = 0.0,
+) -> ProviderRegistry:
+    """One `ProviderRegistry` per named provider, using the shared timeout/
+    breaker defaults from settings plus that provider's own quota/cache.
+    """
+    return ProviderRegistry(
+        name=name,
+        timeout_seconds=settings.provider_timeout_seconds,
+        failure_threshold=settings.provider_failure_threshold,
+        cooldown_seconds=settings.provider_breaker_cooldown_seconds,
+        calls_per_minute=calls_per_minute,
+        calls_per_day=calls_per_day,
+        cache_ttl_seconds=cache_ttl_seconds,
+    )
+
+
 def parse_dune_query_ids(raw: str) -> dict[str, int]:
     query_ids: dict[str, int] = {}
     for spec in raw.split(","):
@@ -104,33 +137,59 @@ def parse_dune_query_ids(raw: str) -> dict[str, int]:
 
 
 def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
-    """Assemble every intelligence provider that has credentials; None if there are none."""
+    """Assemble every intelligence provider that has credentials; None if there are none.
+
+    Every fetcher is wrapped through a per-provider `ProviderRegistry`
+    (timeout, circuit breaker, quota) - see build_provider_registry above.
+    """
+    quota = settings.intelligence_provider_calls_per_minute
+
     onchain = None
     if settings.dune_api_key is not None:
         query_ids = parse_dune_query_ids(settings.dune_query_ids)
         if query_ids:
-            onchain = DuneOnChainProvider(
-                api_key=settings.dune_api_key.get_secret_value(), query_ids=query_ids
-            ).fetch
+            onchain = registered_fetcher(
+                DuneOnChainProvider(
+                    api_key=settings.dune_api_key.get_secret_value(), query_ids=query_ids
+                ).fetch,
+                build_provider_registry(settings, "dune", calls_per_minute=quota),
+            )
 
     social = None
     if settings.lunarcrush_api_key is not None:
-        social = LunarCrushSocialProvider(
-            api_key=settings.lunarcrush_api_key.get_secret_value()
-        ).fetch
+        social = registered_fetcher(
+            LunarCrushSocialProvider(api_key=settings.lunarcrush_api_key.get_secret_value()).fetch,
+            build_provider_registry(settings, "lunarcrush", calls_per_minute=quota),
+        )
 
     news: list[NewsFetcher] = []
     if settings.cryptopanic_api_key is not None:
         news.append(
-            CryptoPanicNewsProvider(
-                auth_token=settings.cryptopanic_api_key.get_secret_value(),
-                api_plan=settings.cryptopanic_api_plan,
-            ).fetch
+            registered_fetcher(
+                CryptoPanicNewsProvider(
+                    auth_token=settings.cryptopanic_api_key.get_secret_value(),
+                    api_plan=settings.cryptopanic_api_plan,
+                ).fetch,
+                build_provider_registry(settings, "cryptopanic", calls_per_minute=quota),
+            )
         )
     if settings.perplexity_api_key is not None:
-        news.append(PerplexityNewsProvider(api_key=settings.perplexity_api_key.get_secret_value()).fetch)
+        news.append(
+            registered_fetcher(
+                PerplexityNewsProvider(api_key=settings.perplexity_api_key.get_secret_value()).fetch,
+                build_provider_registry(settings, "perplexity", calls_per_minute=quota),
+            )
+        )
 
-    if onchain is None and social is None and not news:
+    # --- providers (Epic 3): altFINS technical-signal slot ---------------------
+    altfins = None
+    if settings.altfins_api_key is not None:
+        altfins = registered_fetcher(
+            AltFinsSignalProvider(api_key=settings.altfins_api_key.get_secret_value()).fetch,
+            build_provider_registry(settings, "altfins", calls_per_minute=quota),
+        )
+
+    if onchain is None and social is None and not news and altfins is None:
         return None
     return IntelligenceOrchestrator(
         onchain=onchain,
@@ -138,6 +197,7 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
         news=tuple(news),
         cache=IntelligenceCache(max_age_seconds=settings.intelligence_cache_seconds),
         require_any_external=settings.intelligence_required,
+        altfins=altfins,
     )
 
 
@@ -273,7 +333,13 @@ def build_service(
     candle_provider = None
     if settings.pretrade_backtest_enabled:
         pretrade_gate = build_pretrade_gate(settings)
-        candle_provider = KrakenCandleProvider()
+        # --- providers (Epic 2/3): provider health, quota and caching wrapper --
+        candle_provider = RegisteredCandleHistoryProvider(
+            KrakenCandleProvider(),
+            build_provider_registry(
+                settings, "kraken_candles", calls_per_minute=settings.candle_provider_calls_per_minute
+            ),
+        )
 
     intelligence = build_intelligence(settings)
     if settings.intelligence_required and intelligence is None:
@@ -293,6 +359,7 @@ def build_service(
         require_external_intelligence=settings.intelligence_required,
     )
     venue: VenueMarketDataProvider
+    book: BookSnapshotProvider | None = None
     if settings.venue_feed == "robinhood_chain":
         swap_feed = swap_feed_from_settings(settings)
         venue = swap_feed
@@ -304,14 +371,48 @@ def build_service(
         if not symbols:
             raise RuntimeError("no ROBINHOOD_CHAIN_POOLS match MVP_ASSETS")
     else:
-        venue = KrakenTickerProvider()
+        venue = KrakenTickerProvider(
+            max_reconnect_attempts=settings.kraken_max_reconnect_attempts,
+            backoff_base_seconds=settings.kraken_backoff_base_seconds,
+            backoff_max_seconds=settings.kraken_backoff_max_seconds,
+            stale_after_seconds=settings.kraken_stale_after_seconds,
+        )
         symbols = tuple(f"{asset}/USD" for asset in settings.assets)
+        # --- providers (Epic 2): order-book snapshot handling -------------------
+        if settings.kraken_book_enabled:
+            book = KrakenBookProvider(
+                depth=settings.kraken_book_depth,
+                max_reconnect_attempts=settings.kraken_max_reconnect_attempts,
+                backoff_base_seconds=settings.kraken_backoff_base_seconds,
+                backoff_max_seconds=settings.kraken_backoff_max_seconds,
+                stale_after_seconds=settings.kraken_stale_after_seconds,
+            )
 
+    # --- providers (Epic 2/3): provider health, quota and caching wrapper ------
+    reference_registry_kwargs = {"cache_ttl_seconds": settings.reference_price_cache_seconds}
     runtime = PaperRuntime(
         venue=venue,
         references=(
-            CoinGeckoPriceProvider(api_key=_secret(settings.coingecko_api_key)),
-            CoinMarketCapPriceProvider(api_key=_secret(settings.coinmarketcap_api_key)),
+            RegisteredReferencePriceProvider(
+                CoinGeckoPriceProvider(api_key=_secret(settings.coingecko_api_key)),
+                build_provider_registry(
+                    settings,
+                    "coingecko",
+                    calls_per_minute=settings.coingecko_calls_per_minute,
+                    calls_per_day=settings.coingecko_calls_per_day,
+                    **reference_registry_kwargs,
+                ),
+            ),
+            RegisteredReferencePriceProvider(
+                CoinMarketCapPriceProvider(api_key=_secret(settings.coinmarketcap_api_key)),
+                build_provider_registry(
+                    settings,
+                    "coinmarketcap",
+                    calls_per_minute=settings.coinmarketcap_calls_per_minute,
+                    calls_per_day=settings.coinmarketcap_calls_per_day,
+                    **reference_registry_kwargs,
+                ),
+            ),
         ),
         pipeline=pipeline,
         executor=executor,
@@ -324,6 +425,7 @@ def build_service(
         # --- end meta-agent (Epic 6) ---
         candle_sink=candle_sink,  # persistence (Epic 2)
         submitter=submitter,  # execution hardening (Epic 8)
+        book=book,  # providers (Epic 2)
     )
     return ContinuousPaperService(
         runtime=runtime,

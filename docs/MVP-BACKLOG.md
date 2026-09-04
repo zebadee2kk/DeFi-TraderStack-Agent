@@ -16,22 +16,22 @@
 - [ ] secrets example files with no credentials
 
 ## Epic 2 — Market Data
-- [ ] direct venue WebSocket ingestion
+- [x] direct venue WebSocket ingestion (Kraken WS v2, now with reconnect/backoff/stale-detection - `traderstack.market.adapters.KrakenTickerProvider`)
 - [ ] candle aggregation
-- [ ] order-book snapshot handling
-- [ ] CoinGecko reference adapter
-- [ ] CoinMarketCap reference adapter
-- [ ] data freshness/divergence checks
+- [x] order-book snapshot handling (`KrakenBookProvider`, `BookSnapshot`, `depth_within_bps` - opt-in via `KRAKEN_BOOK_ENABLED`; not yet consumed by the risk plane)
+- [x] CoinGecko reference adapter
+- [x] CoinMarketCap reference adapter
+- [x] data freshness/divergence checks (now includes reference-vs-reference `pairwise_divergences`, not only primary-vs-reference)
 - [x] persistent time-series storage
 
 ## Epic 3 — Intelligence Adapters
-- [ ] Dune adapter/MCP integration
-- [ ] LunarCrush adapter/MCP integration
-- [ ] CryptoPanic adapter/MCP integration
-- [ ] Perplexity research adapter
-- [ ] altFINS adapter
+- [x] Dune adapter/MCP integration
+- [x] LunarCrush adapter/MCP integration
+- [x] CryptoPanic adapter/MCP integration
+- [x] Perplexity research adapter (migrated to the Agent API; Sonar Chat Completions is deprecated)
+- [x] altFINS adapter (`traderstack.market.altfins`; signal-ratio score is a documented assumption, see PROVIDER-CAPABILITY-MATRIX.md)
 - [ ] TradingView secondary integration
-- [ ] provider health and quota tracking
+- [x] provider health and quota tracking (`traderstack.market.registry.ProviderRegistry`: timeout, circuit breaker, quota budgets, TTL cache, Prometheus metrics, `health()`)
 
 ## Epic 4 — Feature and Signal Plane
 - [ ] canonical feature schema

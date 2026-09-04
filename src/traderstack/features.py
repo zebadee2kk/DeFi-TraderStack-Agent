@@ -9,6 +9,12 @@ class MarketFeatures(BaseModel):
     volatility_z: float
     relative_volume: float = Field(ge=0)
     spread_bps: float = Field(ge=0)
+    # --- providers (Epic 3): altFINS technical-signal slot ---------------------
+    # Optional pre-computed external technical-signal score in [-1, 1] (bearish
+    # to bullish) and which provider it came from. None when no such provider
+    # ran this cycle; existing consumers are unaffected.
+    external_signal_score: float | None = Field(default=None, ge=-1, le=1)
+    external_signal_source: str | None = None
 
 
 class OnChainFeatures(BaseModel):
