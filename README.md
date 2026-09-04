@@ -95,6 +95,21 @@ simulates the transaction, but never signs or broadcasts it and never holds a
 private key; `live` trading mode is rejected until an isolated signing/custody
 service exists (see `docs/EXECUTION-ARCHITECTURE.md` and `docs/ROADMAP.md` Phase 8).
 
+## Constrained meta-agent review
+
+`src/traderstack/agents/review.py` inserts one bounded LLM review between the
+deterministic pipeline and execution. By the time Claude is asked anything, the
+side, asset and risk-approved notional are already fixed; the reviewer may only
+veto the cycle or shift confidence within the ±0.15 bound in `MetaAgentDecision`.
+`META_AGENT_MODE` is `off`, `advisory` (default: recorded, no effect) or `veto`
+(a veto suppresses the paper order as `meta_agent_veto`, and any failure —
+timeout, error, invalid reply, exhausted daily budget — suppresses it as
+`meta_agent_unavailable`). Spend is bounded by an evidence-hash cache and daily
+call/token budgets, and every review records the prompt version and content hash
+from `agents/prompts.py`. The technical, on-chain and narrative strategy agents
+in `agents/specialists.py` are deterministic feature readers, not model calls.
+See `docs/AGENT-ARCHITECTURE.md` and the `META_AGENT_*` settings in `.env.example`.
+
 ## Repository roadmap
 
 See `docs/PROJECT-CHARTER.md`, `docs/HLD.md`, `docs/RESEARCH-NOTES.md`, `docs/RISK-PRINCIPLES.md`, and `docs/ROADMAP.md` as they are developed.

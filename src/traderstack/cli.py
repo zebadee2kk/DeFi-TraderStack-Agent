@@ -6,6 +6,14 @@ from pathlib import Path
 from prometheus_client import start_http_server
 from pydantic import SecretStr
 
+from traderstack.agents.claude import AnthropicMetaAgentClient
+from traderstack.agents.review import (
+    DailyBudget,
+    EvidenceCache,
+    MetaAgentMode,
+    MetaAgentReviewer,
+)
+from traderstack.agents.specialists import SpecialistCommittee
 from traderstack.audit import JsonlAuditSink
 from traderstack.backtest import BaselineBacktester
 from traderstack.checkpoint import JsonPortfolioCheckpointStore
@@ -115,6 +123,46 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
     )
 
 
+# --- meta-agent (Epic 6) ---
+def build_meta_reviewer(settings: Settings) -> MetaAgentReviewer | None:
+    """Construct the constrained meta-agent, or None when it is not in play.
+
+    The Anthropic client is only built when a key is present and the mode is not
+    `off`. Veto mode without a key is a startup error rather than a silent
+    downgrade: an operator who asked for a veto gate must not get no gate.
+    """
+    mode = MetaAgentMode(settings.meta_agent_mode)
+    if mode is MetaAgentMode.OFF:
+        return None
+    if settings.anthropic_api_key is None:
+        if mode is MetaAgentMode.VETO:
+            raise RuntimeError("META_AGENT_MODE=veto requires ANTHROPIC_API_KEY")
+        return None
+    client = AnthropicMetaAgentClient(
+        api_key=settings.anthropic_api_key.get_secret_value(),
+        model=settings.meta_agent_model,
+        max_tokens=settings.meta_agent_max_tokens,
+        timeout_seconds=settings.meta_agent_timeout_seconds,
+    )
+    return MetaAgentReviewer(
+        client=client,
+        mode=mode,
+        model=settings.meta_agent_model,
+        timeout_seconds=settings.meta_agent_timeout_seconds,
+        committee=SpecialistCommittee(),
+        cache=EvidenceCache(ttl_seconds=settings.meta_agent_cache_seconds),
+        budget=DailyBudget(
+            max_calls=settings.meta_agent_max_calls_per_day,
+            max_tokens=settings.meta_agent_max_tokens_per_day,
+        ),
+        input_cost_per_mtok=settings.meta_agent_input_cost_per_mtok,
+        output_cost_per_mtok=settings.meta_agent_output_cost_per_mtok,
+    )
+
+
+# --- end meta-agent (Epic 6) ---
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the guarded continuous paper trading service")
     parser.add_argument("--submit", action="store_true", help="submit approved paper orders")
@@ -200,6 +248,9 @@ def build_service(
         candle_interval=settings.pretrade_candle_interval,
         candle_count=settings.pretrade_candle_count,
         intelligence=intelligence,
+        # --- meta-agent (Epic 6) ---
+        meta_reviewer=build_meta_reviewer(settings),
+        # --- end meta-agent (Epic 6) ---
     )
     return ContinuousPaperService(
         runtime=runtime,

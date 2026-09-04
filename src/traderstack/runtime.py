@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
+from traderstack.agents.review import MetaAgentReview, MetaAgentReviewer
 from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
@@ -24,6 +25,9 @@ class RuntimeResult(BaseModel):
     candle_error: str | None = None
     intelligence_sources: list[str] = []
     intelligence_error: str | None = None
+    # --- meta-agent (Epic 6) ---
+    meta_review: MetaAgentReview | None = None
+    # --- end meta-agent (Epic 6) ---
     execution_receipt: HummingbotOrderReceipt | None = None
 
 
@@ -41,6 +45,11 @@ class PaperRuntime:
     # on-chain pool quoted in a stablecoin (e.g. ETH/USDG).
     candle_quote: str = "USD"
     intelligence: IntelligenceOrchestrator | None = None
+    # --- meta-agent (Epic 6) ---
+    # Bounded LLM review between the deterministic pipeline and execution. It can
+    # only withhold risk or adjust confidence; it never sizes or sides a trade.
+    meta_reviewer: MetaAgentReviewer | None = None
+    # --- end meta-agent (Epic 6) ---
 
     async def run_once(
         self,
@@ -82,6 +91,13 @@ class PaperRuntime:
         pipeline_result = self.pipeline.process(
             tick, prices, portfolio, candles=history, intelligence=external
         )
+
+        # --- meta-agent (Epic 6) ---
+        meta_review: MetaAgentReview | None = None
+        if self.meta_reviewer is not None:
+            pipeline_result, meta_review = await self.meta_reviewer.run(tick.symbol, pipeline_result)
+        # --- end meta-agent (Epic 6) ---
+
         receipt = None
         if submit and pipeline_result.paper_order is not None:
             if self.executor is None:
@@ -100,6 +116,7 @@ class PaperRuntime:
             candle_error=candle_error,
             intelligence_sources=external.source_ids if external is not None else [],
             intelligence_error=intelligence_error,
+            meta_review=meta_review,
             execution_receipt=receipt,
         )
 

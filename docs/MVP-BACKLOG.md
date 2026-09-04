@@ -51,14 +51,14 @@
 - [ ] performance attribution report
 
 ## Epic 6 — Agent Runtime
-- [ ] Claude model abstraction
+- [x] Claude model abstraction
 - [ ] tool/MCP allowlist
-- [ ] technical strategy agent
-- [ ] on-chain strategy agent
-- [ ] narrative strategy agent
-- [ ] meta/investment-committee agent
-- [ ] JSON schema validation for proposals
-- [ ] prompt/version registry
+- [x] technical strategy agent
+- [x] on-chain strategy agent
+- [x] narrative strategy agent
+- [x] meta/investment-committee agent
+- [x] JSON schema validation for proposals
+- [x] prompt/version registry
 
 ## Epic 7 — Portfolio and Risk
 - [ ] NAV/position service

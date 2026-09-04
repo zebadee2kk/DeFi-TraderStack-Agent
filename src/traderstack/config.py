@@ -28,6 +28,26 @@ class Settings(BaseSettings):
     cryptopanic_api_key: SecretStr | None = None
     cryptopanic_api_plan: str = "developer"
     perplexity_api_key: SecretStr | None = None
+    # --- meta-agent (Epic 6) ---
+    # Anthropic credentials and the bounded review budget. A missing key leaves
+    # the meta-agent uncalled (advisory) or fails startup (veto).
+    anthropic_api_key: SecretStr | None = None
+    # off = never called; advisory = called and recorded only; veto = a veto or a
+    # failed review suppresses the paper order for that cycle.
+    meta_agent_mode: Literal["off", "advisory", "veto"] = "advisory"
+    meta_agent_model: str = "claude-haiku-4-5"
+    meta_agent_max_tokens: int = Field(default=512, gt=0)
+    meta_agent_timeout_seconds: float = Field(default=20.0, gt=0)
+    # Daily budgets; 0 disables the limit. Exceeding one makes the reviewer
+    # unavailable, which fails closed in veto mode.
+    meta_agent_max_calls_per_day: int = Field(default=2_000, ge=0)
+    meta_agent_max_tokens_per_day: int = Field(default=2_000_000, ge=0)
+    # Identical evidence inside this window reuses the previous decision.
+    meta_agent_cache_seconds: float = Field(default=60.0, ge=0)
+    # Operator-supplied USD per million tokens, used only for cost telemetry.
+    meta_agent_input_cost_per_mtok: float = Field(default=1.0, ge=0)
+    meta_agent_output_cost_per_mtok: float = Field(default=5.0, ge=0)
+    # --- end meta-agent (Epic 6) ---
     # External intelligence handling in the live loop.
     intelligence_cache_seconds: float = Field(default=300.0, gt=0)
     intelligence_block_on_adverse_news: bool = True
