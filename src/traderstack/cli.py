@@ -19,6 +19,9 @@ from traderstack.backtest import BaselineBacktester
 from traderstack.candle_store import PostgresCandleStore  # persistence (Epic 2)
 from traderstack.candles import Candle  # persistence (Epic 2)
 from traderstack.checkpoint import JsonPortfolioCheckpointStore
+
+# --- risk plane (Epic 7) ---
+from traderstack.circuit_breaker import StrategyCircuitBreaker
 from traderstack.config import Settings
 from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
@@ -27,6 +30,7 @@ from traderstack.intelligence_orchestrator import (
     IntelligenceOrchestrator,
     NewsFetcher,
 )
+from traderstack.killswitch import KillSwitch, install_signal_handler
 from traderstack.logging_config import configure_logging  # observability (Epic 9)
 from traderstack.market.adapters import (
     CoinGeckoPriceProvider,
@@ -47,6 +51,7 @@ from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.pretrade import PreTradeBacktestGate
 from traderstack.risk import RiskEngine
+from traderstack.risk_audit import JsonlRiskAuditTrail
 from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
 from traderstack.tracing import configure_tracing  # observability (Epic 9)
@@ -173,6 +178,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--submit", action="store_true", help="submit approved paper orders")
     parser.add_argument("--audit-path", default="var/audit/runtime.jsonl")
     parser.add_argument("--checkpoint-path", default="var/state/portfolio.json")
+    # --- risk plane (Epic 7) ---
+    parser.add_argument("--risk-audit-path", default="var/audit/risk_decisions.jsonl")
     parser.add_argument("--cycle-seconds", type=float, default=5.0)
     parser.add_argument("--metrics-port", type=int, default=9108)
     parser.add_argument(
@@ -192,6 +199,9 @@ def build_service(
     on_result: ResultHandler,
     checkpoint_store: JsonPortfolioCheckpointStore,
     candle_sink: CandleSink | None = None,  # persistence (Epic 2)
+    kill_switch: KillSwitch | None = None,
+    circuit_breaker: StrategyCircuitBreaker | None = None,
+    risk_audit: JsonlRiskAuditTrail | None = None,
 ) -> ContinuousPaperService:
     if settings.trading_mode != "paper":
         raise RuntimeError("continuous paper service requires TRADING_MODE=paper")
@@ -219,7 +229,11 @@ def build_service(
         raise RuntimeError("INTELLIGENCE_REQUIRED=true but no intelligence provider has credentials")
 
     pipeline = VerticalSlicePipeline(
-        risk_engine=RiskEngine(settings),
+        # --- risk plane (Epic 7) --- live halt + strategy breaker, not the
+        # static settings flag alone.
+        risk_engine=RiskEngine(
+            settings, kill_switch=kill_switch, circuit_breaker=circuit_breaker
+        ),
         max_tick_age_seconds=settings.max_market_data_age_seconds,
         max_reference_divergence_bps=settings.max_reference_divergence_bps,
         pretrade_gate=pretrade_gate,
@@ -267,6 +281,10 @@ def build_service(
         cycle_interval_seconds=cycle_seconds,
         on_result=on_result,
         on_portfolio=checkpoint_store.save,
+        # --- risk plane (Epic 7) ---
+        kill_switch=kill_switch,
+        risk_audit=risk_audit,
+        settings=settings,
     )
 
 
@@ -274,7 +292,14 @@ async def _main_async(args: argparse.Namespace) -> None:
     settings = Settings()
     configure_logging(settings)  # observability (Epic 9)
     configure_tracing()  # observability (Epic 9): no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set
-    checkpoint_store = JsonPortfolioCheckpointStore(Path(args.checkpoint_path))
+    # --- risk plane (Epic 7) ---
+    install_signal_handler()
+    kill_switch = KillSwitch.from_settings(settings)
+    circuit_breaker = StrategyCircuitBreaker.from_settings(settings)
+    risk_audit = JsonlRiskAuditTrail(Path(args.risk_audit_path))
+    checkpoint_store = JsonPortfolioCheckpointStore(
+        Path(args.checkpoint_path), circuit_breaker=circuit_breaker
+    )
     portfolio = await checkpoint_store.load()
     if portfolio is None:
         portfolio = InMemoryPortfolioBook(settings.paper_starting_nav_usd)
@@ -304,6 +329,10 @@ async def _main_async(args: argparse.Namespace) -> None:
         on_result=FanoutResultSink(tuple(sinks)),
         checkpoint_store=checkpoint_store,
         candle_sink=candle_sink,  # persistence (Epic 2)
+        # --- risk plane (Epic 7) ---
+        kill_switch=kill_switch,
+        circuit_breaker=circuit_breaker,
+        risk_audit=risk_audit,
     )
     try:
         await service.run()

@@ -4,13 +4,18 @@ from dataclasses import dataclass, field
 
 import structlog
 
+from traderstack.config import Settings
 from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
 from traderstack.health import RuntimeHealth
+
+# --- risk plane (Epic 7) ---
+from traderstack.killswitch import KillSwitch
 from traderstack.metrics import (  # --- observability (Epic 9) ---
     record_event_sink_failure,
     record_portfolio_snapshot,
 )
 from traderstack.portfolio import InMemoryPortfolioBook
+from traderstack.risk_audit import JsonlRiskAuditTrail
 from traderstack.runtime import PaperRuntime, RuntimeResult
 
 _log = structlog.get_logger("traderstack.service")  # observability (Epic 9)
@@ -31,6 +36,14 @@ class ContinuousPaperService:
     on_portfolio: PortfolioHandler | None = None
     execution_ledger: ExecutionLedger | None = None
     health: RuntimeHealth = field(default_factory=RuntimeHealth)
+    # --- risk plane (Epic 7) ---
+    # Out-of-process operator halt, re-probed at the start of every cycle and
+    # consulted live by the risk engine.
+    kill_switch: KillSwitch | None = None
+    # Append-only hash-chained record of every risk decision the cycle produced.
+    risk_audit: JsonlRiskAuditTrail | None = None
+    # The limits in force, stamped into each audit record.
+    settings: Settings | None = None
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
     _cycle: int = field(default=0, init=False)  # observability (Epic 9): monotonic cycle counter
 
@@ -51,11 +64,30 @@ class ContinuousPaperService:
             if not self._stop_event.is_set():
                 await self._sleep_or_stop(self.cycle_interval_seconds)
 
+    # --- risk plane (Epic 7) ---
+    async def _refresh_kill_switch(self) -> None:
+        """Re-evaluate the operator halt at the start of every cycle."""
+
+        if self.kill_switch is not None:
+            await self.kill_switch.refresh()
+
+    async def _record_risk_decision(self, result: RuntimeResult) -> None:
+        """Append this cycle's risk decision to the immutable audit trail."""
+
+        if self.risk_audit is None or self.settings is None:
+            return
+        proposal = result.pipeline.proposal
+        risk_result = result.pipeline.risk_result
+        if proposal is None or risk_result is None:
+            return
+        await self.risk_audit.arecord(proposal, risk_result, self.settings)
+
     async def _run_symbol_safely(self, symbol: str) -> None:
         self._cycle += 1  # observability (Epic 9)
         decision_id = None  # observability (Epic 9)
         log = _log.bind(symbol=symbol, cycle=self._cycle)  # observability (Epic 9)
         try:
+            await self._refresh_kill_switch()  # --- risk plane (Epic 7) ---
             result = await self.runtime.run_once(
                 symbol,
                 self.portfolio.snapshot(),
@@ -101,6 +133,8 @@ class ContinuousPaperService:
                         requested_quantity=receipt.amount,
                     )
                 )
+
+            await self._record_risk_decision(result)  # --- risk plane (Epic 7) ---
 
             if self.on_result is not None:
                 try:

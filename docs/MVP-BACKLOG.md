@@ -61,15 +61,20 @@
 - [x] prompt/version registry
 
 ## Epic 7 — Portfolio and Risk
-- [ ] NAV/position service
-- [ ] volatility-based sizing
-- [ ] exposure limits
-- [ ] liquidity/spread constraints
-- [ ] max daily loss
-- [ ] max account drawdown
-- [ ] strategy circuit breaker
-- [ ] kill-switch API
-- [ ] immutable risk-decision audit trail
+- [x] NAV/position service (`portfolio.py`; daily PnL now anchored at UTC midnight)
+- [x] volatility-based sizing
+- [x] exposure limits (gross, per-position, max simultaneous positions, cash reserve)
+- [x] liquidity/spread constraints
+- [x] max daily loss
+- [x] max account drawdown
+- [x] strategy circuit breaker (`circuit_breaker.py`)
+- [x] kill-switch API (`killswitch.py`; sentinel file, Redis key, SIGUSR1, setting)
+- [x] immutable risk-decision audit trail (`risk_audit.py`; SHA-256 chained JSONL)
+- [x] stale-state shutdown
+- [x] policy versioning derived from the risk limits in force
+
+See the "Implemented controls" table in docs/RISK-PRINCIPLES.md for the setting
+and reason string behind each control.
 
 ## Epic 8 — Execution
 - [ ] Hummingbot API integration
