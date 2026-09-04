@@ -52,6 +52,10 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
+      # Upgrade the runner's own pip/setuptools first: pip-audit audits the whole
+      # resolved environment, and a stale runner pip carries advisories that would
+      # keep this gate permanently red regardless of the project's dependencies.
+      - run: python -m pip install --upgrade pip setuptools wheel
       - run: pip install -e '.[dev]'
       - name: pip-audit (resolved environment)
         run: pip-audit --skip-editable --progress-spinner off
