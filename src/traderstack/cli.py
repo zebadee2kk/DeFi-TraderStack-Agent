@@ -1,8 +1,10 @@
 import argparse
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 from prometheus_client import start_http_server
 from pydantic import SecretStr
 from redis.asyncio import Redis
@@ -54,7 +56,12 @@ from traderstack.market.intelligence_providers import (
 )
 from traderstack.market.kraken_candles import KrakenCandleProvider
 from traderstack.market.perplexity import PerplexityNewsProvider
-from traderstack.market.providers import BookSnapshotProvider, VenueMarketDataProvider
+from traderstack.market.providers import (
+    BookSnapshotProvider,
+    CandleHistoryProvider,
+    ReferencePriceProvider,
+    VenueMarketDataProvider,
+)
 from traderstack.market.registry import (
     ProviderRegistry,
     RegisteredCandleHistoryProvider,
@@ -75,6 +82,30 @@ from traderstack.tracing import configure_tracing  # observability (Epic 9)
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
 CandleSink = Callable[[tuple[Candle, ...]], Awaitable[None]]  # persistence (Epic 2)
+
+
+# --- paper-trading acceptance (Epic 10) ---
+@dataclass(frozen=True)
+class ServiceOverrides:
+    """Doubles for the *external edges* of the service, used by `traderstack-soak`.
+
+    Only the network-facing providers and the venue HTTP client are replaceable.
+    Everything the acceptance drills are actually about -- pipeline, risk engine,
+    pre-trade gate, planner, submitter, ledger, reconcilers, kill switch, audit
+    trails -- is still built here exactly as it is for a live paper run, which is
+    the entire point of running the soak through `build_service` rather than a
+    parallel assembly.
+    """
+
+    venue: VenueMarketDataProvider | None = None
+    references: tuple[ReferencePriceProvider, ...] | None = None
+    candles: CandleHistoryProvider | None = None
+    symbols: tuple[str, ...] | None = None
+    #: Shared httpx client for the Hummingbot executor and both reconcilers.
+    venue_client: httpx.AsyncClient | None = None
+
+
+# --- end paper-trading acceptance (Epic 10) ---
 
 
 def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
@@ -278,9 +309,14 @@ def build_service(
     # --- execution hardening (Epic 8) ---
     execution_ledger: ExecutionLedger | None = None,
     ledger_store: JsonExecutionLedgerStore | None = None,
+    # --- paper-trading acceptance (Epic 10) ---
+    overrides: ServiceOverrides | None = None,
 ) -> ContinuousPaperService:
     if settings.trading_mode != "paper":
         raise RuntimeError("continuous paper service requires TRADING_MODE=paper")
+
+    # --- paper-trading acceptance (Epic 10) ---
+    venue_client = overrides.venue_client if overrides is not None else None
 
     executor = None
     # --- execution hardening (Epic 8) ---
@@ -298,6 +334,7 @@ def build_service(
             account_name=settings.hummingbot_account_name,
             connector_name=settings.hummingbot_connector_name,
             timeout_seconds=settings.execution_submit_timeout_seconds,
+            client=venue_client,  # paper-trading acceptance (Epic 10)
         )
         # Reconcilers double as the retry gate: nothing is resubmitted until one
         # of them has confirmed the venue does not know the client order id.
@@ -307,6 +344,7 @@ def build_service(
             password=password,
             account_name=settings.hummingbot_account_name,
             connector_name=settings.hummingbot_connector_name,
+            client=venue_client,  # paper-trading acceptance (Epic 10)
         )
         portfolio_reconciler = HummingbotPortfolioReconciler(
             base_url=settings.hummingbot_api_url,
@@ -315,6 +353,7 @@ def build_service(
             account_name=settings.hummingbot_account_name,
             connector_name=settings.hummingbot_connector_name,
             max_nav_difference_bps=settings.max_nav_drift_bps,
+            client=venue_client,  # paper-trading acceptance (Epic 10)
         )
         if execution_ledger is None:
             execution_ledger = ExecutionLedger()
@@ -338,7 +377,9 @@ def build_service(
         pretrade_gate = build_pretrade_gate(settings)
         # --- providers (Epic 2/3): provider health, quota and caching wrapper --
         candle_provider = RegisteredCandleHistoryProvider(
-            KrakenCandleProvider(),
+            overrides.candles
+            if overrides is not None and overrides.candles is not None
+            else KrakenCandleProvider(),
             build_provider_registry(
                 settings,
                 "kraken_candles",
@@ -395,30 +436,52 @@ def build_service(
 
     # --- providers (Epic 2/3): provider health, quota and caching wrapper ------
     reference_registry_kwargs = {"cache_ttl_seconds": settings.reference_price_cache_seconds}
+    # (registry name, provider, calls/minute, calls/day)
+    reference_specs: tuple[tuple[str, ReferencePriceProvider, int | None, int | None], ...] = (
+        (
+            "coingecko",
+            CoinGeckoPriceProvider(api_key=_secret(settings.coingecko_api_key)),
+            settings.coingecko_calls_per_minute,
+            settings.coingecko_calls_per_day,
+        ),
+        (
+            "coinmarketcap",
+            CoinMarketCapPriceProvider(api_key=_secret(settings.coinmarketcap_api_key)),
+            settings.coinmarketcap_calls_per_minute,
+            settings.coinmarketcap_calls_per_day,
+        ),
+    )
+    # --- paper-trading acceptance (Epic 10) ---
+    if overrides is not None:
+        if overrides.venue is not None:
+            venue = overrides.venue
+        if overrides.symbols is not None:
+            symbols = overrides.symbols
+        if overrides.references is not None:
+            # Substituted providers keep the real registry wrapper (timeout,
+            # breaker, cache) but carry no vendor quota, since they are not the
+            # vendor.
+            reference_specs = tuple(
+                (f"reference_{index}", source, None, None)
+                for index, source in enumerate(overrides.references)
+            )
+    # --- end paper-trading acceptance (Epic 10) ---
+    references = tuple(
+        RegisteredReferencePriceProvider(
+            source,
+            build_provider_registry(
+                settings,
+                name,
+                calls_per_minute=per_minute,
+                calls_per_day=per_day,
+                **reference_registry_kwargs,
+            ),
+        )
+        for name, source, per_minute, per_day in reference_specs
+    )
     runtime = PaperRuntime(
         venue=venue,
-        references=(
-            RegisteredReferencePriceProvider(
-                CoinGeckoPriceProvider(api_key=_secret(settings.coingecko_api_key)),
-                build_provider_registry(
-                    settings,
-                    "coingecko",
-                    calls_per_minute=settings.coingecko_calls_per_minute,
-                    calls_per_day=settings.coingecko_calls_per_day,
-                    **reference_registry_kwargs,
-                ),
-            ),
-            RegisteredReferencePriceProvider(
-                CoinMarketCapPriceProvider(api_key=_secret(settings.coinmarketcap_api_key)),
-                build_provider_registry(
-                    settings,
-                    "coinmarketcap",
-                    calls_per_minute=settings.coinmarketcap_calls_per_minute,
-                    calls_per_day=settings.coinmarketcap_calls_per_day,
-                    **reference_registry_kwargs,
-                ),
-            ),
-        ),
+        references=references,
         pipeline=pipeline,
         executor=executor,
         candles=candle_provider,

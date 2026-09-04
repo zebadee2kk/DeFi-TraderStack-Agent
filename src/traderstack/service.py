@@ -170,6 +170,16 @@ class ContinuousPaperService:
 
             await self._record_risk_decision(result)  # --- risk plane (Epic 7) ---
 
+            # --- paper-trading acceptance (Epic 10) ---
+            # The portfolio checkpoint is written BEFORE the event fan-out. It is
+            # the local, durable state a restart resumes from, whereas on_result
+            # fans out to remote sinks (Postgres/Redis) that can be down for a
+            # long time. Persisting it afterwards let a database outage freeze
+            # the checkpoint while the execution ledger -- persisted by the
+            # submitter regardless -- kept advancing, so a restart during the
+            # outage resumed a book that no longer matched its own orders.
+            if self.on_portfolio is not None:
+                await self.on_portfolio(self.portfolio)
             if self.on_result is not None:
                 try:
                     await self.on_result(result)
@@ -178,8 +188,6 @@ class ContinuousPaperService:
                 ):  # observability (Epic 9): count sink failures, keep failing loudly
                     record_event_sink_failure("on_result")
                     raise
-            if self.on_portfolio is not None:
-                await self.on_portfolio(self.portfolio)
             self.health.record_success(symbol)
         except asyncio.CancelledError:
             raise

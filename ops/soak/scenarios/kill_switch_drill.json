@@ -1,0 +1,12 @@
+{
+  "name": "kill_switch_drill",
+  "description": "The runbook kill-switch drill as a soak scenario: the sentinel file appears mid-run and is cleared later. Expected: every cycle inside the window is rejected with kill_switch_enabled and places no order, decisions and audit records keep being written, and trading resumes cleanly afterwards.",
+  "seed": 3,
+  "symbols": ["BTC/USD"],
+  "cycles": 30,
+  "submit": true,
+  "expects_rejections": true,
+  "faults": [
+    {"fault": "kill_switch_file", "arm_at_cycle": 10, "disarm_at_cycle": 20}
+  ]
+}

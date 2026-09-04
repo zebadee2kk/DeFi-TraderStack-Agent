@@ -47,6 +47,10 @@ traderstack-resume = "traderstack.killswitch:resume_main"
 traderstack-research = "traderstack.research.cli:main"
 traderstack-download-candles = "traderstack.research.download_candles:main"
 traderstack-check-config = "traderstack.cli_check:main"
+# Paper-trading acceptance (Epic 10): the soak runner and the paper
+# performance-versus-baselines report. Both are offline by construction.
+traderstack-soak = "traderstack.acceptance.soak:main"
+traderstack-paper-report = "traderstack.acceptance.report:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

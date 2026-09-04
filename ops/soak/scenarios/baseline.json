@@ -1,0 +1,11 @@
+{
+  "name": "baseline",
+  "description": "No faults. The reference run: every cycle reaches a risk decision, submits at most one order per decision, reconciles clean and leaves a verifiable audit chain.",
+  "seed": 7,
+  "symbols": ["BTC/USD"],
+  "cycles": 40,
+  "cycle_seconds": 0.0,
+  "submit": true,
+  "starting_nav_usd": 10000.0,
+  "faults": []
+}
