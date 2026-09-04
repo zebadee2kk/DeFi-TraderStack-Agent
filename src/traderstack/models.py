@@ -27,6 +27,7 @@ class TradeProposal(BaseModel):
     thesis: str
     signal_ids: list[str] = Field(default_factory=list)
     source_freshness_seconds: float = Field(ge=0)
+    signal_version: str | None = None
 
 
 class PortfolioSnapshot(BaseModel):

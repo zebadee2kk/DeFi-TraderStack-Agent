@@ -1,9 +1,15 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 
 from traderstack.backtest import BacktestMetrics, BaselineBacktester
 from traderstack.candles import Candle
+
+# Given the train-window candles only, return a (possibly parameter-tuned)
+# backtester to evaluate on the held-out test window. Must never be handed
+# anything past the train window's end.
+FitHook = Callable[[tuple[Candle, ...]], BaselineBacktester]
 
 
 class WalkForwardFold(BaseModel):
@@ -28,6 +34,7 @@ class WalkForwardEvaluator:
     train_size: int = 180
     test_size: int = 60
     step_size: int = 60
+    fit: FitHook | None = None
 
     def evaluate(self, candles: tuple[Candle, ...]) -> WalkForwardReport:
         if self.train_size <= self.backtester.warmup:
@@ -46,7 +53,11 @@ class WalkForwardEvaluator:
             if test_end > len(candles):
                 break
             test_slice = candles[test_start:test_end]
-            metrics = self.backtester.run(test_slice)
+            backtester = self.backtester
+            if self.fit is not None:
+                train_slice = candles[train_start:train_end]
+                backtester = self.fit(train_slice)
+            metrics = backtester.run(test_slice)
             folds.append(
                 WalkForwardFold(
                     train_start=train_start,

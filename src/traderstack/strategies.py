@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from traderstack.candles import Candle
 from traderstack.indicators import momentum, moving_average, realized_volatility, zscore
 from traderstack.models import Side
+from traderstack.signal_registry import version_of
 
 
 class Regime(StrEnum):
@@ -23,6 +24,7 @@ class StrategySignal(BaseModel):
     confidence: float = Field(ge=0, le=1)
     regime: Regime
     rationale: str
+    signal_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -150,8 +152,7 @@ class StrategyEnsemble:
         )
         return regime, signals
 
-    @staticmethod
-    def consensus(signals: tuple[StrategySignal, ...]) -> StrategySignal | None:
+    def consensus(self, signals: tuple[StrategySignal, ...]) -> StrategySignal | None:
         actionable = [signal for signal in signals if signal.side is not None]
         if not actionable:
             return None
@@ -170,4 +171,5 @@ class StrategyEnsemble:
             confidence=confidence,
             regime=selected[0].regime,
             rationale="; ".join(signal.rationale for signal in selected),
+            signal_version=version_of(self),
         )
