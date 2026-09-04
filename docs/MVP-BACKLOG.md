@@ -94,14 +94,22 @@ and reason string behind each control.
 - [x] decision-to-fill trace view
 
 ## Epic 10 — Paper-Trading Acceptance
-- [ ] 24/7 soak test
-- [ ] forced provider outages
-- [ ] forced database restart
-- [ ] stale-data test
-- [ ] duplicate-order test
-- [ ] risk-service failure test
-- [ ] kill-switch drill
-- [ ] paper performance report versus baselines
+- [ ] 24/7 soak test — **the runner exists and is tested; the 24-hour window itself has not been run.** `traderstack-soak --seconds 86400 --workdir var/soak --report var/soak/report.json` drives the real `cli.build_service` wiring against a seeded synthetic market with optional scheduled fault injection, and emits a machine-readable acceptance report. See docs/RUNBOOK.md, "24/7 acceptance soak", for the procedure and the pass criteria.
+- [x] forced provider outages (`tests/acceptance/test_provider_outages.py`)
+- [x] forced database restart (`tests/acceptance/test_database_restart.py`)
+- [x] stale-data test (`tests/acceptance/test_stale_data.py`)
+- [x] duplicate-order test (`tests/acceptance/test_duplicate_order.py`)
+- [x] risk-service failure test (`tests/acceptance/test_risk_service_failure.py`)
+- [x] kill-switch drill (`tests/acceptance/test_kill_switch_drill.py`)
+- [x] reconciliation-drift drill (`tests/acceptance/test_reconciliation_drift.py`)
+- [x] audit-integrity drill (`tests/acceptance/test_audit_integrity.py`)
+- [x] paper performance report versus baselines (`traderstack-paper-report`, `src/traderstack/acceptance/report.py`)
+
+The drills share the fault-injection harness in `src/traderstack/acceptance/faults.py`
+(each fault is an object with `arm()`/`disarm()` and a fired counter) and the seeded
+synthetic market in `src/traderstack/acceptance/market.py`. Every drill drives a real
+`ContinuousPaperService`; only the network edges are faked. See docs/EVALUATION-FRAMEWORK.md,
+"Acceptance drills", for what each drill asserts.
 
 ## MVP Exit Criteria
 

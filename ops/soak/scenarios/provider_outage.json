@@ -1,0 +1,22 @@
+{
+  "name": "provider_outage",
+  "description": "Reference, candle and intelligence providers fail in sequence, plus a stale tick, a stale candle history, a venue 5xx and a venue timeout. Expected: one reference down still trades; both down rejects with no_independent_reference_price; candle history down rejects with missing_candle_history; intelligence down only degrades the cycle; the provider circuit breaker opens and then recovers; an unanswered submission stays uncertain rather than being blindly retried.",
+  "seed": 11,
+  "symbols": ["BTC/USD"],
+  "cycles": 60,
+  "submit": true,
+  "expects_rejections": true,
+  "settings": {
+    "provider_breaker_cooldown_seconds": 0.05
+  },
+  "faults": [
+    {"fault": "coingecko_reference_error", "arm_at_cycle": 5, "disarm_at_cycle": 15},
+    {"fault": "coinmarketcap_reference_error", "arm_at_cycle": 10, "disarm_at_cycle": 15},
+    {"fault": "candles_history_error", "arm_at_cycle": 20, "disarm_at_cycle": 26},
+    {"fault": "intelligence_error", "arm_at_cycle": 30, "disarm_at_cycle": 34},
+    {"fault": "venue_feed_stale", "arm_at_cycle": 38, "times": 2},
+    {"fault": "candles_history_stale", "arm_at_cycle": 42, "times": 2},
+    {"fault": "venue_submit_server_error", "arm_at_cycle": 48, "times": 1},
+    {"fault": "venue_submit_timeout", "arm_at_cycle": 52, "times": 1}
+  ]
+}

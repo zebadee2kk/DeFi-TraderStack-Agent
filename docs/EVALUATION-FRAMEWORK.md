@@ -101,4 +101,60 @@ The research harness (Epic 5) and the signal registry (Epic 4) are implemented i
 
 **Research CLI.** `traderstack-research` (`research/cli.py`) loads candles from a JSON file or live from `KrakenCandleProvider`, runs backtest + walk-forward + baselines + attribution, and prints a table or (`--json`) machine-readable output. `traderstack-download-candles` (`research/download_candles.py`) pages Kraken's public Spot OHLC REST endpoint (`GET https://api.kraken.com/0/public/OHLC`, **verified** against `docs.kraken.com/api/docs/rest-api/get-ohlc-data`) forward via `since`/`last`, respecting the documented 720-candles-per-call cap, and always drops the trailing not-yet-committed bar.
 
+## Acceptance drills
+
+Stage 4 (Paper Trading) is not "we ran it and nothing crashed". Before a paper run
+counts as evidence, the system has to be shown failing *correctly*: the documented
+fail-closed behaviour in docs/RISK-PRINCIPLES.md ("Failure behaviour") and
+docs/SECURITY-THREAT-MODEL.md ("Failure Policy") has to be observable on demand,
+not merely asserted in prose.
+
+Epic 10 turns each of those failure modes into an automated drill. Every drill
+drives a real `ContinuousPaperService` — real pipeline, real deterministic risk
+engine, real pre-trade gate, real planner/submitter/ledger, real reconcilers, real
+hash-chained audit trail — for a bounded number of cycles. The only fakes are the
+network edges:
+
+- `src/traderstack/acceptance/market.py` — a seeded synthetic random-walk market
+  (candles + ticks). One seed reproduces a run exactly.
+- `src/traderstack/acceptance/faults.py` — a fault-injection wrapper for every
+  external dependency. Each fault is an object with `arm()`/`disarm()` and a
+  counter of how many times it *actually fired*, so a drill asserts the failure
+  happened rather than assuming the wiring reached it.
+
+| Drill | File | What it proves |
+|---|---|---|
+| Forced provider outages | `tests/acceptance/test_provider_outages.py` | One reference down still trades on the other; all references down rejects with `no_independent_reference_price`; candle history down (error or empty) rejects with `missing_candle_history`; intelligence down only degrades the cycle (`intelligence_error` recorded, `no_external_intelligence` when `INTELLIGENCE_REQUIRED`); a hang is a failure, not an answer; the provider circuit breaker opens after `PROVIDER_FAILURE_THRESHOLD` and stops calling the provider; the meta-agent unavailable suppresses the order in veto mode and changes nothing in advisory mode. |
+| Forced database restart | `tests/acceptance/test_database_restart.py` | An event-sink outage is counted (`traderstack_event_sink_failures_total`), never swallowed; it resubmits nothing; the portfolio checkpoint keeps advancing; persistence resumes unattended; a permanent outage stops the service. |
+| Stale data | `tests/acceptance/test_stale_data.py` | `stale_primary_tick`, `stale_candle_history` and `stale_portfolio_state` each block new risk on their own, and the refusals reach the risk audit trail. |
+| Duplicate orders | `tests/acceptance/test_duplicate_order.py` | One decision, at most one venue order — offered twice in-process and again after a restart that reloads the ledger from disk. Also names the one way the guard can be lost: deleting the ledger file. |
+| Risk-service failure | `tests/acceptance/test_risk_service_failure.py` | A raising risk engine produces no order, records an error cycle, increments the health counter, writes nothing to the audit trail, and stops the service after `max_consecutive_errors`. |
+| Kill-switch drill | `tests/acceptance/test_kill_switch_drill.py` | A sentinel file created mid-run halts the very next cycle with `kill_switch_enabled`, the `traderstack_kill_switch_engaged` gauge flips, `traderstack-resume` releases it and trading resumes; halted cycles are still audited; SIGUSR1 halts and deliberately cannot be cleared in-process. |
+| Reconciliation drift | `tests/acceptance/test_reconciliation_drift.py` | NAV drift and order-state conflicts block *submission only* — decisions, sizing and auditing continue — and the block clears only after a fully clean pass. |
+| Audit integrity | `tests/acceptance/test_audit_integrity.py` | After a run the hash chain verifies, every submitted order maps to both a risk-audit record and a runtime event, the chain survives a restart, and an edited or removed line fails verification. |
+
+### Soak runs
+
+`traderstack-soak` runs the same wiring for `--cycles N` or `--seconds T`, optionally
+following a JSON scenario that arms and disarms faults at chosen cycles
+(`ops/soak/scenarios/{baseline,provider_outage,kill_switch_drill}.json`), and emits a
+machine-readable acceptance report: cycles, outcomes by rejection reason, risk decisions,
+orders/receipts/ledger states, reconciliations, faults fired, provider breaker states,
+health, audit-chain verification and a Prometheus snapshot. Operator procedure and pass
+criteria: docs/RUNBOOK.md, "24/7 acceptance soak".
+
+### Paper performance versus baselines
+
+`traderstack-paper-report` (`src/traderstack/acceptance/report.py`) closes the loop
+between a paper run and the Baselines section above. It reads the runtime audit JSONL
+and the execution ledger, reconstructs the paper equity curve and FIFO round trips,
+scores them with the *same* `BacktestMetrics` statistics the research harness uses (so
+the numbers are safe to subtract), runs `research.baselines` over the same period's
+candles, and prints the excess per baseline plus the `research.attribution` report.
+
+Two honesty constraints are built in: nothing is inferred that the audit trail does not
+record — paper receipts carry no fees, so fees are zero unless `--fee-bps` explicitly
+estimates them, and the report says so — and orders that were submitted but never
+reconciled to a fill are excluded rather than assumed to have traded.
+
 **Not yet implemented:** Freqtrade research integration, on-chain/social/narrative feature pipelines, news/event classifier, regime classifier v1 (the existing `RegimeClassifier` is a simple MVP version, not the Epic 4 deliverable), survivorship-bias review, and shadow-live/tiny-capital-pilot stages (5–6).

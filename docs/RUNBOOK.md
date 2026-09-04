@@ -155,6 +155,115 @@ disengaged by accident.
 `KILL_SWITCH=true`, restart, and confirm every subsequent audit line shows
 `"rejection_reasons":["kill_switch_enabled"]` before you rely on it in an incident.
 
+The same drill runs automatically against a live service in
+`tests/acceptance/test_kill_switch_drill.py` (sentinel created mid-run, gauge flips,
+`traderstack-resume` releases it, trading resumes), and as a soak scenario:
+`traderstack-soak --scenario ops/soak/scenarios/kill_switch_drill.json`. Running those
+is not a substitute for throwing the switch on the real deployment you depend on, but a
+failure in either means the switch is broken before you get there.
+
+## 24/7 acceptance soak
+
+The MVP exit criteria require "at least one continuous 24/7 test window". The
+`traderstack-soak` entry point is how you produce the evidence for it. It runs the
+**real** service wiring — the same `cli.build_service` a live paper run uses, so the
+same pipeline, deterministic risk engine, pre-trade gate, execution planner, idempotent
+submitter, execution ledger, reconcilers, kill switch and hash-chained audit trails —
+against a seeded synthetic market instead of live providers. It needs no network, no
+database and no vendor credentials, so it can be left running anywhere.
+
+```bash
+# 24-hour window, one cycle every 5 seconds, JSON report written at the end
+.venv/bin/traderstack-soak \
+  --seconds 86400 \
+  --cycle-seconds 5 \
+  --workdir var/soak \
+  --report var/soak/report.json
+```
+
+Useful variations:
+
+```bash
+# A quick smoke run before committing to 24 hours
+.venv/bin/traderstack-soak --cycles 200 --workdir var/soak
+
+# The shipped scenarios: clean baseline, provider outages, kill-switch drill
+.venv/bin/traderstack-soak --scenario ops/soak/scenarios/baseline.json --seconds 86400
+.venv/bin/traderstack-soak --scenario ops/soak/scenarios/provider_outage.json --cycles 60
+.venv/bin/traderstack-soak --scenario ops/soak/scenarios/kill_switch_drill.json --cycles 30
+
+# Multi-symbol, different market path
+.venv/bin/traderstack-soak --seconds 86400 --symbols BTC/USD,ETH/USD --seed 99
+```
+
+A scenario file pins the market (`seed`, `drift`, `volatility`, `history`), the duration,
+any `Settings` overrides, and a fault schedule — each entry names a fault, the cycle it
+arms at, and either the cycle it disarms at or how many activations it gets. `--cycles`,
+`--seconds`, `--seed` and `--symbols` on the command line override the file.
+
+The run writes into `--workdir` (default `var/soak`) exactly what a real paper run
+writes: `audit/runtime.jsonl`, `audit/risk_decisions.jsonl`, `state/execution_ledger.json`
+and `state/portfolio.json`.
+
+**What "pass" means.** The runner exits `0` only when every criterion below holds, and
+prints any that failed under `Result` (also in `failures[]` in the JSON report):
+
+- cycles actually ran;
+- the risk-decision hash chain verifies end to end (`risk_audit.verify_chain`);
+- every risk decision made reached the audit trail;
+- no decision produced more than one venue order, and there are never more receipts
+  than venue submissions — i.e. the idempotency guard held for the whole window;
+- runtime events were persisted (unless a sink-failure fault was deliberately armed).
+
+Rejections are **not** failures. A window full of `no_independent_reference_price`,
+`stale_primary_tick` or `kill_switch_enabled` is the system doing its job; read the
+`rejection_reasons` and `risk_reasons` maps in the report to see which control fired
+and how often. What you are looking for in a 24-hour report is:
+
+- `health.healthy: true` and `health.consecutive_errors: 0` at the end;
+- `outcomes.error_cycles` at or near zero (an error cycle is an *exception*, not a
+  rejection);
+- `reconciliations.blocked: 0`, or blocks that cleared;
+- `provider_breakers` all `closed` at the end;
+- `ledger_orders == orders_submitted`, and every order in a terminal or open state you
+  can explain.
+
+Keep `var/soak/report.json` alongside the audit trail: together they are the artefact
+that satisfies the exit criterion, and `traderstack-paper-report` (below) turns the same
+files into the performance comparison.
+
+## Paper performance versus baselines
+
+After a paper run (or a soak), reconstruct what it actually achieved and compare it with
+the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:
+
+```bash
+.venv/bin/traderstack-paper-report \
+  --audit-path var/audit/runtime.jsonl \
+  --ledger-path var/state/execution_ledger.json \
+  --candles var/research/btc_1h.json \
+  --fee-bps 15
+```
+
+It rebuilds the paper equity curve from the audit trail's ticks and the ledger's fills,
+matches buys and sells FIFO into round trips, scores them with the same metrics the
+research harness uses, and prints the excess over buy-and-hold, time-series momentum,
+moving-average trend, mean reversion and the volatility-targeted benchmark, followed by
+the attribution table. `--json` emits the same thing machine-readably.
+
+Two things it will not do, by design:
+
+- It never invents fees. Paper receipts carry no fee data, so fees are `0` unless you
+  pass `--fee-bps` to *estimate* them — and the report states which it used. Compare
+  net-of-cost numbers only when you supplied a cost.
+- It never assumes an unfilled order traded. Orders that were submitted but never
+  reconciled to a fill are excluded, so a report showing "no fills" means reconciliation
+  never confirmed one — check the ledger states, not the report.
+
+Candles come from a JSON file (`--candles`, produced by `traderstack-download-candles`)
+or, with `--candle-store`, from the Postgres candle store populated by
+`--persistent-events`.
+
 ## Key rotation
 
 1. Generate the new credential at the provider (exchange/venue subaccount API key,
@@ -356,9 +465,12 @@ Symptoms: `HummingbotPortfolioReconciler.reconcile` returns `matched: false`, or
 
 1. Treat this as the reconciliation-failure case in
    `docs/SECURITY-THREAT-MODEL.md` ("Failure Policy"): position state that cannot
-   be reconciled should block new risk. Engage the kill switch
-   (`KILL_SWITCH=true` + restart, see above) while you investigate — the runtime
-   does not yet auto-halt on drift, so this step is on the operator today.
+   be reconciled blocks new risk. The runtime already does this itself — a failed
+   pass sets `RuntimeHealth.reconciliation_blocked` (gauge
+   `traderstack_reconciliation_blocked`), which stops *submission* while decisions,
+   sizing and auditing keep running, and clears on the next clean pass
+   (`tests/acceptance/test_reconciliation_drift.py`). Engage the kill switch anyway
+   if you want decisions to stop as well while you investigate.
 2. Compare `ReconciliationResult.internal_nav_usd` vs. `external_nav_usd` and the
    `reasons` list to see whether it's a stale local checkpoint, a missed fill, or
    a genuine venue-side discrepancy.
