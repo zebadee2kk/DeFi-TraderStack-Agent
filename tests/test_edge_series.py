@@ -1,8 +1,9 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 
+from traderstack.candles import Candle
 from traderstack.research.candidates import FeatureZVoter
 from traderstack.research.edge_series import (
     fetch_binance_funding,
@@ -74,9 +75,20 @@ async def test_okx_funding_parses_pages() -> None:
 
 
 def test_feature_z_voter_uses_per_symbol_series() -> None:
-    from tests.test_strategy_search import downtrend
-
-    candles = downtrend(40)
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    candles = tuple(
+        Candle(
+            symbol="BTC/USD",
+            interval="1h",
+            opened_at=start + timedelta(hours=index),
+            open=200.0 - 0.25 * index,
+            high=201.0 - 0.25 * index,
+            low=199.0 - 0.25 * index,
+            close=200.0 - 0.25 * index,
+            volume=1_000 + index,
+        )
+        for index in range(40)
+    )
     btc = tuple((c.opened_at, 0.0 if index < 39 else 8.0) for index, c in enumerate(candles))
     eth = tuple((c.opened_at, 0.0 if index < 39 else -8.0) for index, c in enumerate(candles))
     voter = FeatureZVoter(
