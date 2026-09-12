@@ -33,6 +33,7 @@ a missing pair day is omitted, never zero-filled.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from itertools import pairwise
 
 from pydantic import BaseModel, Field
 
@@ -159,7 +160,7 @@ def btc_minus_eth_residual(
     if len(common) < 2:
         return ()
     out: list[tuple[datetime, float]] = []
-    for previous, current in zip(common, common[1:], strict=False):
+    for previous, current in pairwise(common):
         btc_prev = btc_close[previous]
         eth_prev = eth_close[previous]
         btc_now = btc_close[current]
@@ -419,12 +420,8 @@ def run_relative_value_search(
         residual[-1][0].isoformat() if residual else None,
     )
 
-    catalog = (
-        candidates
-        if candidates is not None
-        else relative_value_candidates(residual=residual)
-    )
-    skipped = skipped_residual_families(residual if candidates is None else residual)
+    catalog = candidates if candidates is not None else relative_value_candidates(residual=residual)
+    skipped = skipped_residual_families(residual)
 
     raw_binance = binance_histories or {}
     sliced_binance = {
@@ -651,18 +648,16 @@ def _passer_table(rows: list[DualPrintRow], *, venue: str) -> list[str]:
 
 
 def render_relative_value_markdown(report: RelativeValueReport) -> str:
-    dual_rows = [row for row in report.rows if row.dual_print and row.candidate_id not in CONTROL_IDS]
+    dual_rows = [
+        row for row in report.rows if row.dual_print and row.candidate_id not in CONTROL_IDS
+    ]
     dual_rows.sort(key=lambda row: row.dual_print_rank or 10**9)
     kraken_rows = [
-        row
-        for row in report.rows
-        if row.kraken_combined and row.candidate_id not in CONTROL_IDS
+        row for row in report.rows if row.kraken_combined and row.candidate_id not in CONTROL_IDS
     ]
     kraken_rows.sort(key=lambda row: row.kraken_combined_rank or 10**9)
     binance_rows = [
-        row
-        for row in report.rows
-        if row.binance_combined and row.candidate_id not in CONTROL_IDS
+        row for row in report.rows if row.binance_combined and row.candidate_id not in CONTROL_IDS
     ]
     binance_rows.sort(key=lambda row: row.candidate_id)
     lines: list[str] = [
@@ -846,7 +841,9 @@ def render_relative_value_markdown(report: RelativeValueReport) -> str:
             "| --- | --- | :---: | :---: | :---: | ---: | ---: |",
         ]
     )
-    family_by_id = {item: ("control" if item in CONTROL_IDS else "relative_value") for item in CORE_IDS}
+    family_by_id = {
+        item: ("control" if item in CONTROL_IDS else "relative_value") for item in CORE_IDS
+    }
     for row in report.rows:
         family_by_id[row.candidate_id] = (
             "control" if row.candidate_id in CONTROL_IDS else row.family

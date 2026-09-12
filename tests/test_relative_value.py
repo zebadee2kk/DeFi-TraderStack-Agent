@@ -156,9 +156,7 @@ def test_catalog_and_bar_are_frozen_before_scoring() -> None:
     assert RELATIVE_VALUE_Z_THRESHOLDS == (1.0, 1.5, 2.0)
     assert SECOND_PRINT_BARS == 720
     assert DOCUMENTED_PRIMARY_FIRST_ISO == "2024-09-22T00:00:00+00:00"
-    catalog = relative_value_candidates(
-        residual=((datetime(2024, 1, 1, tzinfo=UTC), 0.01),) * 25
-    )
+    catalog = relative_value_candidates(residual=((datetime(2024, 1, 1, tzinfo=UTC), 0.01),) * 25)
     ids = [item.candidate_id for item in catalog]
     assert ids == list(CORE_IDS)
     assert ids == [
