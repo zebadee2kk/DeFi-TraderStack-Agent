@@ -45,6 +45,7 @@ traderstack-trace = "traderstack.trace_cli:main"
 traderstack-kill = "traderstack.killswitch:kill_main"
 traderstack-resume = "traderstack.killswitch:resume_main"
 traderstack-research = "traderstack.research.cli:main"
+traderstack-strategy-search = "traderstack.research.search_cli:main"
 traderstack-download-candles = "traderstack.research.download_candles:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper

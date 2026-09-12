@@ -126,6 +126,24 @@ def test_paper_research_keeps_two_voters_when_intel_configured() -> None:
     assert "min agreeing strategies=2" in item.detail
 
 
+def test_promote_searched_strategies_default_is_safe() -> None:
+    report = build_report(settings())
+    assert report.safe
+    item = next(i for i in report.items if "Promote searched strategies" in i.label)
+    assert item.value == "no"
+
+
+def test_promote_without_report_is_unsafe() -> None:
+    report = build_report(
+        settings(
+            paper_promote_searched_strategies=True,
+            paper_search_report_path="var/ops/does-not-exist.json",
+        )
+    )
+    assert not report.safe
+    assert any("PAPER_PROMOTE_SEARCHED_STRATEGIES" in w for w in report.warnings)
+
+
 def test_pretrade_gate_disabled_warns() -> None:
     report = build_report(settings(pretrade_backtest_enabled=False))
     assert not report.safe

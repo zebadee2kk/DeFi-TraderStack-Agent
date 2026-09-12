@@ -43,10 +43,13 @@ planned.** Docker/Postgres/Redis, benchmark strategies, backtest reporting
 (`research/leakage.py`), walk-forward (`walkforward.py`) and experiment
 attribution (`research/attribution.py`, `research/tuning.py`) are all
 implemented, exposed via `traderstack-research` and
-`traderstack-download-candles`. **Freqtrade integration was not built** — a
-purpose-built research harness was implemented instead; revisit only if
-Freqtrade's own connector/strategy ecosystem becomes worth the integration
-cost.
+`traderstack-download-candles`. `traderstack-strategy-search` adds a
+pre-registered catalog search (MA / momentum / mean-reversion, optional
+feature series) with fee-aware walk-forward + holdout and a promotion gate
+that stays off until a report shows WF excess > 0 after fees. **Freqtrade
+integration was not built** — a purpose-built research harness was
+implemented instead; revisit only if Freqtrade's own connector/strategy
+ecosystem becomes worth the integration cost.
 
 ## Phase 2 — Market-data and feature platform
 
