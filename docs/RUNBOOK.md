@@ -36,6 +36,7 @@ without activating the venv.
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
+| `traderstack-polymarket-weather-eval` | Fee-aware evaluation of that weather rule against `always_hold` and `fade_the_mid`. Dual independent prints (non-overlapping dates or disjoint resolution sources) are required before anyone may talk about promotion. Writes `docs/artifacts/strategy-search/polymarket-weather-eval.md`. Never flips `PAPER_PROMOTE_*`. Empty / negative is success. No CLOB orders. |
 
 ## Zero to paper trading
 
@@ -1600,12 +1601,41 @@ KILL_SWITCH=false TRADING_MODE=paper \
 
 `--fixtures-dir` needs no network. A live cycle (public GETs only) omits that
 flag. `traderstack-check-config` prints the weather block, including
-"paper intents only (no CLOB orders)".
+"paper intents only (no CLOB orders)" and the report-only eval CLI.
+
+### Fee-aware evaluation (report-only)
+
+`traderstack-polymarket-weather-eval` scores resolved rows (or writes the
+honest empty historical-tape report). It does **not** run inside
+`traderstack-paper`.
+
+```bash
+# Honest empty live tape (no PIT mid + official station-high series here)
+KILL_SWITCH=false TRADING_MODE=paper \
+  .venv/bin/traderstack-polymarket-weather-eval --empty-live
+
+# Offline calculator on fixture packs (still cannot promote; n is tiny)
+KILL_SWITCH=false TRADING_MODE=paper \
+  .venv/bin/traderstack-polymarket-weather-eval \
+    --resolved tests/fixtures/polymarket/resolved_print_a.json \
+    --resolved tests/fixtures/polymarket/resolved_print_b.json
+```
+
+`--empty-live` is the successful outcome when there is no public
+point-in-time CLOB mid + official ASOS/NCEI high tape. Do not invent
+historical mids from settlement prices (look-ahead). A single print
+cannot promote. Two independent prints that clear the calculator floor
+still do not flip a `PAPER_PROMOTE_*` flag — this CLI cannot write a
+pin. The pre-registered crypto overlay
+(`polymarket_weather_vs_btc_daily`) is skipped unless you pass
+`--btc-daily`; missing series is not invented.
 
 ### Do not trust claimed win rates
 
 Blog / social claims that "NWP vs Polymarket temperature" is a high-win-rate
 edge are **unvalidated** for this repo. A `WOULD_TRADE` row is a hypothesis,
-not alpha. Required A/B and walk-forward gates are in
-`docs/EVALUATION-FRAMEWORK.md` ("Polymarket weather — validation A/B"). Do not
-promote this module toward live CLOB trading from paper intents alone.
+not alpha. The eval CLI implements the calculator for gates 1 / 4 / 5 in
+`docs/EVALUATION-FRAMEWORK.md` ("Polymarket weather — validation A/B").
+Gates 2 (walk-forward parameter fit) and 3 (a full season of live paper
+A/B) are still not claimed. Do not promote this module toward live CLOB
+trading from paper intents or a single fixture pack.

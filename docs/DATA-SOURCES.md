@@ -225,6 +225,9 @@ still backtests on the base asset's Kraken USD candles.
 
 Read-only public APIs used by `traderstack-polymarket-weather-paper`. No
 credentials. Not on the crypto execution path.
+`traderstack-polymarket-weather-eval` does **not** invent a historical
+CLOB tape from these endpoints: closed Gamma events without a stored
+decision-time mid and an official station high are not scored.
 
 | Source | Role | Auth | Write |
 |---|---|---|---|

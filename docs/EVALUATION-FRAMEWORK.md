@@ -218,6 +218,26 @@ strategy.
 | 4. Station match | Same | Same | Drop any market whose resolution metadata (ASOS id, midnight-to-midnight local, °F rounding) cannot be paired to the NWP series used at decision time |
 | 5. Cost honesty | Mid ± half-spread − documented Polymarket taker fee | Fill at mid (forbidden as a primary metric) | Report both; promotion uses the conservative one |
 
-Until gates 1–5 are green, the only allowed statement is: "the paper ledger
-contains would-trade intents." Do not add a live CLOB path as a side effect
-of a later change.
+`traderstack-polymarket-weather-eval` is the report-only calculator for
+gates **1, 4 and 5**. It scores a pre-registered city allowlist (the #44
+warm/stable set) plus an optional crypto overlay
+(`polymarket_weather_vs_btc_daily`) that is skipped unless an aligned BTC
+daily close series is supplied. Primary PnL is conservative (mid ±
+half-spread − documented taker-fee haircut). Mid-fill is reported and
+cannot promote. Dual independent prints are pre-registered
+(`MULTI_PRINT_BAR_PREREGISTERED=true`): non-overlapping `event_date`
+sets, or overlapping dates with disjoint resolution sources. A single
+print cannot promote even if treatment excess is positive. This CLI
+never writes a `PAPER_PROMOTE_*` pin.
+
+This repository has **no** public point-in-time CLOB mid + official
+station-high tape. `--empty-live` (empty print, cannot promote) is the
+honest live outcome. Fixture packs in `tests/fixtures/polymarket/` prove
+the calculator; they are not a live season and cannot promote.
+
+**Still not claimed:** gate 2 (walk-forward fit of `MIN_EDGE` / `SIGMA_F`
+/ haircut on train folds) and gate 3 (a full season of live paper A/B
+per city). Until those are green on two independent prints, the only
+allowed statement remains: "the paper ledger contains would-trade
+intents; the eval CLI can score resolved rows when they exist." Do not
+add a live CLOB path as a side effect of a later change.

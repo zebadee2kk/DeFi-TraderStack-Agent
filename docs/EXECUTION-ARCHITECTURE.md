@@ -459,13 +459,15 @@ Paper, shadow and live environments require different credentials and database n
 
 ### Polymarket weather research is not on this path
 
-`traderstack-polymarket-weather-paper` is a **parallel paper research
-process**. It is not a step in the cycle above, is not imported by
+`traderstack-polymarket-weather-paper` and
+`traderstack-polymarket-weather-eval` are **parallel paper research
+processes**. They are not a step in the cycle above, are not imported by
 `cli.build_service` / `ContinuousPaperService` / `RiskEngine`, and must not
 be wired into Hummingbot or the CLOB as a side effect of an unrelated
-change. It records would-trade intents to
-`var/audit/polymarket_weather_paper.jsonl` (`venue_submitted=false`) and
-refuses `TRADING_MODE` other than `paper`. See `docs/RUNBOOK.md`,
+change. The paper CLI records would-trade intents to
+`var/audit/polymarket_weather_paper.jsonl` (`venue_submitted=false`). The
+eval CLI is report-only and cannot promote without dual independent
+prints. Both refuse `TRADING_MODE` other than `paper`. See `docs/RUNBOOK.md`,
 "Polymarket weather paper research".
 
 ## Venue Credentials

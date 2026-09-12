@@ -4,6 +4,9 @@ This package is deliberately *not* imported by the crypto paper loop
 (``cli.build_service``, ``ContinuousPaperService``, ``RiskEngine``). Invoking
 ``traderstack-polymarket-weather-paper`` is the opt-in. It may only emit
 would-trade intents to a dedicated JSONL ledger.
+``traderstack-polymarket-weather-eval`` is the fee-aware report-only
+evaluator for those hypotheses. It cannot promote without dual
+independent prints and never writes a ``PAPER_PROMOTE_*`` pin.
 
 Hard constraints:
 - public Gamma/CLOB GETs only; no signing, no private keys, no CLOB POSTs

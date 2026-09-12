@@ -35,6 +35,11 @@ _FORBIDDEN_SOURCE = (
 )
 
 
+def test_settings_has_no_polymarket_promote_pin() -> None:
+    assert "paper_promote_polymarket_weather" not in Settings.model_fields
+    assert not any("polymarket" in name and "promote" in name for name in Settings.model_fields)
+
+
 def test_settings_has_no_polymarket_credential_fields() -> None:
     forbidden = {
         name

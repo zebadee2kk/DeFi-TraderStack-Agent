@@ -324,3 +324,30 @@ On the 2026-09-12 live Kraken daily 720 (2024-09-22 → 2026-09-11):
 
 See `liq-regime-search.md`.
 
+## Polymarket weather eval (`traderstack-polymarket-weather-eval`)
+
+#44 records would-trade intents. This command is the fee-aware
+calculator for EVALUATION-FRAMEWORK gates 1 / 4 / 5 (point-in-time
+treatment vs `always_hold` / `fade_the_mid`, station match, conservative
+costs). A pre-registered crypto overlay
+(`polymarket_weather_vs_btc_daily`) is skipped unless an aligned BTC
+daily close series is supplied.
+
+| print | when | can promote? |
+| --- | --- | --- |
+| single-print | fewer than two independent resolved packs | **no** |
+| dual-print | non-overlapping `event_date` sets **or** overlapping dates with disjoint resolution sources; each pack must also clear the calculator floor | still **no** Settings flip |
+
+This repository has no public point-in-time CLOB mid + official
+ASOS/NCEI high tape. Using a settlement price as the decision mid is
+look-ahead. The committed 2026-09-12 run is `--empty-live`: **0**
+eligible rows, single-print, cannot promote. Empty is success.
+`PAPER_PROMOTE_*` stays false. No `PAPER_PROMOTE_POLYMARKET_WEATHER`
+Settings field is added.
+
+Fixture packs under `tests/fixtures/polymarket/resolved_print_*.json`
+prove the calculator (tiny n; cannot promote). They are not a live
+season.
+
+See `polymarket-weather-eval.md`.
+
