@@ -1,7 +1,6 @@
 from collections.abc import AsyncIterator
 
 import pytest
-
 from pydantic import SecretStr
 
 from traderstack.cli import _secret, build_intelligence, parse_dune_query_ids

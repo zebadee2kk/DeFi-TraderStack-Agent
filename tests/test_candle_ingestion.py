@@ -56,6 +56,13 @@ def test_parse_ohlc_payload_rejects_kraken_error_array() -> None:
         parse_ohlc_payload({"error": ["EQuery:Unknown asset pair"], "result": {}})
 
 
+def test_parse_ohlc_row_rejects_short_or_non_list_rows() -> None:
+    with pytest.raises(TypeError):
+        parse_ohlc_row({"time": 1}, symbol="BTC/USD", resolution="1h")
+    with pytest.raises(TypeError):
+        parse_ohlc_row([1, "100"], symbol="BTC/USD", resolution="1h")
+
+
 def test_parse_ohlc_payload_rejects_unexpected_shape() -> None:
     with pytest.raises(TypeError):
         parse_ohlc_payload(["not", "a", "dict"])
@@ -112,6 +119,15 @@ async def test_kraken_candle_provider_caps_at_requested_count() -> None:
 
     # 6 rows minus the uncommitted last bar, then the newest `count`.
     assert [c.open for c in candles] == [103.0, 104.0]
+
+
+@pytest.mark.asyncio
+async def test_kraken_candle_provider_rejects_invalid_count_and_resolution() -> None:
+    provider = KrakenCandleProvider()
+    with pytest.raises(ValueError, match="count must be positive"):
+        await provider.fetch("BTC/USD", "1h", count=0)
+    with pytest.raises(ValueError, match="unsupported resolution"):
+        await provider.fetch("BTC/USD", "3h", count=2)
 
 
 @pytest.mark.asyncio

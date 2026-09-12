@@ -37,12 +37,16 @@ import httpx
 
 from traderstack.candles import Candle, interval_to_seconds
 from traderstack.market.kraken_candles import (
-    INTERVAL_MINUTES as _INTERVAL_MINUTES,
+    INTERVAL_MINUTES,
     KRAKEN_REST_BASE_URL,
     fetch_ohlc_page,
-    kraken_pair as _kraken_pair,
+    kraken_pair,
     parse_ohlc_row,
 )
+
+# Research CLI / tests still use the underscored names from this module.
+_INTERVAL_MINUTES = INTERVAL_MINUTES
+_kraken_pair = kraken_pair
 
 MAX_CANDLES_PER_CALL = 720
 
