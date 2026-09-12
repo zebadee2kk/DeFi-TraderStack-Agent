@@ -80,8 +80,12 @@ At minimum:
   single-venue tape cannot promote; hard gates stay UNAVAILABLE until
   720 aligned daily bars exist on two venues. BitMEX public
   settlements can fill that bar; OKX public history is still ~90d
-  after a UTC-day resample. PIT basis is UNAVAILABLE on Hyperliquid
-  and BitMEX (current mark/index only; premium is not basis). A
+  after a UTC-day resample.   PIT basis is UNAVAILABLE on Hyperliquid
+  and BitMEX (current mark/index only; premium is not basis). Public
+  archives were probed and stay UNAVAILABLE (HL `asset_ctxs` is
+  requester-pays 403; BitMEX dumps have no mark tape; Tardis is not
+  freely usable) — see
+  `docs/artifacts/strategy-search/pit-basis-archives.md`. A
   paper hedge+funding soak path is cycle-wired
   (`PAPER_CARRY_PATH_READY=true` when `PAPER_PERP_HEDGE` fetches an
   explicit HL/BitMEX mid + same-venue funding). Snapshot mids are not

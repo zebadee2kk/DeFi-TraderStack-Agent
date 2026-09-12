@@ -489,7 +489,18 @@ Follow-up the same day (paper hedge+funding soak path):
   for the soak path. **No new pin.**
 - `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
+Follow-up the same day (public PIT basis archives):
+
+- Official Hyperliquid `asset_ctxs` S3 is requester-pays
+  (anonymous 403). BitMEX `public.bitmex.com` is trade+quote only.
+  BitMEX spot books are too wide to be a mid. Tardis / Coin Metrics
+  community / empty HF schemas skipped. **No fetcher. Carry not
+  re-scored.** See `pit-basis-archives.md`.
+- Next non-carry experiment: BTC−ETH relative-value residual (not
+  EMA). Do not re-run dead EMA dual-prints.
+- `can_promote=false`. `PAPER_PROMOTE_*` stays false.
+
 See `funding-carry.md`, `funding-carry-daily.md`,
-`funding-carry-basis.md`, and the 2026-09-12 status memo
-`edge-status-2026-09-12.md`.
+`funding-carry-basis.md`, `pit-basis-archives.md`, and the
+2026-09-12 status memo `edge-status-2026-09-12.md`.
 

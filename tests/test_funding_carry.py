@@ -629,3 +629,20 @@ def test_evaluate_carry_hard_gates_unavailable_on_short_daily_tape() -> None:
     assert gates.available is False
     assert gates.combined is False
     assert "720" in gates.note
+
+
+def test_pit_basis_archives_memo_stays_unavailable() -> None:
+    text = Path("docs/artifacts/strategy-search/pit-basis-archives.md").read_text()
+    assert "UNAVAILABLE" in text
+    assert "can_promote" in text
+    assert "false" in text
+    assert "PAPER_PROMOTE_*" in text
+    assert "Do not invent AWS keys" in text or "invent AWS" in text
+    assert "relative-value residual" in text
+    assert "ema_9_21" in text
+    # Honesty: no Settings pin and no invented archive fetch.
+    assert "No `PAPER_PROMOTE_*` flip" in text or "PAPER_PROMOTE_*=false" in text
+    assert Settings.model_fields["paper_promote_searched_strategies"].default is False
+    assert Settings.model_fields["paper_promote_ema_9_21"].default is False
+    assert Settings.model_fields["paper_promote_ema_9_21_adx15"].default is False
+    assert "PAPER_PROMOTE_CARRY" not in Settings.model_fields

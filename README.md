@@ -247,12 +247,16 @@ BitMEX when reachable; Binance/Bybit skipped if geo-blocked). `--interval 1d`
 resamples funding to UTC daily sums so #96+A+B+C can be evaluated or
 recorded UNAVAILABLE. PIT basis is probed on Hyperliquid+BitMEX and
 recorded UNAVAILABLE (current mark/index only; premium is not basis).
+Public archives (HL requester-pays S3, BitMEX quote dumps, Tardis)
+were probed and stay UNAVAILABLE — see
+`docs/artifacts/strategy-search/pit-basis-archives.md`.
 A paper perp/hedge stub exists but cannot promote. One venue
 is **single-print** and **cannot promote**. Empty / cannot-promote is
 success. Default `PAPER_PROMOTE_*` stays false. Reports:
 `docs/artifacts/strategy-search/funding-carry.md`,
 `docs/artifacts/strategy-search/funding-carry-daily.md`,
 `docs/artifacts/strategy-search/funding-carry-basis.md`,
+`docs/artifacts/strategy-search/pit-basis-archives.md`,
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default)
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but

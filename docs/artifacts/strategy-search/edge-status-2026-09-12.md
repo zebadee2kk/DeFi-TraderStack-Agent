@@ -452,6 +452,34 @@ Promote remains blocked on basis.
 
 See `funding-carry-basis.md`.
 
+## This session — public PIT basis archives
+
+Highest-leverage next step after #114: find a **public historical
+archive** (not another live REST snapshot) that supplies mark−index
+or perp-mid−spot-mid for Hyperliquid and/or BitMEX over ≥720 days,
+without paid credentials. If found, wire skip-not-invent and
+re-score `carry_hedged_sign`. If not, document UNAVAILABLE.
+
+### Archive probe (this environment, 2026-09-12)
+
+| source | result |
+| --- | --- |
+| `s3://hyperliquid-archive/asset_ctxs` | **UNAVAILABLE** — requester-pays; anonymous HTTP 403; `AWS_ACCESS_KEY_ID` unset. Docs claim daily files from 2023-05-20; columns not confirmed here. Do not invent AWS keys. |
+| `s3://hl-mainnet-node-data` / Hydromancer Reservoir | **UNAVAILABLE** — same 403 requester-pays |
+| `public.bitmex.com` `data/` | trade + quote + porl only. `data/instrument/` **404**. Quote ≠ mark−index. |
+| BitMEX `XBTUSDT` mid − `XBT_USDT` mid | calendar >720d from 2022-05-17, **not used**: spot 1d spread 150–603 bps (ETH 3473–3725 bps) |
+| Tardis | unauthorized except first-of-month samples; HL since 2024-10-29 (~318d < 720) |
+| Coin Metrics community | HTTP 403 |
+| HuggingFace `GregM/hyperliquid-perp-open-data` | schema only; no rows |
+| CryptoDataDownload `/data/bitmex/` | HTTP 404 |
+
+**No fetcher wired. Carry not re-scored.** See
+`pit-basis-archives.md`.
+
+`can_promote` still requires dual-print ∧ hard gates ∧ PIT basis ∧
+paper path. After this session: dual-print **true**, hard gates
+**true**, paper soak **true**, basis **UNAVAILABLE**.
+
 ## Next falsifiable experiments
 
 Do not rerun #104 / #105 / #106 / #108 / the 4h #110 funding print
@@ -469,22 +497,24 @@ BitMEX `.XBTUSDPI`.
    dual-print + hard gates are available. Modeled
    `carry_hedged_sign` clears both prints and the #96+A+B+C analog
    and still cannot promote (basis skipped; paper path not ready).
-4. **Basis-aware carry.** This session: probed and **UNAVAILABLE**
-   on Hyperliquid and BitMEX for mark−index / perp-mid−spot-mid.
-   Next only if a public historical mark/index or perp-mid−spot-mid
-   tape appears on **both** venues. Do not invent from last-trade
-   or from funding.
-5. **Paper-executable path (still `TRADING_MODE=paper`).** This
-   session: cycle-wired with an explicit HL/BitMEX mid + same-venue
-   funding tape. `PAPER_CARRY_PATH_READY` is true for that soak.
-   Promote still blocked on historical PIT basis. Do not add a
-   Settings pin until basis exists on both venues and gates still
-   clear.
-6. **Not** another daily-EMA catalog expansion on the same Kraken 720
+4. **Basis-aware carry.** REST probe (#113) and archive probe (this
+   session) are **UNAVAILABLE**. Next only if a readable public
+   mark−index or perp-mid−spot-mid tape appears on **both** venues
+   without invented AWS/Tardis keys and without an illiquid BitMEX
+   spot book. Do not invent from last-trade or from funding.
+5. **Paper-executable path (still `TRADING_MODE=paper`).** Done in
+   #114. `PAPER_CARRY_PATH_READY` is true for the soak. Promote
+   still blocked on historical PIT basis. Do not add a Settings pin.
+6. **Next non-carry experiment: BTC−ETH relative-value residual.**
+   Fade/follow daily BTC minus ETH excess return at frozen |z|
+   thresholds (not EMA crossovers). Same #96+A+B+C dual-print bar
+   (Kraken 720 + Binance.US older-720). Paper-executable on Kraken
+   spot. Empty dual-print is success. See `pit-basis-archives.md`.
+7. **Not** another daily-EMA catalog expansion on the same Kraken 720
    + Binance.US older-720 pair.
-7. **Not** liquidation-conditioned promotion until a public historical
+8. **Not** liquidation-conditioned promotion until a public historical
    liquidation aggregate exists (it does not today).
-8. **Not** Polymarket weather promotion until a PIT CLOB mid +
+9. **Not** Polymarket weather promotion until a PIT CLOB mid +
    official station-high tape exists (it does not today).
 
 ## Pins
@@ -495,7 +525,7 @@ BitMEX `.XBTUSDPI`.
 | `PAPER_PROMOTE_EMA_9_21` | false | stay false |
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
-| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; paper soak path ready; PIT basis UNAVAILABLE — do not add a pin |
+| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; paper soak path ready; PIT basis archives UNAVAILABLE — do not add a pin |
 | `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
 
 `TRADING_MODE=paper`. No live.
