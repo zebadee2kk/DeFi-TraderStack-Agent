@@ -1,8 +1,9 @@
 from collections.abc import AsyncIterator
 
 import pytest
+from pydantic import SecretStr
 
-from traderstack.cli import build_intelligence, parse_dune_query_ids
+from traderstack.cli import _secret, build_intelligence, parse_dune_query_ids
 from traderstack.config import Settings
 from traderstack.intelligence import NewsSnapshot, OnChainSnapshot, SocialSnapshot
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
@@ -233,4 +234,44 @@ def test_build_intelligence_skips_dune_without_query_ids() -> None:
     orchestrator = build_intelligence(Settings(dune_api_key="d", cryptopanic_api_key="c"))
     assert orchestrator is not None
     assert orchestrator.onchain is None
+    assert len(orchestrator.news) == 1
+
+
+def test_secret_treats_blank_and_whitespace_as_unset() -> None:
+    assert _secret(None) is None
+    assert _secret(SecretStr("")) is None
+    assert _secret(SecretStr("   ")) is None
+    assert _secret(SecretStr("real-key")) == "real-key"
+
+
+def test_build_intelligence_skips_blank_api_keys() -> None:
+    """A copied `.env.example` leaves keys as empty strings — do not register."""
+    orchestrator = build_intelligence(
+        Settings(
+            dune_api_key="",
+            dune_query_ids="BTC:1",
+            lunarcrush_api_key="   ",
+            cryptopanic_api_key="",
+            perplexity_api_key="\t",
+            altfins_api_key="",
+        )
+    )
+    assert orchestrator is None
+
+
+def test_build_intelligence_registers_only_providers_with_non_blank_keys() -> None:
+    orchestrator = build_intelligence(
+        Settings(
+            dune_api_key="",
+            dune_query_ids="BTC:1",
+            lunarcrush_api_key="",
+            cryptopanic_api_key="usable-token",
+            perplexity_api_key="  ",
+            altfins_api_key="",
+        )
+    )
+    assert orchestrator is not None
+    assert orchestrator.onchain is None
+    assert orchestrator.social is None
+    assert orchestrator.altfins is None
     assert len(orchestrator.news) == 1

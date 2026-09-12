@@ -127,7 +127,16 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
 
 
 def _secret(value: SecretStr | None) -> str | None:
-    return value.get_secret_value() if value is not None else None
+    """Return a usable secret, or None when the value is missing/blank.
+
+    A copied `.env.example` leaves `FOO_API_KEY=` as an empty string. Treating
+    that as "set" would register optional providers that then 401/404 every
+    cycle. Whitespace-only values are also unset.
+    """
+    if value is None:
+        return None
+    text = value.get_secret_value().strip()
+    return text or None
 
 
 # --- providers (Epic 2/3): provider health, quota and caching wrapper ----------
@@ -171,55 +180,59 @@ def parse_dune_query_ids(raw: str) -> dict[str, int]:
 def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
     """Assemble every intelligence provider that has credentials; None if there are none.
 
+    Blank or whitespace-only keys are treated as unset so a copied `.env.example`
+    does not register providers that then 401/404 every cycle.
+
     Every fetcher is wrapped through a per-provider `ProviderRegistry`
     (timeout, circuit breaker, quota) - see build_provider_registry above.
     """
     quota = settings.intelligence_provider_calls_per_minute
 
     onchain = None
-    if settings.dune_api_key is not None:
+    dune_key = _secret(settings.dune_api_key)
+    if dune_key is not None:
         query_ids = parse_dune_query_ids(settings.dune_query_ids)
         if query_ids:
             onchain = registered_fetcher(
-                DuneOnChainProvider(
-                    api_key=settings.dune_api_key.get_secret_value(), query_ids=query_ids
-                ).fetch,
+                DuneOnChainProvider(api_key=dune_key, query_ids=query_ids).fetch,
                 build_provider_registry(settings, "dune", calls_per_minute=quota),
             )
 
     social = None
-    if settings.lunarcrush_api_key is not None:
+    lunarcrush_key = _secret(settings.lunarcrush_api_key)
+    if lunarcrush_key is not None:
         social = registered_fetcher(
-            LunarCrushSocialProvider(api_key=settings.lunarcrush_api_key.get_secret_value()).fetch,
+            LunarCrushSocialProvider(api_key=lunarcrush_key).fetch,
             build_provider_registry(settings, "lunarcrush", calls_per_minute=quota),
         )
 
     news: list[NewsFetcher] = []
-    if settings.cryptopanic_api_key is not None:
+    cryptopanic_key = _secret(settings.cryptopanic_api_key)
+    if cryptopanic_key is not None:
         news.append(
             registered_fetcher(
                 CryptoPanicNewsProvider(
-                    auth_token=settings.cryptopanic_api_key.get_secret_value(),
+                    auth_token=cryptopanic_key,
                     api_plan=settings.cryptopanic_api_plan,
                 ).fetch,
                 build_provider_registry(settings, "cryptopanic", calls_per_minute=quota),
             )
         )
-    if settings.perplexity_api_key is not None:
+    perplexity_key = _secret(settings.perplexity_api_key)
+    if perplexity_key is not None:
         news.append(
             registered_fetcher(
-                PerplexityNewsProvider(
-                    api_key=settings.perplexity_api_key.get_secret_value()
-                ).fetch,
+                PerplexityNewsProvider(api_key=perplexity_key).fetch,
                 build_provider_registry(settings, "perplexity", calls_per_minute=quota),
             )
         )
 
     # --- providers (Epic 3): altFINS technical-signal slot ---------------------
     altfins = None
-    if settings.altfins_api_key is not None:
+    altfins_key = _secret(settings.altfins_api_key)
+    if altfins_key is not None:
         altfins = registered_fetcher(
-            AltFinsSignalProvider(api_key=settings.altfins_api_key.get_secret_value()).fetch,
+            AltFinsSignalProvider(api_key=altfins_key).fetch,
             build_provider_registry(settings, "altfins", calls_per_minute=quota),
         )
 
@@ -246,12 +259,13 @@ def build_meta_reviewer(settings: Settings) -> MetaAgentReviewer | None:
     mode = MetaAgentMode(settings.meta_agent_mode)
     if mode is MetaAgentMode.OFF:
         return None
-    if settings.anthropic_api_key is None:
+    anthropic_key = _secret(settings.anthropic_api_key)
+    if anthropic_key is None:
         if mode is MetaAgentMode.VETO:
             raise RuntimeError("META_AGENT_MODE=veto requires ANTHROPIC_API_KEY")
         return None
     client = AnthropicMetaAgentClient(
-        api_key=settings.anthropic_api_key.get_secret_value(),
+        api_key=anthropic_key,
         model=settings.meta_agent_model,
         max_tokens=settings.meta_agent_max_tokens,
         timeout_seconds=settings.meta_agent_timeout_seconds,

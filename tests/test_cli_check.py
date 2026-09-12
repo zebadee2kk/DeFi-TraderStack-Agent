@@ -72,6 +72,14 @@ def test_intelligence_required_with_provider_is_safe() -> None:
     assert not any("INTELLIGENCE_REQUIRED" in w for w in report.warnings)
 
 
+def test_intelligence_required_with_blank_key_is_treated_as_missing() -> None:
+    report = build_report(settings(intelligence_required=True, lunarcrush_api_key=""))
+    assert not report.safe
+    assert any("INTELLIGENCE_REQUIRED" in w for w in report.warnings)
+    lunar = next(item for item in report.items if "LunarCrush" in item.label)
+    assert lunar.value == "no"
+
+
 def test_dune_key_without_query_ids_is_reported_but_not_usable() -> None:
     report = build_report(settings(dune_api_key="secret-key", dune_query_ids=""))
     dune_item = next(item for item in report.items if "Dune" in item.label)
