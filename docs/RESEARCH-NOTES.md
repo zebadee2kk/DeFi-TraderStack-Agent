@@ -75,22 +75,23 @@ At minimum:
   paper A/B) are still open. That is not evidence of alpha.
 - Does a fee-aware funding-z threshold or hedged cash-and-carry clear
   dual independent prints on BTC+ETH? `traderstack-funding-carry`
-  scores a frozen catalog against OKX, Hyperliquid, and BitMEX when
-  reachable (Binance/Bybit probed and skipped if geo-blocked). A
-  single-venue tape cannot promote; hard gates stay UNAVAILABLE until
-  720 aligned daily bars exist on two venues. BitMEX public
-  settlements can fill that bar; OKX public history is still ~90d
-  after a UTC-day resample.   PIT basis is UNAVAILABLE on Hyperliquid
-  and BitMEX (current mark/index only; premium is not basis). Public
-  archives were probed and stay UNAVAILABLE for dual-print
-  (official HL `asset_ctxs` is requester-pays 403; a public HF
-  mirror `asiletto81/hyperliquid` now supplies ≥720d HL
-  `mark_px`/`oracle_px`; BitMEX dumps still have no mark tape;
-  Tardis first-of-month samples are not a daily tape) — see
+  scores a frozen catalog against OKX, Hyperliquid, and HTX when
+  reachable (BitMEX is a sunset venue — official closure 23 September
+  2026 04:00 UTC — and is not selected; Binance/Bybit probed and
+  skipped if geo-blocked). A single-venue tape cannot promote; hard
+  gates stay UNAVAILABLE until 720 aligned daily bars exist on two
+  non-sunset venues. HTX public settlements can fill that bar; OKX
+  public history is still ~90d after a UTC-day resample. PIT basis is
+  UNAVAILABLE for dual-print on the current Kraken 720 (HL REST is
+  current-only; `asiletto81/hyperliquid` `asset_ctxs` is ≥720d
+  `mark_px`/`oracle_px` but ends 2026-06-01 / ~617d aligned; HTX
+  mark−index is one venue; BitMEX dumps still have no mark tape and
+  the venue is closing; Tardis first-of-month samples are not a
+  daily tape) — see
   `docs/artifacts/strategy-search/pit-basis-archives.md`. A
   paper hedge+funding soak path is cycle-wired
   (`PAPER_CARRY_PATH_READY=true` when `PAPER_PERP_HEDGE` fetches an
-  explicit HL/BitMEX mid + same-venue funding). Snapshot mids are not
+  explicit HL/HTX mid + same-venue funding). Snapshot mids are not
   historical PIT basis, so a pin stays off. Empty / cannot-promote is
   success. See
   `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.

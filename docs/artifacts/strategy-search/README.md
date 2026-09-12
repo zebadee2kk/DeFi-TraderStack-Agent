@@ -392,21 +392,22 @@ modeled hedged cash-and-carry on BTC+ETH.
 | print | when | can promote? |
 | --- | --- | --- |
 | single-print | only one usable funding venue on BTC+ETH | **no** |
-| dual-print | two independent funding venues (e.g. Hyperliquid **and** BitMEX) | still no Settings flip |
+| dual-print | two independent funding venues (e.g. Hyperliquid **and** HTX) | still no Settings flip |
 
 OKX public funding-rate-history is typically ~90d of 8h prints.
 Hyperliquid `fundingHistory` is hourly and typically reachable here.
-BitMEX `GET /api/v1/funding` is a public 8h settlement tape long
-enough for ≥720 UTC daily sums (`fundingRate` only; never
-`fundingRateDaily`). Binance USDT-M is often HTTP 451; Bybit linear
-is often HTTP 403. Hard gates (#96+A+B+C) stay UNAVAILABLE unless
-720 aligned daily bars exist on **each** participating venue.
-`--interval 1d` resamples funding to UTC daily sums (empty days
-omitted). Hedged carry does not invent basis (Hyperliquid funding
-premium is not a PIT perp−spot mid; live probes found current
-mark/index only on Hyperliquid and BitMEX). A paper perp / hedge
-path is cycle-wired for forward paper soaks (`PAPER_PERP_HEDGE`
-default false; explicit HL/BitMEX mid + same-venue funding). Snapshot
+HTX `swap_historical_funding_rate` is a public 8h `funding_rate`
+tape long enough for ≥720 UTC daily sums. BitMEX `GET /api/v1/funding`
+remains fetchable but the venue is **sunsetting** (official closure
+23 September 2026 04:00 UTC) and is not selected. Binance USDT-M is
+often HTTP 451; Bybit linear is often HTTP 403. Hard gates (#96+A+B+C)
+stay UNAVAILABLE unless 720 aligned daily bars exist on **each**
+participating venue. `--interval 1d` resamples funding to UTC daily
+sums (empty days omitted). Hedged carry does not invent basis
+(Hyperliquid funding premium is not a PIT perp−spot mid). A paper
+perp / hedge path is cycle-wired for forward paper soaks
+(`PAPER_PERP_HEDGE` default false; explicit HL/HTX mid + same-venue
+funding; BitMEX not required). Snapshot
 mids are not historical PIT basis. `PAPER_CARRY_PATH_READY` is true
 for that soak; `can_promote` stays false. `PAPER_PROMOTE_*` stays
 false. Empty / cannot-promote is success.
@@ -500,13 +501,21 @@ Follow-up the same day (public PIT basis archives):
   EMA). Do not re-run dead EMA dual-prints.
 - `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
-Re-hunt after #123 (volume-confirmed breakout: **0** passers):
+Re-hunt after #123 (volume-confirmed breakout: **0** passers) plus
+#124 PIT facts and the BitMEX sunset directive:
 
 - HuggingFace `asiletto81/hyperliquid` `asset_ctxs` is a public
   ≥720d Hyperliquid mark−index tape (883 contiguous days,
-  `mark_px`/`oracle_px`). BitMEX still missing. Dual-print
-  basis stays **UNAVAILABLE**. **No fetcher. Carry not
-  re-scored.** See `pit-basis-archives.md`.
+  `mark_px`/`oracle_px`) ending 2026-06-01. Current Kraken 720
+  aligns ~617d. BitMEX still missing **and** closing
+  23 September 2026 04:00 UTC.
+- Replacement second venue: **HTX** (funding 2152d + mark−index
+  1999d). Wired skip-not-invent. BitMEX excluded from venue pick
+  and from the paper-hedge default path.
+- Dual-print basis stays **UNAVAILABLE** on this window. **No
+  fetcher** for a paired HL+HTX basis score on the current 720.
+  Carry not re-scored with an invented pair. See
+  `pit-basis-archives.md`.
 - `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
 See `funding-carry.md`, `funding-carry-daily.md`,

@@ -2,8 +2,9 @@
 
 Paper / research only. This memo summarizes the strategy-search dead
 ends through #123 (volume-confirmed breakout: **0** dual-print
-passers) plus the PIT-basis archive re-hunt after that empty
-print. It is **not** a profitability claim. No number
+passers) plus the #124 PIT-basis archive re-hunt and the
+BitMEX-sunset replacement hunt. It is **not** a profitability
+claim. No number
 here is invented.
 
 All `PAPER_PROMOTE_*` defaults stay **false**. `TRADING_MODE` stays
@@ -511,19 +512,23 @@ Donchian N after seeing #118.
    tapes and still cannot promote.
 2. **Daily resample / #96+A+B+C honesty.** Done in #111. See above
    and `funding-carry-daily.md`.
-3. **Second long settlement tape.** Done in #112: BitMEX. Daily
-   dual-print + hard gates are available. Modeled
-   `carry_hedged_sign` clears both prints and the #96+A+B+C analog
-   and still cannot promote (basis skipped; paper path not ready).
+3. **Second long settlement tape.** Done in #112 with BitMEX (now a
+   **sunset** venue — official closure 23 September 2026 04:00 UTC).
+   Replacement hunt: **HTX** is the wired long tape. Daily
+   dual-print without BitMEX is Hyperliquid + HTX. Modeled
+   `carry_hedged_sign` on the #112 HL+BitMEX print still cannot
+   promote (basis skipped).
 4. **Basis-aware carry.** REST probe (#113) and first archive
-   probe (#115) were **UNAVAILABLE**. Re-hunt after #123 (this
-   session): Hyperliquid now has a public ≥720d mark−index tape
+   probe (#115) were **UNAVAILABLE**. Re-hunt after #123 (#124):
+   Hyperliquid now has a public ≥720d mark−index tape
    (`asiletto81/hyperliquid` `asset_ctxs`, 883 contiguous days,
-   `mark_px`/`oracle_px` confirmed). BitMEX still has no free
-   ≥720d tape. Dual-print basis stays **UNAVAILABLE**. Next only
-   when BitMEX mark−index or a liquid perp-mid−spot-mid appears
-   without invented AWS/Tardis/Dune keys and without the
-   still-illiquid BitMEX spot book (150–600 / ~3500 bps). Do not
+   `mark_px`/`oracle_px` confirmed) that ends 2026-06-01 (~617d on
+   the current Kraken 720). HTX daily mark−index is wired (single
+   venue). BitMEX is closing and still has no free ≥720d tape
+   (spot book still 150–600 / ~3500 bps; not a mid). Dual-print
+   basis stays **UNAVAILABLE** on this window. Next only when HL
+   mark−index covers the scored 720 days without invented
+   AWS/Tardis/Dune keys and without retuning the window. Do not
    invent from last-trade or from funding. Do not stitch Tardis
    first-of-month samples.
 5. **Paper-executable path (still `TRADING_MODE=paper`).** Done in
@@ -570,10 +575,16 @@ Donchian N after seeing #118.
     passers: **0**. Not a Donchian N retune of #118.
 24. **Not** an N / V / vol_mult retune of this volume-breakout
     catalog on the same windows after seeing that print.
-25. **PIT basis archive re-hunt (after #123).** Done this
-    session. See below and `pit-basis-archives.md`. Dual-print
-    basis still **UNAVAILABLE** (HL tape found; BitMEX missing).
-    Carry not re-scored. No fetcher. No pin.
+25. **PIT basis archive re-hunt (after #123 / #124).** Done.
+    See below and `pit-basis-archives.md`. Dual-print basis still
+    **UNAVAILABLE** (HL tape found; BitMEX missing). Carry not
+    re-scored. No fetcher for a paired basis score. No pin.
+26. **BitMEX sunset replacement.** HTX is the wired funding
+    replacement. Official closure 23 September 2026 04:00 UTC.
+    Dual-print basis still **UNAVAILABLE** on the current Kraken
+    720. Carry not re-scored with invented basis. No pin.
+27. **Not** a BitMEX-dependent paper soak, promote path, or new
+    fetcher.
 
 ## This session — BTC→ETH lead-lag (catalog frozen)
 
@@ -801,12 +812,13 @@ requires the requested construction on **both** venues.
 `basis_status` stays `skipped`. `can_promote` stays **false**.
 No `PAPER_PROMOTE_*` flip. No live.
 
-Operator recommendation: still blocked. Next concrete promote
-gate remaining is a public ≥720d **BitMEX** mark−index (or
-liquid perp-mid−spot-mid). When that exists, wire
-skip-not-invent on both venues (HL path is now
-`asiletto81/hyperliquid`) and re-score `carry_hedged_sign`
-with basis costs. Until then leave every pin **false**.
+Operator recommendation from #124: still blocked on dual-print
+basis (HL tape found; BitMEX missing). **Superseded for
+funding:** BitMEX is closing 23 September 2026 04:00 UTC; HTX
+is the wired replacement long tape. Next basis gate is an HL
+mark−index that covers the scored 720 days (the archive ends
+2026-06-01 / ~617d aligned) so it can pair with HTX. Do not
+retune the window. Until then leave every pin **false**.
 
 See `pit-basis-archives.md`.
 
@@ -1290,6 +1302,99 @@ not retune. Empty dual-print set is success.
 
 See `calendar-seasonality.md`.
 
+## This session — BitMEX sunset + replacement hunt (after #123)
+
+Operator directive: BitMEX is shutting down
+(https://www.bitmex.com/blog/bitmex-closure). Closure Time
+**23 September 2026 04:00 UTC**. Risk limits from **26 August
+2026 04:00 UTC**. New registrations already stopped. Historical
+BitMEX tapes stay dead-end documentation. Do not build new
+promote paths, paper soaks, or fetcher dependencies on BitMEX
+continuing to exist.
+
+#124 PIT re-hunt facts (now on `main`) are included: HuggingFace
+`asiletto81/hyperliquid` `asset_ctxs` is a public ≥720d HL
+`mark_px`/`oracle_px` tape (883 contiguous days, 2024-01-01 →
+2026-06-01). The current Kraken 720 aligns only ~617 of those days.
+Do not retune the window after seeing the archive end date.
+
+### Replacement probe (this environment, 2026-09-12)
+
+Success for a candidate = public funding usable for daily dual-print
+with HL **and** public mark−index or liquid perp-mid−spot-mid ≥720d.
+
+| venue | funding ≥720 UTC days? | mark−index / liquid mid ≥720d? | full candidate? |
+| --- | --- | --- | --- |
+| Hyperliquid | **yes** (already wired; 801 daily) | **archive yes / window no** — HF 883d ends 2026-06-01 (~617d aligned); REST current-only | pair venue |
+| HTX | **yes** — 6457 8h / 2152d from 2020-10-21; **wired** | **yes** — 2000 daily mark+index from 2021-03-23; **wired**, not applied alone | **yes (single venue)** |
+| Binance Vision | **yes** — monthly zips 2020-01 → 2026-08 GET 200 | **yes** — `markPriceKlines` + `indexPriceKlines` 1d zips 200 | **yes (dump)** — not stitched; fapi REST **451** |
+| OKX | **no** — ~96d / 290 8h | **yes** — 2448 daily mark+index | no |
+| dYdX v4 | **yes** — 1052d hourly | **no** — last-trade candles; oracle 404 | no |
+| MEXC | **no** — 539d | **yes** — 2000d fair+index | no |
+| Gate | **no** — 180d `from` cap | **no** — mark candles need KEY | no |
+| Bitget | **no** — ~90d | **no** — ~90d | no |
+| Binance REST / Bybit | **skip** 451 / 403 | skip | skip |
+| BitMEX | historical yes | **no** free ≥720d; **sunset** | dead-end |
+
+### What was wired
+
+- `fetch_htx_funding` — `funding_rate` only (`avg_premium_index`
+  unused; `realized_rate` null on every historical page).
+- `fetch_htx_basis` — daily (mark close − index close) / index.
+  Recorded in `--live` notes. **Not** applied as a single-venue
+  basis series (dual-print basis still needs HL on the same window).
+- `_pick_venues` excludes `bitmex` (`SUNSET_FUNDING_VENUES`).
+- `PAPER_PERP_HEDGE` auto path is Hyperliquid then HTX. BitMEX
+  remains opt-in (`venue_preference="bitmex"`) only.
+
+### Live daily print (2026-09-12, after HTX)
+
+`traderstack-funding-carry --live --interval 1d` (Kraken public Spot
+1d BTC+ETH, 720-bar cap 2024-09-22 → 2026-09-11 UTC; costs 10+5 bps).
+
+| series | status |
+| --- | --- |
+| Binance USDT-M funding | **skipped** — HTTP 451 |
+| Bybit linear funding | **skipped** — HTTP 403 CloudFront |
+| OKX funding | **ok** — 290 8h → 97 UTC daily (not selected; shorter than HTX) |
+| Hyperliquid funding | **ok** — 19199 hourly → **801** UTC daily sums |
+| HTX funding | **ok** — 2401 8h → **800** UTC daily sums |
+| BitMEX funding | **ok** — 2400 8h (sunset; **not selected**) |
+| Print kind | **dual_print** (Hyperliquid primary, HTX second) |
+| Aligned daily bars | primary **720** / second **720** |
+| Hard gates (#96+A+B+C) | **available** (both venues ≥720) |
+| Basis | **skipped** (HL window ~617d; HTX 2000d not applied alone) |
+| Paper path | **true** (HL/HTX soak; BitMEX not required) |
+| Spot-signal dual-print passers | **0** |
+| Modeled dual-print passers | `carry_hedged_sign` only |
+
+Modeled hedged carry (basis skipped; **not** paper-spot executable):
+
+| id | HL WF / HO / full | HTX WF / HO / full | both? |
+| --- | ---: | ---: | :---: |
+| `carry_hedged_sign` | +1.72% / +3.32% / +27.71% | +1.50% / +3.31% / +21.26% | yes* |
+| `carry_hedged_abs_1bp` | −1.36% / −8.17% / −18.98% | −1.66% / −12.15% / −32.13% | no |
+| `carry_hedged_abs_3bp` | −2.42% / −4.82% / −21.50% | −3.65% / −9.95% / −35.76% | no |
+| `carry_hedged_z_1_5` | −2.88% / −8.72% / −32.95% | −2.99% / −9.64% / −34.12% | no |
+
+\*Fee-aware signs > 0 on **both** independent daily tapes. Hard-gate
+analog combined **true** on both (HL ratio 0.87; HTX ratio 0.81).
+That is still **not** basis-aware. `can_promote` stays false.
+
+### What was not done (on purpose)
+
+- No Binance Vision zip stitch (HTX REST already fills funding).
+- No HL `asset_ctxs` fetcher into scoring (617d < 720 on this
+  window; do not retune).
+- No `PAPER_PROMOTE_*` flip. Defaults stay **false**.
+- Did not reconstruct mark from index × (1 + funding basis).
+- Did not re-run candle catalogs #104/#108/#116–#123.
+
+**Cannot promote.** Funding dual-print without BitMEX is now
+HL+HTX. Basis-aware carry is still UNAVAILABLE.
+
+See `funding-carry-daily.md` and `pit-basis-archives.md`.
+
 ## Pins
 
 | flag | default | status |
@@ -1298,7 +1403,7 @@ See `calendar-seasonality.md`.
 | `PAPER_PROMOTE_EMA_9_21` | false | stay false |
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
-| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; paper soak path ready; HL PIT mark−index now readable (`asiletto81/hyperliquid`, 883d) but BitMEX still UNAVAILABLE — do not add a pin |
+| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+HTX (HL WF +1.72% / HTX +1.50%); paper soak path ready (HL/HTX); HL PIT mark−index now readable (`asiletto81/hyperliquid`, 883d) but BitMEX still UNAVAILABLE and the scored 720 aligns only ~617d — do not add a pin |
 | new relative-value pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; do not add a pin |
 | new cross-sectional momentum pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `xs_mom_lo_vol_63` mean HO is ETH-carried (#96 FAIL); do not add a pin |
 | new Donchian pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational positive Kraken mean HO still fails #96 on BTC walk-forward; do not add a pin |
@@ -1307,6 +1412,6 @@ See `calendar-seasonality.md`.
 | new calendar seasonality pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; every Kraken mean HO negative; no ETH-carried / BTC-WF-fail names; do not add a pin |
 | new lead-lag pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `leadlag_eth_follow_lo_5` mean HO is ETH-carried (#96 FAIL); do not add a pin |
 | new volume-breakout pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; no ETH-carried names; informational BTC WF-fail: `volbrk_lo_20x1_5` / `volbrk_lo_20x2` / `volsurge_lo_20x2` / `volsurge_lo_20x2_5`; do not add a pin |
-| `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
+| `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL midPx / HTX bid/ask mid + same-venue funding; BitMEX not required; not a promote path |
 
 `TRADING_MODE=paper`. No live.

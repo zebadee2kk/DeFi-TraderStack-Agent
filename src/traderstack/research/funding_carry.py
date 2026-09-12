@@ -13,11 +13,14 @@ Investigation (do not invent a series):
 * Hyperliquid ``POST /info`` ``fundingHistory`` is public hourly and
   typically reachable here — that is an independent second tape, not a
   reprint of OKX.
-* BitMEX ``GET /api/v1/funding`` is a public settlement tape (XBTUSD
-  from 2016, ETHUSD from 2018). Modern cadence is 8h. Uses
-  ``fundingRate`` only — ``fundingRateDaily`` is a restated multiple
-  and must not be treated as a second print. An 800d lookback yields
-  ≥720 UTC daily sums without inventing cadence.
+* BitMEX ``GET /api/v1/funding`` is a public settlement tape, but
+  BitMEX is **sunsetting** (official closure 23 September 2026 04:00
+  UTC). Historical tapes may still be fetched as dead-end
+  documentation. Not selected for dual-print or paper hedge.
+* HTX linear-swap ``swap_historical_funding_rate`` is a public 8h
+  ``funding_rate`` tape from 2020-10-21 (BTC+ETH). An 800d lookback
+  yields ≥720 UTC daily sums. ``avg_premium_index`` is not used.
+  This is the long second tape after the BitMEX sunset.
 * A second candle venue (Binance.US older-720) without a second
   *funding* tape is not an independent funding print.
 * Splitting one OKX tape into prefix/suffix is the same venue — not
@@ -25,10 +28,14 @@ Investigation (do not invent a series):
 * Perp-spot basis is not on the public funding REST path and is not
   invented. Hyperliquid ``fundingHistory.premium`` is the funding-formula
   input, not a PIT perp−spot mid — do not treat it as basis. Live
-  probes of Hyperliquid ``metaAndAssetCtxs`` and BitMEX ``/instrument``
-  find **current** mark/index/mid only; there is no historical
-  mark−index or perp-mid−spot-mid tape on either venue. BitMEX
-  ``.XBTUSDPI`` is the funding-formula premium index (same skip).
+  probes of Hyperliquid ``metaAndAssetCtxs`` find **current**
+  mark/index/mid only. HTX publishes daily mark−index klines (~1999d)
+  on one venue; HuggingFace ``asiletto81/hyperliquid`` ``asset_ctxs``
+  is ≥720d HL mark−index but ends 2026-06-01 (~617d aligned to the
+  current Kraken 720). Dual-print basis stays UNAVAILABLE on that
+  window. BitMEX ``.XBTUSDPI`` is the funding-formula premium index
+  (same skip). Do not retune the candle window after seeing the
+  archive end date.
   Hedged carry PnL is funding income minus two-leg fees unless a PIT
   basis series is supplied (skip-not-invent when missing).
 * A 4h / hourly funding tape is **not** a daily hard-gate window.
@@ -38,8 +45,8 @@ Investigation (do not invent a series):
 Print policy (frozen):
 
 * Dual-print requires two **independent funding venues** (e.g.
-  Hyperliquid and BitMEX) each covering BTC and ETH with a usable
-  point count.
+  Hyperliquid and HTX) each covering BTC and ETH with a usable
+  point count. BitMEX is a sunset venue and is not selected.
 * Absent that, the run is **single-print** and **cannot promote**.
 * #96+A+B+C hard gates need 720 aligned **daily** bars on **each**
   venue that participates. A ~90d OKX tape cannot unlock them after
@@ -49,8 +56,9 @@ Print policy (frozen):
   with a real perp mid **and** PIT basis on both dual-print venues.
   The paper hedge+funding soak path is cycle-wired
   (``execution/paper_perp.py`` + ``execution/paper_perp_feed.py``):
-  ``PAPER_PERP_HEDGE=true`` fetches Hyperliquid ``midPx`` / BitMEX
-  ``midPrice`` and applies same-venue public funding settlements.
+  ``PAPER_PERP_HEDGE=true`` fetches Hyperliquid ``midPx`` (HTX bid/ask
+  mid fallback) and applies same-venue public funding settlements.
+  BitMEX is not required.
   Kraken spot mid is not a substitute. Current snapshot mids are
   **not** a historical PIT basis series and are not written into
   research scoring. ``PAPER_CARRY_PATH_READY`` is true for that soak
@@ -149,8 +157,9 @@ FUNDING_CARRY_RULES = (
     "zero-filled. Hedged carry is a research model of cash-and-carry: "
     "received |funding| minus two-leg (spot+perp) fees on each flip; "
     "perp-spot basis is not invented and is not in the PnL. Dual-print "
-    "requires two independent funding venues (e.g. Hyperliquid and BitMEX) each "
-    "covering BTC and ETH. A second candle venue without a second funding "
+    "requires two independent funding venues (e.g. Hyperliquid and HTX) each "
+    "covering BTC and ETH. BitMEX is a sunset venue and is not selected. "
+    "A second candle venue without a second funding "
     "tape is not dual-print. Same-venue prefix/suffix is not independent. "
     "Hard gates (#96+A+B+C) need 720 aligned daily bars on each funding "
     "venue; a ~90d OKX tape cannot unlock them (including after UTC-day "
@@ -159,7 +168,8 @@ FUNDING_CARRY_RULES = (
     "PIT mark−index / perp-mid−spot-mid series is supplied; funding "
     "premium and last-trade are not basis. A paper hedge+funding soak "
     "path is cycle-wired (PAPER_CARRY_PATH_READY=true when PAPER_PERP_HEDGE "
-    "fetches an explicit HL/BitMEX mid and applies same-venue funding; "
+    "fetches an explicit HL midPx or HTX bid/ask mid and applies same-venue "
+    "funding; BitMEX is not required; "
     "Kraken spot mid is not used). Current snapshot mids are not a "
     "historical PIT basis series and are not scored here. can_promote "
     "stays false while PIT basis is UNAVAILABLE. Absent two venues "
@@ -170,12 +180,16 @@ FUNDING_CARRY_RULES = (
 
 BASIS_SKIP_NOTE = (
     "Perp-spot basis skipped, not invented. No PIT mark−index (or perp "
-    "mid − spot mid) series was supplied. Live probes: Hyperliquid "
-    "public REST is current markPx/oraclePx/midPx only; BitMEX public "
-    "REST is current markPrice/indicativeSettlePrice/midPrice only. "
-    "Hyperliquid fundingHistory.premium and BitMEX .XBTUSDPI/.ETHUSDPI "
-    "are funding-formula inputs, not a PIT perp−spot mid, and are not "
-    "used. Last-trade and funding-implied basis are circular / "
+    "mid − spot mid) series was supplied on both dual-print venues for "
+    "the scored window. Live probes: Hyperliquid public REST is current "
+    "markPx/oraclePx/midPx only; asiletto81/hyperliquid asset_ctxs is "
+    "≥720d but ends 2026-06-01 (~617d on the current Kraken 720). HTX "
+    "daily mark−index exists on one venue and is not applied alone. "
+    "BitMEX is a sunset venue (closure 23 September 2026 04:00 UTC) "
+    "and still has no free ≥720d mark−index. Hyperliquid "
+    "fundingHistory.premium and BitMEX .XBTUSDPI/.ETHUSDPI are "
+    "funding-formula inputs and are not used. Last-trade and "
+    "funding-implied basis are circular / "
     "look-ahead. Carry PnL stays received |funding| minus two-leg fees. "
     "Cannot promote on a basis-unaware model."
 )
@@ -183,8 +197,8 @@ BASIS_SKIP_NOTE = (
 PAPER_EXECUTABLE_PATH_NOTE = (
     "A paper hedge+funding soak path exists when PAPER_PERP_HEDGE=true: "
     "the cycle fetches an explicit current perp mid from Hyperliquid "
-    "midPx and/or BitMEX midPrice (never the Kraken spot mid) and "
-    "applies caller-supplied settlements from the same venue's public "
+    "midPx (HTX bid/ask mid fallback; BitMEX opt-in only, not required) "
+    "and applies caller-supplied settlements from the same venue's public "
     "funding tape (execution/paper_perp.py + paper_perp_feed.py). "
     "TRADING_MODE=paper only; kill switch withholds new hedges and "
     "funding; live is refused. PAPER_CARRY_PATH_READY is true for that "
@@ -1352,8 +1366,9 @@ def run_funding_carry(
     else:
         honesty += (
             " Paper hedge+funding soak path is cycle-wired "
-            "(PAPER_CARRY_PATH_READY=true; explicit HL/BitMEX mid + "
-            "same-venue funding; Kraken spot mid is not used). Snapshot "
+            "(PAPER_CARRY_PATH_READY=true; explicit HL/HTX mid + "
+            "same-venue funding; BitMEX not required; Kraken spot mid "
+            "is not used). Snapshot "
             "mids are not historical PIT basis. can_promote still "
             "requires PIT basis on both dual-print venues. Do not add "
             "a Settings pin."

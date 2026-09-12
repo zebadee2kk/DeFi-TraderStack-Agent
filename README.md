@@ -251,12 +251,15 @@ live tape is empty (no PIT mid + official station high). Default
 `docs/artifacts/strategy-search/polymarket-weather-eval.md`.
 `traderstack-funding-carry` scores a frozen funding-z / carry catalog
 on BTC+ETH aligned to public funding-rate history (OKX + Hyperliquid +
-BitMEX when reachable; Binance/Bybit skipped if geo-blocked). `--interval 1d`
+HTX when reachable; BitMEX is a sunset venue — official closure
+23 September 2026 04:00 UTC — and is not selected; Binance/Bybit
+skipped if geo-blocked). `--interval 1d`
 resamples funding to UTC daily sums so #96+A+B+C can be evaluated or
-recorded UNAVAILABLE. PIT basis is probed on Hyperliquid+BitMEX and
-recorded UNAVAILABLE (current mark/index only; premium is not basis).
-Public archives (HL requester-pays S3, BitMEX quote dumps, Tardis)
-were probed and stay UNAVAILABLE — see
+recorded UNAVAILABLE. PIT basis is probed on Hyperliquid+HTX and
+recorded UNAVAILABLE on the current Kraken 720 (HL REST current-only;
+`asiletto81/hyperliquid` ends 2026-06-01). Public archives (HL
+requester-pays S3, BitMEX quote dumps, Tardis) were probed and
+dual-print basis stays UNAVAILABLE — see
 `docs/artifacts/strategy-search/pit-basis-archives.md`.
 A paper perp/hedge stub exists but cannot promote. One venue
 is **single-print** and **cannot promote**. Empty / cannot-promote is
