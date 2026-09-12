@@ -128,6 +128,11 @@ or fades lagged BTC L-day return (not same-bar residual
 z-score) on that same dual-print bar. Other leg is frozen
 flat; both legs still required. Paper-executable on Kraken
 spot. Empty dual-print is success.
+`traderstack-volume-breakout` is the post-#122 slice:
+volume-confirmed breakout (price breakout **and** a volume
+gate; not a Donchian N retune) on that same dual-print bar.
+SOL is reported, not a gate. Paper-executable on Kraken
+spot. Empty dual-print is success.
 **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy

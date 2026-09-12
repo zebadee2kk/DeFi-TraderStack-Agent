@@ -224,6 +224,19 @@ def test_lead_lag_is_report_only() -> None:
     assert "other leg" in item.detail
 
 
+def test_volume_breakout_is_report_only() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Volume-confirmed breakout search")
+    assert item.value == "report-only"
+    assert "traderstack-volume-breakout" in item.detail
+    assert "PAPER_PROMOTE_*" in item.detail
+    assert "Kraken" in item.detail
+    assert "Binance.US" in item.detail
+    assert "paper-executable" in item.detail
+    assert "SOL reported" in item.detail
+    assert "not a Donchian" in item.detail
+
+
 def test_funding_carry_is_report_only() -> None:
     report = build_report(settings())
     item = next(i for i in report.items if i.label == "Funding / carry search")

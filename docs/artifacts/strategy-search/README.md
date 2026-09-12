@@ -775,3 +775,42 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `lead-lag.md`.
 
+## Volume-confirmed breakout (`traderstack-volume-breakout`)
+
+#122 left the BTC→ETH lead-lag dual-print empty.
+This command is a **different family**: price breakout
+**and** a volume gate. Not a Donchian N retune (#118).
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | public Spot daily; #96+A+B+C on BTC+ETH (SOL reported); rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same #102 slice; must combined-PASS | no (gate only) |
+
+Catalog is frozen (K=8): `volbrk_lo_{20x1_5,55x1_5,20x2}`,
+`volbrk_ls_{20x1_5,55x1_5}`, `volsurge_lo_{20x2,20x2_5}`,
+plus informational `ma_cross_10_30` (cannot promote).
+Prior channel `[t-N, t)`; volume SMA through t−1 (V=20).
+Missing volume skipped, not invented. Multi-asset bar
+(frozen): BTC and ETH signs as #96+A+B+C; SOL reported,
+not a gate. Equal-weight portfolio metrics are not used.
+Paper-executable on Kraken spot BTC/ETH. Empty dual-print
+set is success. `PAPER_PROMOTE_*` stays false. No new pin
+unless a committed report names a passer (default false if
+added).
+
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720).
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Labeled Binance.US (`api.binance.com` HTTP 451).
+- Base volume usable 720/720 on both venues (quote volume not
+  substituted).
+- Kraken combined-passers: **0**.
+- Binance.US combined-passers: **0**.
+- #96 FAIL ETH-carried: **none**.
+- Informational BTC WF-fail: `volbrk_lo_20x1_5`,
+  `volbrk_lo_20x2`, `volsurge_lo_20x2`, `volsurge_lo_20x2_5`.
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
+See `volume-breakout.md`.
+
