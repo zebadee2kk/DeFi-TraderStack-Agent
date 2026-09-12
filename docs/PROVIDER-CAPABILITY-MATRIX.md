@@ -20,7 +20,8 @@ This matrix defines intended roles rather than marketing claims. Pricing, rate l
 | Binance USDT-M liquidations | paper-research liquidation intensity (long/short notional z-score + bounded counts) | No | No | Paper research | `BinanceForceOrderProvider` on `!forceOrder@arr`; **not an execution venue**; `RiskEngine` does not size from these features |
 | Binance/Bybit bookTicker | paper-research cross-venue mid divergence | No | No | Paper research | `BookTickerProvider`; second-venue mid only; never an order-routing destination |
 | Freqtrade | research/backtest/dry-run harness | No | Can trade but disabled in architecture | **Yes** | independent research harness, not production executor |
-| Direct venue WS/REST | venue-native market data and reconciliation | **Yes** | execution delegated to Hummingbot | **Yes** | authoritative venue state for execution checks |
+| Direct venue WS/REST | venue-native market data and reconciliation | **Yes** | execution delegated to Hummingbot | **Yes** | authoritative venue state for execution checks; `VENUE_FEED=kraken_rest` is a paper-only public Spot `/0/public/Ticker` poll when WS hangs |
+| Crucix (local HTTP) | operator-hosted alert intel | No | No | Optional | `CrucixIntelProvider`; registered only when `CRUCIX_ENABLED` or URL/key set; high-tier alerts → `adverse_event` (rejection only) |
 | Claude API | reasoning, proposal synthesis, meta-agent | No for safety | No direct execution | **Yes** | failure must degrade to no-new-risk state |
 
 ## Selection policy
@@ -37,7 +38,7 @@ Research/implementation snapshot: **4 September 2026**. This section records wha
 
 ### Provider health, quota and caching (`traderstack.market.registry.ProviderRegistry`)
 
-Every reference-price provider (CoinGecko, CoinMarketCap), the Kraken candle provider, and every intelligence fetcher (Dune, LunarCrush, CryptoPanic, Perplexity, altFINS) are wrapped in `cli.build_service` / `cli.build_intelligence` through a `ProviderRegistry`, one instance per provider (`build_provider_registry`). Each wrapped call gets:
+Every reference-price provider (CoinGecko, CoinMarketCap), the Kraken candle provider, and every intelligence fetcher (Dune, LunarCrush, CryptoPanic, Perplexity, altFINS, Crucix) are wrapped in `cli.build_service` / `cli.build_intelligence` through a `ProviderRegistry`, one instance per provider (`build_provider_registry`). Each wrapped call gets:
 
 - a timeout (`PROVIDER_TIMEOUT_SECONDS`)
 - a circuit breaker: closed &rarr; **open** after `PROVIDER_FAILURE_THRESHOLD` consecutive failures &rarr; **half-open** after `PROVIDER_BREAKER_COOLDOWN_SECONDS` &rarr; closed again on the half-open trial call's success, or straight back to open on its failure
@@ -47,7 +48,15 @@ Every reference-price provider (CoinGecko, CoinMarketCap), the Kraken candle pro
 - Prometheus counters/gauges (`traderstack_provider_calls_total`, `traderstack_provider_last_latency_seconds`, `traderstack_provider_breaker_state`, `traderstack_provider_quota_rejections_total`, `traderstack_provider_cache_hits_total`, `traderstack_provider_last_good_hits_total`), following the pattern in `traderstack.health`
 - a `health()` report (state, consecutive failures, last latency/error, calls in the current minute/day) satisfying the `ProviderHealth` protocol in `traderstack.market.providers`
 
-Streaming venue and paper-research feeds (Kraken ticker/book, Binance USDT-M liquidations, optional Binance/Bybit bookTicker) are deliberately **not** wrapped by `ProviderRegistry` — a request timeout and circuit breaker don't fit a long-lived subscription. They get their own resilience instead (`traderstack.market.streaming`).
+Streaming venue and paper-research feeds (Kraken ticker/book, Binance USDT-M liquidations, optional Binance/Bybit bookTicker) are deliberately **not** wrapped by `ProviderRegistry` — a request timeout and circuit breaker don't fit a long-lived subscription. They get their own resilience instead (`traderstack.market.streaming`). `VENUE_FEED=kraken_rest` is a polling REST loop (one public Ticker GET per wait), also unwrapped: a failed poll raises and the cycle fails closed rather than inventing a tick.
+
+### Kraken REST ticker (`VENUE_FEED=kraken_rest`)
+
+Paper-only fallback when WS v2 is hung. `GET https://api.kraken.com/0/public/Ticker` (verified against Kraken's public ticker docs). `require_paper_kraken_rest` rejects any `TRADING_MODE` other than `paper`. No book snapshots. See `docs/RUNBOOK.md`, "Kraken REST ticker fallback".
+
+### Crucix intel (`traderstack.market.crucix`)
+
+Optional operator-hosted alert source. Registered only when `CRUCIX_ENABLED=true` or `CRUCIX_BASE_URL` / `CRUCIX_API_KEY` is set; a blank copied `.env.example` does not register it. High-tier alerts map to `NewsSnapshot.adverse_event` / `event_score`. The pipeline's `adverse_news_event` rejection is the only effect — Crucix cannot raise notional, change side, or disable the kill switch. HTTP contract is this adapter's documented assumption (`GET /alerts?asset=`), not a vendor-verified schema.
 
 ### Kraken WS v2 resilience (`traderstack.market.adapters`)
 

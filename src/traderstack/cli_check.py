@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pydantic import SecretStr
 
 from traderstack.config import Settings
+from traderstack.market.crucix import crucix_effective_base_url, crucix_should_register
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,21 @@ def build_report(settings: Settings) -> ConfigReport:
 
     # --- Venue / market data feed ----------------------------------------------------
     items.append(CheckItem("Venue feed", settings.venue_feed))
+    if settings.venue_feed == "kraken_rest":
+        items.append(
+            CheckItem(
+                "  kraken REST ticker",
+                "paper-only public /0/public/Ticker",
+                f"poll {settings.kraken_rest_poll_seconds}s",
+            )
+        )
+        if settings.trading_mode != "paper":
+            warnings.append(
+                "VENUE_FEED=kraken_rest is paper-only and is rejected at startup "
+                f"when TRADING_MODE={settings.trading_mode!r}. Use VENUE_FEED=kraken "
+                "(WS) or switch TRADING_MODE=paper (see docs/RUNBOOK.md, "
+                "'Kraken REST ticker fallback')."
+            )
     if settings.venue_feed == "robinhood_chain":
         required: tuple[tuple[str, object], ...] = (
             ("ROBINHOOD_CHAIN_RPC_URL", settings.robinhood_chain_rpc_url),
@@ -232,6 +248,21 @@ def build_report(settings: Settings) -> ConfigReport:
         if _has_secret(key) and not extra_ok:
             detail = "key set but DUNE_QUERY_IDS is empty — provider will not be used"
         items.append(CheckItem(f"  {label}", _flag(present), detail))
+
+    # --- crucix intel ---
+    crucix_present = crucix_should_register(
+        enabled=settings.crucix_enabled,
+        base_url=settings.crucix_base_url,
+        api_key=settings.crucix_api_key.get_secret_value() if settings.crucix_api_key else None,
+    )
+    any_intelligence = any_intelligence or crucix_present
+    items.append(
+        CheckItem(
+            "  Crucix (news/alerts)",
+            _flag(crucix_present),
+            crucix_effective_base_url(settings.crucix_base_url) if crucix_present else "",
+        )
+    )
 
     items.append(
         CheckItem(

@@ -52,6 +52,19 @@ def test_robinhood_chain_feed_without_config_is_unsafe() -> None:
     assert any("robinhood_chain" in w for w in report.warnings)
 
 
+def test_kraken_rest_feed_is_safe_in_paper() -> None:
+    report = build_report(settings(venue_feed="kraken_rest"))
+    assert report.safe
+    rest = next(item for item in report.items if "kraken REST" in item.label)
+    assert "paper-only" in rest.value
+
+
+def test_kraken_rest_feed_with_non_paper_mode_is_unsafe() -> None:
+    report = build_report(settings(venue_feed="kraken_rest", trading_mode="live"))
+    assert not report.safe
+    assert any("kraken_rest" in w and "paper-only" in w for w in report.warnings)
+
+
 def test_robinhood_chain_feed_fully_configured_is_safe_on_that_axis() -> None:
     report = build_report(
         settings(
@@ -128,6 +141,13 @@ def test_intelligence_required_without_provider_warns() -> None:
 def test_intelligence_required_with_provider_is_safe() -> None:
     report = build_report(settings(intelligence_required=True, lunarcrush_api_key="secret-key"))
     assert not any("INTELLIGENCE_REQUIRED" in w for w in report.warnings)
+
+
+def test_intelligence_required_with_crucix_enabled_is_safe() -> None:
+    report = build_report(settings(intelligence_required=True, crucix_enabled=True))
+    assert not any("INTELLIGENCE_REQUIRED" in w for w in report.warnings)
+    crucix = next(item for item in report.items if "Crucix" in item.label)
+    assert crucix.value == "yes"
 
 
 def test_intelligence_required_with_blank_key_is_treated_as_missing() -> None:
@@ -228,6 +248,12 @@ def test_edge_feeds_enabled_in_non_paper_mode_warns_as_not_an_execution_venue() 
     )
     assert not report.safe
     assert any("paper-research" in w or "order routing" in w for w in report.warnings)
+
+
+def test_crucix_is_off_by_default_in_check_config() -> None:
+    report = build_report(settings())
+    crucix = next(item for item in report.items if "Crucix" in item.label)
+    assert crucix.value == "no"
 
 
 def test_altfins_is_reported_as_an_intelligence_provider() -> None:

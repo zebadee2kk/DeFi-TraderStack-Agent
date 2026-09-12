@@ -51,12 +51,18 @@ from traderstack.market.adapters import (
 )
 from traderstack.market.altfins import AltFinsSignalProvider
 from traderstack.market.book_ticker import BookTickerProvider
+from traderstack.market.crucix import (
+    CrucixIntelProvider,
+    crucix_effective_base_url,
+    crucix_should_register,
+)
 from traderstack.market.intelligence_providers import (
     CryptoPanicNewsProvider,
     DuneOnChainProvider,
     LunarCrushSocialProvider,
 )
 from traderstack.market.kraken_candles import KrakenCandleProvider
+from traderstack.market.kraken_rest import KrakenRestTickerProvider, require_paper_kraken_rest
 from traderstack.market.liquidations import BinanceForceOrderProvider
 from traderstack.market.perplexity import PerplexityNewsProvider
 from traderstack.market.providers import (
@@ -269,6 +275,24 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
             build_provider_registry(settings, "altfins", calls_per_minute=quota),
         )
 
+    # --- crucix intel ---
+    crucix_key = _secret(settings.crucix_api_key)
+    if crucix_should_register(
+        enabled=settings.crucix_enabled,
+        base_url=settings.crucix_base_url,
+        api_key=crucix_key,
+    ):
+        news.append(
+            registered_fetcher(
+                CrucixIntelProvider(
+                    base_url=crucix_effective_base_url(settings.crucix_base_url),
+                    api_key=crucix_key,
+                ).fetch,
+                build_provider_registry(settings, "crucix", calls_per_minute=quota),
+            )
+        )
+    # --- end crucix intel ---
+
     if onchain is None and social is None and not news and altfins is None:
         return None
     return IntelligenceOrchestrator(
@@ -365,6 +389,8 @@ def build_service(
 ) -> ContinuousPaperService:
     trading_mode = require_runtime_trading_mode(settings.trading_mode)
     record_trading_mode(trading_mode)
+    # --- venue feed (kraken_rest) ---
+    require_paper_kraken_rest(settings.trading_mode, settings.venue_feed)
 
     # --- paper-trading acceptance (Epic 10) ---
     venue_client = overrides.venue_client if overrides is not None else None
@@ -482,6 +508,13 @@ def build_service(
         )
         if not symbols:
             raise RuntimeError("no ROBINHOOD_CHAIN_POOLS match MVP_ASSETS")
+    elif settings.venue_feed == "kraken_rest":
+        # --- venue feed (kraken_rest) ---
+        # Paper-only public Spot Ticker poll. No book channel on REST.
+        venue = KrakenRestTickerProvider(
+            poll_interval_seconds=settings.kraken_rest_poll_seconds,
+        )
+        symbols = tuple(f"{asset}/USD" for asset in settings.assets)
     else:
         venue = KrakenTickerProvider(
             max_reconnect_attempts=settings.kraken_max_reconnect_attempts,
