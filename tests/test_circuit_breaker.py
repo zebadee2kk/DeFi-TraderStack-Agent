@@ -10,7 +10,12 @@ from traderstack.circuit_breaker import (
     rolling_drawdown,
 )
 from traderstack.config import Settings
-from traderstack.execution.ledger import ExecutionFill, ExecutionLedger, ExecutionOrder
+from traderstack.execution.ledger import (
+    ExecutionFill,
+    ExecutionLedger,
+    ExecutionOrder,
+    FeeSource,
+)
 from traderstack.models import Side
 from traderstack.portfolio import InMemoryPortfolioBook
 
@@ -208,6 +213,63 @@ def test_portfolio_realized_pnl_feeder_records_only_deltas() -> None:
     # No new realized PnL since the last observation -> nothing recorded.
     assert feeder.observe("momentum-v1", book) is False
     assert len(cb.state_for("momentum-v1").closed_trades) == 1
+
+
+def test_gross_positive_net_negative_fills_trip_the_breaker() -> None:
+    """A strategy that is only profitable before fees must still trip."""
+
+    cb = breaker(max_consecutive_losses=3)
+    for _ in range(3):
+        cb.record_reducing_fill(
+            "momentum-v1",
+            quantity=1.0,
+            exit_price_usd=101.0,
+            entry_price_usd=100.0,
+            fee_usd=2.0,
+            nav_usd=10_000,
+            at=NOW,
+        )
+
+    assert cb.is_tripped("momentum-v1", NOW)
+    assert cb.state_for("momentum-v1").trip_reason == TRIP_CONSECUTIVE_LOSSES
+    assert cb.state_for("momentum-v1").closed_trades[-1].pnl_usd == pytest.approx(-1.0)
+
+
+def test_ledger_close_subtracts_accumulated_fees() -> None:
+    ledger = ExecutionLedger()
+    ledger.register_order(
+        ExecutionOrder(
+            order_id="o-fee",
+            decision_id="d-fee",
+            asset="ETH",
+            side=Side.SELL,
+            requested_quantity=1.0,
+        )
+    )
+    ledger.record_fill(
+        ExecutionFill(
+            fill_id="f-fee",
+            order_id="o-fee",
+            asset="ETH",
+            side=Side.SELL,
+            quantity=1.0,
+            price_usd=1_010,
+            fee_usd=20.0,
+            fee_source=FeeSource.VENUE,
+        )
+    )
+
+    cb = breaker()
+    state = cb.record_ledger_close(
+        ledger.orders["o-fee"],
+        strategy_id="momentum-v1",
+        entry_price_usd=1_000,
+        nav_usd=10_000,
+        at=NOW,
+    )
+    assert state is not None
+    # Gross +10, fee 20 → net -10.
+    assert state.closed_trades[-1].pnl_usd == pytest.approx(-10)
 
 
 def test_from_settings_reads_version_controlled_limits() -> None:

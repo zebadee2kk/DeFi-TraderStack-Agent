@@ -3,6 +3,11 @@
 Same shape and atomic-write discipline as ``traderstack.checkpoint``. The ledger
 is the idempotency record: without it a process restart could resubmit a
 decision whose order is already live at the venue.
+
+Writes go through ``write_atomic`` (temp → fsync → replace → directory fsync)
+so a host crash cannot leave a zero-length file that a restart would treat as
+a fresh start. An existing-but-empty or unparsable file raises
+``DurableStateError``; the caller must halt, never mint a new ledger.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
+from traderstack._fs import DurableStateError, read_text_strict, write_atomic
 from traderstack.execution.ledger import ExecutionLedger, ExecutionLedgerState
 
 
@@ -20,16 +26,17 @@ class JsonExecutionLedgerStore:
 
     async def save(self, ledger: ExecutionLedger) -> None:
         payload = ledger.state().model_dump_json(indent=2)
-        await asyncio.to_thread(self._write_atomic, payload)
+        await asyncio.to_thread(write_atomic, self.path, payload)
 
     async def load(self) -> ExecutionLedger | None:
-        if not self.path.exists():
+        payload = await asyncio.to_thread(read_text_strict, self.path, what="execution ledger")
+        if payload is None:
             return None
-        payload = await asyncio.to_thread(self.path.read_text, encoding="utf-8")
-        return ExecutionLedger.from_state(ExecutionLedgerState.model_validate_json(payload))
-
-    def _write_atomic(self, payload: str) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        temporary.write_text(payload, encoding="utf-8")
-        temporary.replace(self.path)
+        try:
+            return ExecutionLedger.from_state(ExecutionLedgerState.model_validate_json(payload))
+        except DurableStateError:
+            raise
+        except Exception as exc:
+            raise DurableStateError(
+                f"execution ledger at {self.path} is unparsable: {exc}"
+            ) from exc

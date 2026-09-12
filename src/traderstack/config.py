@@ -215,6 +215,12 @@ class Settings(BaseSettings):
     pretrade_require_walkforward: bool = True
     pretrade_fee_bps: float = Field(default=10.0, ge=0)
     pretrade_slippage_bps: float = Field(default=5.0, ge=0)
+    # --- paper fees (#66) ---
+    # Charged on a fill when the venue reports no fee (paper connectors
+    # typically don't). Applied to cash, realized PnL, NAV, daily loss and
+    # drawdown so the risk breakers are not systematically optimistic.
+    # Default matches PRETRADE_FEE_BPS.
+    paper_fee_bps: float = Field(default=10.0, ge=0)
 
     # --- paper research mode ---
     # Documented paper default. When TRADING_MODE=paper, the pre-trade ensemble

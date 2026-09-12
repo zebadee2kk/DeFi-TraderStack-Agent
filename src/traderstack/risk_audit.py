@@ -41,6 +41,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from traderstack._fs import append_jsonl
 from traderstack.agents.review import MetaAgentReview
 from traderstack.config import Settings
 from traderstack.models import RiskResult, TradeProposal
@@ -185,11 +186,8 @@ class JsonlRiskAuditTrail:
         )
 
     def _append(self, record: RiskAuditRecord) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(record.model_dump(mode="json"), separators=(",", ":"), sort_keys=True)
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-            handle.flush()
+        append_jsonl(self.path, line)
 
     def verify(self) -> ChainVerification:
         return verify_chain(self.path)

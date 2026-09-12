@@ -11,6 +11,7 @@ from traderstack.execution.ledger import (
     ExecutionFill,
     ExecutionLedger,
     ExecutionOrder,
+    FeeSource,
     OrderLifecycleState,
     is_legal_transition,
 )
@@ -52,6 +53,10 @@ class HummingbotExecutionReconciler:
     connector_name: str = "kraken_paper_trade"
     client: httpx.AsyncClient | None = None
     timeout_seconds: float = 10.0
+    # --- paper fees (#66) ---
+    # Applied when the venue row carries no fee (typical of paper connectors).
+    # Default matches Settings.paper_fee_bps / pretrade_fee_bps.
+    paper_fee_bps: float = 10.0
 
     async def reconcile(self, ledger: ExecutionLedger, portfolio: InMemoryPortfolioBook) -> int:
         """Backwards-compatible entry point returning only the applied fill count."""
@@ -197,19 +202,37 @@ class HummingbotExecutionReconciler:
     ) -> int:
         applied = 0
         for row in self._rows(payload):
+            quantity = self._number(row, "amount", "quantity")
+            price_usd = self._number(row, "price")
+            venue_fee = self._number(row, "fee", required=False)
+            fee_usd, fee_source = self._resolve_fee(venue_fee, quantity, price_usd)
             fill = ExecutionFill(
                 fill_id=self._text(row, "trade_id", "id"),
                 order_id=self._text(row, "order_id"),
                 asset=self._asset(self._text(row, "trading_pair", "symbol")),
                 side=self._side(self._text(row, "trade_type", "side")),
-                quantity=self._number(row, "amount", "quantity"),
-                price_usd=self._number(row, "price"),
-                fee_usd=self._number(row, "fee", required=False),
+                quantity=quantity,
+                price_usd=price_usd,
+                fee_usd=fee_usd,
+                fee_source=fee_source,
             )
             if ledger.record_fill(fill):
-                portfolio.apply_fill(fill.asset, fill.side, fill.quantity, fill.price_usd)
+                portfolio.apply_fill(
+                    fill.asset, fill.side, fill.quantity, fill.price_usd, fee_usd=fill.fee_usd
+                )
                 applied += 1
         return applied
+
+    def _resolve_fee(
+        self, venue_fee_usd: float, quantity: float, price_usd: float
+    ) -> tuple[float, FeeSource]:
+        """Venue fee wins when present; otherwise charge ``paper_fee_bps``."""
+
+        if venue_fee_usd > 0:
+            return venue_fee_usd, FeeSource.VENUE
+        notional = quantity * price_usd
+        modelled = notional * self.paper_fee_bps / 10_000.0
+        return modelled, FeeSource.MODELLED
 
     @staticmethod
     def register_submission(

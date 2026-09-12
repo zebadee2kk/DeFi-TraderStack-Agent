@@ -109,6 +109,56 @@ def test_anchor_survives_a_checkpoint_round_trip() -> None:
     assert restored.snapshot(now=day_one).daily_pnl_usd == pytest.approx(1_000)
 
 
+# --- paper fees (#66) -------------------------------------------------------
+
+
+def test_round_trip_at_constant_price_with_fees_lowers_nav() -> None:
+    """A flat round trip must still reduce NAV, daily PnL and raise drawdown."""
+
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill("ETH", Side.BUY, quantity=1, price_usd=1_000, fee_usd=5)
+    book.apply_fill("ETH", Side.SELL, quantity=1, price_usd=1_000, fee_usd=5)
+
+    snapshot = book.snapshot()
+    assert snapshot.nav_usd == pytest.approx(9_990)
+    assert snapshot.daily_pnl_usd == pytest.approx(-10)
+    assert snapshot.peak_nav_usd == pytest.approx(10_000)
+    assert book.realized_pnl_usd == pytest.approx(-10)
+    assert book.positions["ETH"].fees_paid_usd == pytest.approx(10)
+    drawdown = 1 - snapshot.nav_usd / snapshot.peak_nav_usd
+    assert drawdown == pytest.approx(0.001)
+
+
+def test_buy_fee_is_debited_from_cash_and_nav() -> None:
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill("BTC", Side.BUY, quantity=0.1, price_usd=20_000, fee_usd=10)
+
+    snapshot = book.snapshot()
+    assert snapshot.cash_usd == pytest.approx(7_990)
+    assert snapshot.asset_exposure_usd["BTC"] == pytest.approx(2_000)
+    assert snapshot.nav_usd == pytest.approx(9_990)
+    assert snapshot.daily_pnl_usd == pytest.approx(-10)
+
+
+def test_fees_paid_survive_a_checkpoint_round_trip() -> None:
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill("BTC", Side.BUY, quantity=0.1, price_usd=20_000, fee_usd=3)
+
+    restored = InMemoryPortfolioBook.from_state(
+        PortfolioState.model_validate_json(book.state().model_dump_json())
+    )
+    assert restored.positions["BTC"].fees_paid_usd == pytest.approx(3)
+    assert restored.nav_usd == pytest.approx(book.nav_usd)
+
+
+def test_apply_fill_rejects_a_negative_or_non_finite_fee() -> None:
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    with pytest.raises(ValueError, match="fee"):
+        book.apply_fill("BTC", Side.BUY, quantity=0.1, price_usd=20_000, fee_usd=-1)
+    with pytest.raises(ValueError, match="fee"):
+        book.apply_fill("BTC", Side.BUY, quantity=0.1, price_usd=20_000, fee_usd=float("inf"))
+
+
 def test_a_pre_epic7_checkpoint_anchors_on_load() -> None:
     """Checkpoints written before the anchor existed must not report a bogus day."""
 

@@ -272,6 +272,13 @@ def test_report_covers_provider_quotas_execution_and_kill_switch_channels() -> N
     assert "Max NAV drift (bps)" in labels
     assert any("CoinGecko quota" in label for label in labels)
     assert any("sentinel file path" in label for label in labels)
+    assert "Paper fee (bps)" in labels
+
+
+def test_paper_fee_bps_zero_warns() -> None:
+    report = build_report(settings(paper_fee_bps=0))
+    assert not report.safe
+    assert any("PAPER_FEE_BPS=0" in warning for warning in report.warnings)
 
 
 def test_main_exits_zero_on_safe_defaults(monkeypatch, capsys) -> None:

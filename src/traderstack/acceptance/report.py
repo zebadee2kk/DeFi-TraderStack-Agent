@@ -11,9 +11,10 @@ Two deliberate constraints:
 * The metrics are computed with the *same* statistics as ``backtest.py``
   (``_sharpe`` / ``_sortino`` / ``_std``), not a re-implementation, so a paper
   number and a backtest number mean the same thing and are safe to subtract.
-* Nothing is inferred that the audit trail does not record. Fees are not in the
-  paper receipts, so they default to zero and can only be *estimated* with an
-  explicit ``--fee-bps``; the report says which it used.
+* Nothing is inferred that the audit trail does not record. Fees come from the
+  execution ledger (venue-reported or ``PAPER_FEE_BPS``-modelled, labelled on
+  each order). ``--fee-bps`` is only a fallback for fills that still have no
+  fee; the report says which it used.
 """
 
 from __future__ import annotations
@@ -70,6 +71,9 @@ class PaperFill(BaseModel):
     side: Side
     quantity: float = Field(gt=0)
     price_usd: float = Field(gt=0)
+    # --- paper fees (#66) ---
+    fee_usd: float = Field(default=0.0, ge=0)
+    fee_source: str | None = None
 
     @property
     def notional_usd(self) -> float:
@@ -160,6 +164,9 @@ def fills_from_ledger(path: Path, *, asset: str | None = None) -> list[PaperFill
                 side=order.side,
                 quantity=order.filled_quantity,
                 price_usd=order.average_fill_price_usd,
+                # --- paper fees (#66) ---
+                fee_usd=order.fees_paid_usd,
+                fee_source=order.fee_source.value if order.fee_source is not None else None,
             )
         )
     fills.sort(key=lambda fill: fill.observed_at)
@@ -222,8 +229,8 @@ def reconstruct(
     strategy_ids = strategy_ids or {}
     cash = starting_equity
     quantity = 0.0
-    # FIFO lots: (quantity, price, time, decision_id)
-    lots: deque[tuple[float, float, datetime, str]] = deque()
+    # FIFO lots: (quantity, price, time, decision_id, remaining_fee_usd)
+    lots: deque[tuple[float, float, datetime, str, float]] = deque()
     last_price = marks[0].price_usd if marks else 0.0
 
     events: list[tuple[datetime, int, MarkPoint | PaperFill]] = [
@@ -236,7 +243,9 @@ def reconstruct(
 
     for moment, _order, event in events:
         if isinstance(event, PaperFill):
-            fee = event.notional_usd * fee_bps / 10_000
+            # Ledger fees (venue or PAPER_FEE_BPS-modelled) win; --fee-bps is
+            # only a fallback for fills that still carry no fee.
+            fee = event.fee_usd if event.fee_usd > 0 else event.notional_usd * fee_bps / 10_000
             run.fills += 1
             run.total_fees += fee
             run.turnover_usd += event.notional_usd
@@ -245,11 +254,11 @@ def reconstruct(
             if event.side is Side.BUY:
                 cash -= event.notional_usd
                 quantity += event.quantity
-                lots.append((event.quantity, event.price_usd, moment, event.decision_id))
+                lots.append((event.quantity, event.price_usd, moment, event.decision_id, fee))
             else:
                 cash += event.notional_usd
                 quantity -= event.quantity
-                _close_lots(run, lots, event, strategy_ids)
+                _close_lots(run, lots, event, strategy_ids, exit_fee_usd=fee)
             continue
 
         last_price = event.price_usd
@@ -266,24 +275,31 @@ def reconstruct(
             quantity=sum(lot[0] for lot in lots),
             price_usd=last_price,
         )
-        _close_lots(run, lots, synthetic, strategy_ids)
+        _close_lots(run, lots, synthetic, strategy_ids, exit_fee_usd=0.0)
     run.open_quantity = max(quantity, 0.0)
     return run
 
 
 def _close_lots(
     run: PaperRun,
-    lots: deque[tuple[float, float, datetime, str]],
+    lots: deque[tuple[float, float, datetime, str, float]],
     fill: PaperFill,
     strategy_ids: dict[str, list[str]],
+    *,
+    exit_fee_usd: float,
 ) -> None:
     """Match a sell against open buy lots, FIFO, recording one trade per lot."""
 
     remaining = fill.quantity
+    remaining_exit_fee = exit_fee_usd
     while remaining > 1e-12 and lots:
-        lot_quantity, lot_price, lot_time, decision_id = lots[0]
+        lot_quantity, lot_price, lot_time, decision_id, lot_fee = lots[0]
         matched = min(lot_quantity, remaining)
         notional = matched * lot_price
+        fraction = matched / lot_quantity
+        entry_fee = lot_fee * fraction
+        exit_share = remaining_exit_fee * (matched / remaining) if remaining > 0 else 0.0
+        remaining_exit_fee -= exit_share
         run.trades.append(
             BacktestTrade(
                 entry_time=lot_time,
@@ -295,14 +311,20 @@ def _close_lots(
                 regime=Regime.RANGE,
                 strategy_ids=strategy_ids.get(decision_id, ["paper"]),
                 notional_usd=notional,
-                fees_paid=0.0,
+                fees_paid=entry_fee + exit_share,
             )
         )
         remaining -= matched
         if matched >= lot_quantity - 1e-12:
             lots.popleft()
         else:
-            lots[0] = (lot_quantity - matched, lot_price, lot_time, decision_id)
+            lots[0] = (
+                lot_quantity - matched,
+                lot_price,
+                lot_time,
+                decision_id,
+                lot_fee - entry_fee,
+            )
 
 
 def periods_per_year(curve: list[tuple[datetime, float]]) -> float:
@@ -385,6 +407,9 @@ class PaperPerformanceReport(BaseModel):
     fills: int = 0
     open_quantity: float = 0.0
     fee_bps: float = 0.0
+    # --- paper fees (#66) ---
+    ledger_fees_usd: float = 0.0
+    estimated_fees_usd: float = 0.0
     metrics: BacktestMetrics
     baselines: dict[str, BacktestMetrics] = Field(default_factory=dict)
     excess: dict[str, ExcessMetrics] = Field(default_factory=dict)
@@ -394,12 +419,28 @@ class PaperPerformanceReport(BaseModel):
 
     def render(self) -> str:
         metrics = self.metrics
+        if self.ledger_fees_usd > 0 and self.estimated_fees_usd == 0:
+            fee_line = (
+                f"Fee model:         ledger ${self.ledger_fees_usd:,.2f} "
+                f"(venue or PAPER_FEE_BPS-modelled; --fee-bps unused)"
+            )
+        elif self.ledger_fees_usd > 0:
+            fee_line = (
+                f"Fee model:         ledger ${self.ledger_fees_usd:,.2f} + "
+                f"estimated ${self.estimated_fees_usd:,.2f} at {self.fee_bps:.2f} bps"
+            )
+        elif self.fee_bps > 0:
+            fee_line = (
+                f"Fee model:         {self.fee_bps:.2f} bps estimated (ledger carried no fees)"
+            )
+        else:
+            fee_line = "Fee model:         none (ledger carried no fees and --fee-bps was 0)"
         lines = [
             f"Paper performance -- {self.asset}",
             "=" * 72,
             f"Period:            {self.period_start} .. {self.period_end}",
             f"Runtime cycles:    {self.cycles}   marks: {self.marks}   fills: {self.fills}",
-            f"Fee model:         {self.fee_bps:.2f} bps (estimated; paper receipts carry no fees)",
+            fee_line,
             "",
             f"Total return:      {metrics.total_return:.2%}",
             f"Sharpe:            {metrics.sharpe:.3f}",
@@ -463,6 +504,8 @@ def build_report(
     metrics = metrics_from_run(run)
 
     notes: list[str] = []
+    ledger_fees = sum(fill.fee_usd for fill in fills)
+    estimated_fees = max(0.0, run.total_fees - ledger_fees)
     if not fills:
         notes.append(
             "The execution ledger records no fills, so the paper equity curve is flat: "
@@ -473,8 +516,23 @@ def build_report(
             "Open inventory at the end of the period was closed at the final mark "
             "so it appears in the trade list."
         )
-    if fee_bps == 0:
-        notes.append("--fee-bps was 0, so fees and slippage are NOT modelled in these numbers.")
+    if ledger_fees > 0:
+        sources = sorted({fill.fee_source for fill in fills if fill.fee_source})
+        labelled = ", ".join(sources) if sources else "unlabelled"
+        notes.append(
+            f"Fee drag of ${ledger_fees:,.2f} was read from the execution ledger "
+            f"(sources: {labelled})."
+        )
+    if estimated_fees > 0:
+        notes.append(
+            f"${estimated_fees:,.2f} of fee drag was estimated from --fee-bps={fee_bps} "
+            "for fills that still carried no ledger fee."
+        )
+    if fee_bps == 0 and ledger_fees == 0:
+        notes.append(
+            "The ledger carried no fees and --fee-bps was 0, so fees and slippage "
+            "are NOT modelled in these numbers."
+        )
 
     period_start = marks[0].observed_at
     period_end = marks[-1].observed_at
@@ -497,6 +555,8 @@ def build_report(
         fills=run.fills,
         open_quantity=run.open_quantity,
         fee_bps=fee_bps,
+        ledger_fees_usd=ledger_fees,
+        estimated_fees_usd=estimated_fees,
         metrics=metrics,
         baselines=baselines,
         excess=compare(metrics, baselines) if baselines else {},
@@ -536,7 +596,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--fee-bps",
         type=float,
         default=0.0,
-        help="estimated round-trip fee/slippage in bps; paper receipts carry no fees",
+        help=(
+            "fallback fee/slippage in bps for fills that still carry no ledger fee; "
+            "ledger fees (venue or PAPER_FEE_BPS) are used when present"
+        ),
     )
     parser.add_argument("--warmup", type=int, default=31)
     parser.add_argument("--json", action="store_true", help="emit JSON instead of a table")

@@ -444,6 +444,20 @@ def build_report(settings: Settings) -> ConfigReport:
     items.append(CheckItem("Max position % of NAV", f"{settings.max_position_pct:.2%}"))
     items.append(CheckItem("Max daily loss % of NAV", f"{settings.max_daily_loss_pct:.2%}"))
     items.append(CheckItem("Max account drawdown %", f"{settings.max_account_drawdown_pct:.2%}"))
+    # --- paper fees (#66) ---
+    items.append(
+        CheckItem(
+            "Paper fee (bps)",
+            str(settings.paper_fee_bps),
+            "charged on a fill when the venue reports no fee; applied to NAV and breakers",
+        )
+    )
+    if settings.paper_fee_bps == 0:
+        warnings.append(
+            "PAPER_FEE_BPS=0: fills with no venue fee are booked gross. Daily-loss and "
+            "drawdown breakers will be optimistic versus a live fee schedule. Set this "
+            "to match PRETRADE_FEE_BPS (default 10) unless the venue always reports fees."
+        )
 
     # --- polymarket weather research (paper-only, opt-in) ------------------------------
     items.append(

@@ -5,10 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+import structlog
 from prometheus_client import start_http_server
 from pydantic import SecretStr
 from redis.asyncio import Redis
 
+from traderstack._fs import DurableStateError
 from traderstack.agents.claude import AnthropicMetaAgentClient
 from traderstack.agents.review import (
     DailyBudget,
@@ -118,6 +120,46 @@ class ServiceOverrides:
 
 
 # --- end paper-trading acceptance (Epic 10) ---
+
+_log = structlog.get_logger("traderstack.cli")
+
+
+# --- durability (#67) ---
+async def load_persisted_state(
+    checkpoint_store: JsonPortfolioCheckpointStore,
+    ledger_store: JsonExecutionLedgerStore,
+    *,
+    starting_nav_usd: float,
+) -> tuple[InMemoryPortfolioBook, ExecutionLedger, str | None]:
+    """Load the checkpoint and the idempotency ledger.
+
+    A missing file is a fresh start. An existing-but-empty or unparsable file
+    is a halt: the error string is returned so the caller can mark
+    ``RuntimeHealth`` and refuse submission. The in-memory objects returned
+    alongside a halt must not be treated as authoritative — they exist only
+    so the process can expose health and exit without minting a new ledger.
+    """
+
+    durable_error: str | None = None
+    try:
+        portfolio = await checkpoint_store.load()
+    except DurableStateError as exc:
+        _log.error("corrupt_portfolio_checkpoint", error=str(exc), path=str(checkpoint_store.path))
+        durable_error = str(exc)
+        portfolio = None
+    if portfolio is None:
+        portfolio = InMemoryPortfolioBook(starting_nav_usd)
+
+    try:
+        execution_ledger = await ledger_store.load()
+    except DurableStateError as exc:
+        _log.error("corrupt_execution_ledger", error=str(exc), path=str(ledger_store.path))
+        durable_error = str(exc)
+        execution_ledger = None
+    if execution_ledger is None:
+        execution_ledger = ExecutionLedger()
+
+    return portfolio, execution_ledger, durable_error
 
 
 def paper_research_ensemble(settings: Settings) -> StrategyEnsemble:
@@ -436,6 +478,8 @@ def build_service(
             account_name=settings.hummingbot_account_name,
             connector_name=settings.hummingbot_connector_name,
             client=venue_client,  # paper-trading acceptance (Epic 10)
+            # --- paper fees (#66) ---
+            paper_fee_bps=settings.paper_fee_bps,
         )
         portfolio_reconciler = HummingbotPortfolioReconciler(
             base_url=settings.hummingbot_api_url,
@@ -683,15 +727,16 @@ async def _main_async(args: argparse.Namespace) -> None:
     checkpoint_store = JsonPortfolioCheckpointStore(
         Path(args.checkpoint_path), circuit_breaker=circuit_breaker
     )
-    portfolio = await checkpoint_store.load()
-    if portfolio is None:
-        portfolio = InMemoryPortfolioBook(settings.paper_starting_nav_usd)
-
-    # --- execution hardening (Epic 8) ---
+    # --- execution hardening (Epic 8) / durability (#67) ---
     # The ledger is the cross-restart idempotency record: loading it is what
     # stops a decision whose order is already live from being submitted twice.
+    # An existing-but-corrupt file is halt, never a silent fresh start.
     ledger_store = JsonExecutionLedgerStore(Path(args.ledger_path))
-    execution_ledger = await ledger_store.load() or ExecutionLedger()
+    portfolio, execution_ledger, durable_error = await load_persisted_state(
+        checkpoint_store,
+        ledger_store,
+        starting_nav_usd=settings.paper_starting_nav_usd,
+    )
     # --- shadow-live (Roadmap Phase 7) ---
     shadow_ledger = (
         ShadowLedger(Path(args.shadow_ledger_path)) if settings.trading_mode == "shadow" else None
@@ -731,6 +776,10 @@ async def _main_async(args: argparse.Namespace) -> None:
         ledger_store=ledger_store,
         shadow_ledger=shadow_ledger,
     )
+    # --- durability (#67) ---
+    if durable_error is not None:
+        service.submit = False
+        service.health.record_durable_state_failure(durable_error)
     try:
         await service.run()
     finally:

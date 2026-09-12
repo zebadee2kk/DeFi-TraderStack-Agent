@@ -156,9 +156,10 @@ the numbers are safe to subtract), runs `research.baselines` over the same perio
 candles, and prints the excess per baseline plus the `research.attribution` report.
 
 Two honesty constraints are built in: nothing is inferred that the audit trail does not
-record — paper receipts carry no fees, so fees are zero unless `--fee-bps` explicitly
-estimates them, and the report says so — and orders that were submitted but never
-reconciled to a fill are excluded rather than assumed to have traded.
+record — fees come from the execution ledger (venue-reported or `PAPER_FEE_BPS`-modelled
+when the venue reports none) and `--fee-bps` is only a fallback for fills that still
+carry no fee, and the report says which it used — and orders that were submitted but
+never reconciled to a fill are excluded rather than assumed to have traded.
 
 **Not yet implemented:** Freqtrade research integration, survivorship-bias review,
 and the tiny-capital-pilot stage (6). Shadow-live (stage 5) now has a runtime

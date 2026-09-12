@@ -1,7 +1,12 @@
 import httpx
 import pytest
 
-from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder, OrderLifecycleState
+from traderstack.execution.ledger import (
+    ExecutionLedger,
+    ExecutionOrder,
+    FeeSource,
+    OrderLifecycleState,
+)
 from traderstack.execution.reconcile import HummingbotExecutionReconciler
 from traderstack.models import Side
 from traderstack.portfolio import InMemoryPortfolioBook
@@ -53,8 +58,12 @@ async def test_reconciler_applies_new_trades_once() -> None:
     await client.aclose()
 
     assert ledger.orders["o1"].state is OrderLifecycleState.FILLED
-    assert book.snapshot().cash_usd == pytest.approx(9_000)
+    assert ledger.orders["o1"].fees_paid_usd == pytest.approx(1.0)
+    assert ledger.orders["o1"].fee_source is FeeSource.VENUE
+    # Venue fee of $1 is debited from cash; NAV falls by the fee.
+    assert book.snapshot().cash_usd == pytest.approx(8_999)
     assert book.snapshot().asset_exposure_usd["BTC"] == pytest.approx(1_000)
+    assert book.snapshot().nav_usd == pytest.approx(9_999)
 
 
 def _client(handler: object) -> httpx.AsyncClient:
@@ -162,3 +171,45 @@ async def test_reconciler_maps_expired_and_acknowledged_statuses() -> None:
     assert (await reconciler.reconcile_state(ledger, book)).matched
     assert ledger.orders["o1"].state is OrderLifecycleState.EXPIRED
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_missing_venue_fee_is_modelled_and_labelled() -> None:
+    """Paper connectors often omit fee; PAPER_FEE_BPS still hits the book."""
+
+    trades = [
+        {
+            "trade_id": "f1",
+            "order_id": "o1",
+            "trading_pair": "BTC-USD",
+            "trade_type": "BUY",
+            "amount": 0.05,
+            "price": 20_000,
+        }
+    ]
+    ledger = ExecutionLedger()
+    ledger.register_order(
+        ExecutionOrder(
+            order_id="o1",
+            decision_id="d1",
+            asset="BTC",
+            side=Side.BUY,
+            requested_quantity=0.05,
+        )
+    )
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    client = _client(_state_handler([{"order_id": "o1", "status": "filled"}], trades))
+    reconciler = HummingbotExecutionReconciler(
+        "http://test", "u", "p", client=client, paper_fee_bps=10.0
+    )
+
+    result = await reconciler.reconcile_state(ledger, book)
+    await client.aclose()
+
+    modelled = 0.05 * 20_000 * 10.0 / 10_000
+    assert result.applied_fills == 1
+    fill_order = ledger.orders["o1"]
+    assert fill_order.fees_paid_usd == pytest.approx(modelled)
+    assert fill_order.fee_source is FeeSource.MODELLED
+    assert book.snapshot().nav_usd == pytest.approx(10_000 - modelled)
+    assert book.snapshot().cash_usd == pytest.approx(9_000 - modelled)

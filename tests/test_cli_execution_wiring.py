@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from traderstack.checkpoint import JsonPortfolioCheckpointStore
-from traderstack.cli import build_parser, build_service
+from traderstack.cli import build_parser, build_service, load_persisted_state
 from traderstack.config import Settings
 from traderstack.execution.ledger import ExecutionLedger
 from traderstack.execution.ledger_store import JsonExecutionLedgerStore
@@ -71,6 +71,7 @@ def test_build_service_wires_the_execution_stack(tmp_path: Path) -> None:
     assert submitter.planner.lot_step == pytest.approx(0.001)
     assert submitter.planner.min_notional_usd == pytest.approx(25.0)
     assert submitter.planner.max_slippage_bps == pytest.approx(20.0)
+    assert service.execution_reconciler.paper_fee_bps == pytest.approx(settings.paper_fee_bps)
 
 
 def test_build_service_without_submit_has_no_execution_stack(tmp_path: Path) -> None:
@@ -88,3 +89,46 @@ def test_build_service_without_submit_has_no_execution_stack(tmp_path: Path) -> 
     assert service.execution_reconciler is None
     assert service.portfolio_reconciler is None
     assert not service.submission_enabled
+
+
+@pytest.mark.asyncio
+async def test_load_persisted_state_treats_a_missing_file_as_a_fresh_start(tmp_path: Path) -> None:
+    checkpoint = JsonPortfolioCheckpointStore(tmp_path / "portfolio.json")
+    ledger = JsonExecutionLedgerStore(tmp_path / "execution_ledger.json")
+
+    book, execution, error = await load_persisted_state(checkpoint, ledger, starting_nav_usd=10_000)
+
+    assert error is None
+    assert book.starting_nav_usd == pytest.approx(10_000)
+    assert execution.orders == {}
+
+
+@pytest.mark.asyncio
+async def test_load_persisted_state_halts_on_a_corrupt_ledger(tmp_path: Path) -> None:
+    checkpoint = JsonPortfolioCheckpointStore(tmp_path / "portfolio.json")
+    ledger_path = tmp_path / "execution_ledger.json"
+    ledger_path.write_text("{not-json", encoding="utf-8")
+    ledger = JsonExecutionLedgerStore(ledger_path)
+
+    _book, _execution, error = await load_persisted_state(
+        checkpoint, ledger, starting_nav_usd=10_000
+    )
+
+    assert error is not None
+    assert "execution ledger" in error
+    assert "unparsable" in error or "empty" in error
+
+
+@pytest.mark.asyncio
+async def test_load_persisted_state_halts_on_an_empty_checkpoint(tmp_path: Path) -> None:
+    checkpoint_path = tmp_path / "portfolio.json"
+    checkpoint_path.write_text("   \n", encoding="utf-8")
+    checkpoint = JsonPortfolioCheckpointStore(checkpoint_path)
+    ledger = JsonExecutionLedgerStore(tmp_path / "execution_ledger.json")
+
+    _book, _execution, error = await load_persisted_state(
+        checkpoint, ledger, starting_nav_usd=10_000
+    )
+
+    assert error is not None
+    assert "portfolio checkpoint" in error

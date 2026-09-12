@@ -7,6 +7,7 @@ from traderstack.config import Settings
 from traderstack.features import AssetFeatureVector, MarketFeatures
 from traderstack.killswitch import KillSwitch
 from traderstack.models import PortfolioSnapshot, RiskDecision, Side, TradeProposal
+from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.risk import RiskEngine, derive_policy_version, risk_limits_hash
 
 
@@ -72,6 +73,35 @@ def test_daily_loss_rejects():
     result = RiskEngine(settings()).evaluate(proposal(), portfolio(daily_pnl_usd=-250))
     assert result.decision == RiskDecision.REJECT
     assert "daily_loss_limit_reached" in result.reasons
+
+
+def test_daily_loss_and_drawdown_see_fee_adjusted_nav() -> None:
+    """Fees that never hit the book would leave these breakers silent."""
+
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    # Gross-flat round trip; $250 of fees is 2.5% of starting NAV.
+    book.apply_fill("BTC", Side.BUY, quantity=0.1, price_usd=20_000, fee_usd=125)
+    book.apply_fill("BTC", Side.SELL, quantity=0.1, price_usd=20_000, fee_usd=125)
+    snapshot = book.snapshot()
+    assert snapshot.nav_usd == pytest.approx(9_750)
+    assert snapshot.daily_pnl_usd == pytest.approx(-250)
+
+    engine = RiskEngine(settings(max_daily_loss_pct=0.02, max_account_drawdown_pct=0.10))
+    result = engine.evaluate(proposal(), snapshot)
+    assert result.decision == RiskDecision.REJECT
+    assert "daily_loss_limit_reached" in result.reasons
+
+    # A larger fee hit trips drawdown even when daily-loss is slack.
+    deep = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    deep.apply_fill("ETH", Side.BUY, quantity=1, price_usd=1_000, fee_usd=600)
+    deep.apply_fill("ETH", Side.SELL, quantity=1, price_usd=1_000, fee_usd=500)
+    deep_snapshot = deep.snapshot()
+    assert deep_snapshot.nav_usd == pytest.approx(8_900)
+    deep_result = RiskEngine(
+        settings(max_daily_loss_pct=0.50, max_account_drawdown_pct=0.10)
+    ).evaluate(proposal(), deep_snapshot)
+    assert deep_result.decision == RiskDecision.REJECT
+    assert "account_drawdown_limit_reached" in deep_result.reasons
 
 
 # --- risk plane (Epic 7) ---------------------------------------------------

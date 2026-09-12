@@ -194,8 +194,11 @@ async def test_a_replayed_fill_id_is_applied_exactly_once() -> None:
         assert (await reconciler.reconcile_state(ledger, book)).applied_fills == 1
         assert (await reconciler.reconcile_state(ledger, book)).applied_fills == 0
 
-    assert book.cash_usd == pytest.approx(10_000 - 0.02 * 20_000)
+    notional = 0.02 * 20_000
+    modelled_fee = notional * reconciler.paper_fee_bps / 10_000
+    assert book.cash_usd == pytest.approx(10_000 - notional - modelled_fee)
     assert ledger.orders["o1"].filled_quantity == pytest.approx(0.02)
+    assert ledger.orders["o1"].fees_paid_usd == pytest.approx(modelled_fee)
 
 
 @pytest.mark.asyncio

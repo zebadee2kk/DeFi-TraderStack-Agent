@@ -95,6 +95,16 @@ class ContinuousPaperService:
     async def run(self) -> None:
         if not self.symbols:
             raise ValueError("at least one symbol is required")
+        # --- durability (#67) ---
+        # A torn checkpoint/ledger is halt, not a fresh start. Do not enter
+        # the cycle loop: even one submission against an empty in-memory
+        # ledger would double-execute an order the on-disk file forgot.
+        if self.health.durable_state_error is not None:
+            _log.error(
+                "service_halted_corrupt_durable_state",
+                reason=self.health.durable_state_error,
+            )
+            return
         collector_tasks = [
             asyncio.create_task(
                 self._run_edge_collector(collector), name=f"edge:{collector.feed_name}"
@@ -255,7 +265,11 @@ class ContinuousPaperService:
         keep running, and existing positions are untouched.
         """
 
-        return self.submit and not self.health.reconciliation_blocked
+        return (
+            self.submit
+            and not self.health.reconciliation_blocked
+            and self.health.durable_state_error is None
+        )
 
     async def _maybe_reconcile(self) -> None:
         if self.execution_reconciler is None and self.portfolio_reconciler is None:
