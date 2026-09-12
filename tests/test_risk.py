@@ -387,3 +387,60 @@ def test_portfolio_layer_rejection_survives_a_valid_trade_layer():
     )
     assert result.decision == RiskDecision.REJECT
     assert "account_drawdown_limit_reached" in result.reasons
+
+
+# --- risk-reducing exits (issue #53) ---------------------------------------
+
+
+def _stressed_long_book() -> PortfolioSnapshot:
+    """Gross, position, cash, daily-loss and drawdown limits are all breached."""
+
+    return portfolio(
+        nav_usd=8_500,
+        cash_usd=1_500,
+        daily_pnl_usd=-250,
+        peak_nav_usd=10_000,
+        asset_exposure_usd={
+            "BTC": 1_000.0,
+            "ETH": 1_000.0,
+            "SOL": 1_000.0,
+            "X1": 1_000.0,
+            "X2": 1_000.0,
+            "X3": 1_000.0,
+        },
+        observed_at=NOW,
+    )
+
+
+def test_risk_reducing_sell_is_approved_when_additive_limits_are_breached():
+    engine = RiskEngine(
+        settings(max_open_positions=5, min_cash_reserve_pct=0.20, max_gross_exposure_pct=0.60)
+    )
+    snap = _stressed_long_book()
+    held = snap.asset_exposure_usd["BTC"]
+    result = engine.evaluate(
+        proposal(side=Side.SELL, requested_notional_usd=200),
+        snap,
+        now=NOW,
+    )
+
+    assert result.decision == RiskDecision.ALLOW
+    assert result.approved_notional_usd == pytest.approx(200)
+    assert result.approved_notional_usd <= held
+    assert "daily_loss_limit_reached" in result.reasons
+    assert "account_drawdown_limit_reached" in result.reasons
+    assert "gross_exposure_limit" not in result.reasons
+    assert "cash_reserve_breached" not in result.reasons
+    assert "position_limit_reached" not in result.reasons
+    assert "max_positions_reached" not in result.reasons
+
+
+def test_buy_against_the_same_stressed_book_is_still_rejected():
+    result = RiskEngine(
+        settings(max_open_positions=5, min_cash_reserve_pct=0.20, max_gross_exposure_pct=0.60)
+    ).evaluate(proposal(side=Side.BUY, requested_notional_usd=200), _stressed_long_book(), now=NOW)
+
+    assert result.decision == RiskDecision.REJECT
+    assert result.approved_notional_usd == 0
+    assert "gross_exposure_limit" in result.reasons
+    assert "position_limit_reached" in result.reasons

@@ -137,7 +137,11 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
              - RiskEngine.evaluate(...)          -- Zone C. Kill switch is check #1 here,
                                                      checked on *every* evaluated proposal,
                                                      submission or not. This is the layer that
-                                                     can never be relaxed by an LLM.
+                                                     can never be relaxed by an LLM. A SELL
+                                                     is risk-reducing only when the snapshot
+                                                     already shows positive exposure for that
+                                                     asset; additive limits then do not block
+                                                     a correctly sized exit (see below).
              - PaperOrderIntent, if ALLOW/REDUCE with approved_notional_usd > 0
         viii. MetaAgentReviewer.run(symbol, pipeline_result)   -- Epic 6. Runs strictly AFTER
              risk sizing is fixed, strictly BEFORE submission. It can only *withhold* an
@@ -194,6 +198,17 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
    dropped between the risk engine's decision and what gets recorded.
 4. The portfolio checkpoint is written before the event fan-out, so the
    locally-resumable state never depends on a remote sink's availability.
+5. `RiskEngine.evaluate` classifies a proposal as risk-reducing only from
+   `proposal.side is SELL` and `portfolio.asset_exposure_usd[asset] > 0`.
+   Thesis text and signal ids cannot flip that. Risk-reducing exits skip
+   additive limits (`gross_exposure_limit`, `cash_reserve_breached`,
+   `max_positions_reached`, `position_limit_reached`) and record
+   daily-loss / drawdown as informational reasons; they are still capped
+   to held exposure (`sell_capped_to_position` + `REDUCE`) and still
+   rejected by the kill switch, stale portfolio state, the strategy
+   breaker, the asset allowlist, and `spread_too_wide`. A SELL with no
+   observed position stays risk-adding. `RISK_LIMIT_FIELDS` is unchanged
+   (semantics only; no new limit, no `risk_policy_label` bump).
 
 ## Responsibilities
 

@@ -18,10 +18,14 @@ allowed:
 3. strategy limits                     -> strategy_circuit_breaker
 4. asset / venue limits                -> asset_not_allowlisted, spread_too_wide
 5. trade-level validation              -> position_limit_reached,
-                                          position_size_reduced, volatility_scaled
+                                          position_size_reduced, volatility_scaled,
+                                          sell_capped_to_position
 
-The default response to uncertainty is no new risk. Existing positions are never
-touched by this module.
+The default response to uncertainty is no new risk. A SELL against observed
+positive exposure is risk-reducing: additive limits are skipped so the book
+can de-risk, while kill-switch, stale-state, allowlist, spread and strategy
+breaker checks still reject. Classification is derived from the signed
+proposal and ``PortfolioSnapshot`` only -- never from thesis text.
 """
 
 from __future__ import annotations
@@ -36,7 +40,7 @@ from traderstack.circuit_breaker import StrategyCircuitBreaker
 from traderstack.config import Settings
 from traderstack.features import AssetFeatureVector
 from traderstack.killswitch import KillSwitch
-from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, TradeProposal
+from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side, TradeProposal
 
 # Settings fields that constitute risk policy. Any change to one of these
 # changes the derived policy version, so every audit record shows exactly which
@@ -112,65 +116,106 @@ class RiskEngine:
         now: datetime | None = None,
     ) -> RiskResult:
         reasons: list[str] = []
+        blocking_reasons: list[str] = []
         moment = now or datetime.now(UTC)
 
+        # Exposure reduction is derived from the signed proposal and the
+        # observed portfolio, never from LLM-authored text. A SELL with no
+        # existing exposure remains risk-adding and receives normal limits.
+        asset = proposal.asset.upper()
+        existing = portfolio.asset_exposure_usd.get(asset, 0.0)
+        risk_reducing = proposal.side is Side.SELL and existing > 0
+
         # --- 1. global halt ------------------------------------------------
+        # The kill switch is an unconditional halt, including exits.
         if self._halted():
             return self._result(proposal, RiskDecision.REJECT, 0, ["kill_switch_enabled"])
 
         # --- 2. account and portfolio limits ------------------------------
-        # Stale-state shutdown: an old view of the book is inconsistent state.
         state_age = (moment - portfolio.observed_at).total_seconds()
         if state_age > self.settings.max_portfolio_state_age_seconds:
             reasons.append("stale_portfolio_state")
+            blocking_reasons.append("stale_portfolio_state")
 
         daily_loss_limit = portfolio.nav_usd * self.settings.max_daily_loss_pct
         if portfolio.daily_pnl_usd <= -daily_loss_limit:
             reasons.append("daily_loss_limit_reached")
+            if not risk_reducing:
+                blocking_reasons.append("daily_loss_limit_reached")
 
         drawdown = 1 - (portfolio.nav_usd / portfolio.peak_nav_usd)
         if drawdown >= self.settings.max_account_drawdown_pct:
             reasons.append("account_drawdown_limit_reached")
+            if not risk_reducing:
+                blocking_reasons.append("account_drawdown_limit_reached")
 
-        gross_exposure = sum(portfolio.asset_exposure_usd.values())
-        gross_limit = portfolio.nav_usd * self.settings.max_gross_exposure_pct
-        gross_room = gross_limit - gross_exposure
-        if gross_room <= 0:
-            reasons.append("gross_exposure_limit")
+        # These checks govern risk addition. They must not prevent a fresh,
+        # correctly sized exit from reducing exposure during a stressed state.
+        gross_room = float("inf")
+        cash_room = float("inf")
+        if not risk_reducing:
+            gross_exposure = sum(portfolio.asset_exposure_usd.values())
+            gross_limit = portfolio.nav_usd * self.settings.max_gross_exposure_pct
+            gross_room = gross_limit - gross_exposure
+            if gross_room <= 0:
+                reasons.append("gross_exposure_limit")
+                blocking_reasons.append("gross_exposure_limit")
 
-        cash_floor = portfolio.nav_usd * self.settings.min_cash_reserve_pct
-        cash_room = portfolio.cash_usd - cash_floor
-        if cash_room <= 0:
-            reasons.append("cash_reserve_breached")
+            cash_floor = portfolio.nav_usd * self.settings.min_cash_reserve_pct
+            cash_room = portfolio.cash_usd - cash_floor
+            if cash_room <= 0:
+                reasons.append("cash_reserve_breached")
+                blocking_reasons.append("cash_reserve_breached")
 
-        asset = proposal.asset.upper()
-        open_positions = {
-            name for name, exposure in portfolio.asset_exposure_usd.items() if exposure > 0
-        }
-        if asset not in open_positions and len(open_positions) >= self.settings.max_open_positions:
-            reasons.append("max_positions_reached")
+            open_positions = {
+                name for name, exposure in portfolio.asset_exposure_usd.items() if exposure > 0
+            }
+            if (
+                asset not in open_positions
+                and len(open_positions) >= self.settings.max_open_positions
+            ):
+                reasons.append("max_positions_reached")
+                blocking_reasons.append("max_positions_reached")
 
         # --- 3. strategy limits -------------------------------------------
         if self.circuit_breaker is not None and self.circuit_breaker.is_tripped(
             proposal.strategy_id, moment
         ):
             reasons.append("strategy_circuit_breaker")
+            blocking_reasons.append("strategy_circuit_breaker")
 
         # --- 4. asset / venue limits --------------------------------------
         if asset not in self.settings.assets:
             reasons.append("asset_not_allowlisted")
+            blocking_reasons.append("asset_not_allowlisted")
 
         if features is not None and features.market.spread_bps > self.settings.risk_max_spread_bps:
             reasons.append("spread_too_wide")
+            blocking_reasons.append("spread_too_wide")
 
         # --- 5. trade-level validation ------------------------------------
-        max_notional = portfolio.nav_usd * self.settings.max_position_pct
-        existing = portfolio.asset_exposure_usd.get(asset, 0.0)
-        remaining = max(0.0, max_notional - existing)
+        if risk_reducing:
+            # An exit can never create a position. Cap it to the exposure
+            # observed by the risk engine so stale or oversized requests do not
+            # over-sell.
+            approved = min(proposal.requested_notional_usd, existing)
+            if approved < proposal.requested_notional_usd:
+                reasons.append("sell_capped_to_position")
+            if blocking_reasons:
+                return self._result(proposal, RiskDecision.REJECT, 0, reasons)
+            decision = (
+                RiskDecision.ALLOW
+                if approved == proposal.requested_notional_usd
+                else RiskDecision.REDUCE
+            )
+            return self._result(proposal, decision, approved, reasons)
 
-        if reasons or remaining <= 0:
-            if remaining <= 0:
-                reasons.append("position_limit_reached")
+        max_notional = portfolio.nav_usd * self.settings.max_position_pct
+        remaining = max(0.0, max_notional - existing)
+        if remaining <= 0:
+            reasons.append("position_limit_reached")
+            blocking_reasons.append("position_limit_reached")
+        if blocking_reasons:
             return self._result(proposal, RiskDecision.REJECT, 0, reasons)
 
         requested = proposal.requested_notional_usd
