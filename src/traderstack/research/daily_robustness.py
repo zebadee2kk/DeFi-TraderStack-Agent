@@ -1,4 +1,4 @@
-"""Daily robustness search: longer Kraken daily + stricter multi-asset bar.
+"""Daily robustness search: Kraken daily + balanced-holdout promotion bar.
 
 Honesty rules (also written into every report):
 
@@ -10,11 +10,14 @@ Honesty rules (also written into every report):
   ``PRETRADE_SLIPPAGE_BPS``. There is no zero-fee ranking path.
 * Ranking uses only the Kraken BTC/USD + ETH/USD research prefix.
   SOL/USD is supporting. Yahoo is A/B only.
-* Promotion requires fee-aware walk-forward **total return > 0 on BTC
-  and on ETH** (not just the two-asset mean — that was the #93 ETH-heavy
-  bias), min trades, and holdout **mean excess return > 0** after fees.
-* Selection is pre-registered top-1. If #1 fails the multi-asset bar we
-  do not promote #2.
+* The #95 multi-asset bar required BTC **and** ETH walk-forward total
+  return > 0, plus holdout **mean** excess > 0. That still lets an ETH
+  tail carry a losing BTC holdout.
+* The balanced-holdout bar (default) keeps #95 **and** requires BTC
+  holdout excess > 0 **and** ETH holdout excess > 0. SOL is reported
+  but is not a promotion gate.
+* Selection is pre-registered top-1. If #1 fails the bar we do not
+  promote #2.
 """
 
 from __future__ import annotations
@@ -25,7 +28,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
-from traderstack.research.daily_candidates import default_daily_robustness_candidates
+from traderstack.research.daily_candidates import (
+    BALANCED_HOLDOUT_GRID_NOTE,
+    default_balanced_holdout_candidates,
+    default_daily_robustness_candidates,
+)
 from traderstack.research.miles_candidates import SearchCandidate
 from traderstack.research.miles_search import (
     CandidateSearchResult,
@@ -86,7 +93,18 @@ def series_for_asset(
     return None
 
 
-def _gate_reasons(row: CandidateSearchResult, *, min_trades: int) -> list[str]:
+def _holdout_excess(row: SeriesCandidateMetrics | None) -> float | None:
+    if row is None or row.holdout is None:
+        return None
+    return row.holdout.excess_return
+
+
+def _gate_reasons(
+    row: CandidateSearchResult,
+    *,
+    min_trades: int,
+    require_balanced_holdout: bool,
+) -> list[str]:
     reasons: list[str] = []
     if row.mean_wf_total_return is None:
         reasons.append("walkforward_missing")
@@ -110,6 +128,17 @@ def _gate_reasons(row: CandidateSearchResult, *, min_trades: int) -> list[str]:
         reasons.append("eth_walkforward_missing")
     elif eth_wf <= 0:
         reasons.append("eth_walkforward_total_return_not_positive")
+    if require_balanced_holdout:
+        btc_ho = _holdout_excess(btc)
+        eth_ho = _holdout_excess(eth)
+        if btc_ho is None:
+            reasons.append("btc_holdout_missing")
+        elif btc_ho <= 0:
+            reasons.append("btc_holdout_excess_not_positive")
+        if eth_ho is None:
+            reasons.append("eth_holdout_missing")
+        elif eth_ho <= 0:
+            reasons.append("eth_holdout_excess_not_positive")
     return reasons
 
 
@@ -137,7 +166,11 @@ class DailyRobustnessReport(BaseModel):
     any_promoted: bool = False
     recommended_promote_flag: str | None = None
     recommended_promote_id: str | None = None
+    require_balanced_holdout: bool = True
+    catalog_name: str = "balanced"
+    catalog_note: str = ""
     ema_9_21_clears_multi_asset: bool = False
+    ema_9_21_clears_balanced_holdout: bool = False
     honesty: str
     data_notes: list[str] = Field(default_factory=list)
 
@@ -154,6 +187,18 @@ def _holdout_max_drawdown(row: SeriesCandidateMetrics) -> float | None:
     return row.holdout.max_drawdown
 
 
+def _kraken_btc_daily(histories: dict[str, tuple[Candle, ...]]) -> tuple[Candle, ...] | None:
+    for candles in histories.values():
+        if (
+            candles
+            and candles[0].interval == "1d"
+            and candles[0].symbol == "BTC/USD"
+            and not is_yahoo_symbol(candles[0].symbol)
+        ):
+            return candles
+    return None
+
+
 def run_daily_robustness(
     histories: dict[str, tuple[Candle, ...]],
     *,
@@ -166,12 +211,26 @@ def run_daily_robustness(
     holdout_fraction: float = DEFAULT_HOLDOUT_FRACTION,
     min_trades: int = DEFAULT_MIN_TRADES,
     candidates: tuple[SearchCandidate, ...] | None = None,
+    catalog_name: str = "balanced",
+    require_balanced_holdout: bool = True,
     now: datetime | None = None,
     data_notes: list[str] | None = None,
 ) -> DailyRobustnessReport:
     if not histories:
         raise ValueError("no candle histories provided")
-    catalog = list(candidates if candidates is not None else default_daily_robustness_candidates())
+    if candidates is not None:
+        catalog = list(candidates)
+        resolved_catalog = "custom"
+        catalog_note = "Caller-supplied catalog."
+    elif catalog_name == "legacy":
+        catalog = list(default_daily_robustness_candidates())
+        resolved_catalog = "legacy"
+        catalog_note = "Frozen #95 daily-robustness catalog (K=8)."
+    else:
+        overlay = _kraken_btc_daily(histories)
+        catalog = list(default_balanced_holdout_candidates(btc_overlay=overlay))
+        resolved_catalog = "balanced"
+        catalog_note = BALANCED_HOLDOUT_GRID_NOTE
     rows: list[CandidateSearchResult] = []
     for candidate in catalog:
         per_series = [
@@ -223,7 +282,11 @@ def run_daily_robustness(
         result.rankable = (
             result.mean_wf_total_return is not None and result.total_wf_trades >= min_trades
         )
-        result.ineligible_reasons = _gate_reasons(result, min_trades=min_trades)
+        result.ineligible_reasons = _gate_reasons(
+            result,
+            min_trades=min_trades,
+            require_balanced_holdout=require_balanced_holdout,
+        )
         result.eligible = not result.ineligible_reasons
         rows.append(result)
 
@@ -244,7 +307,15 @@ def run_daily_robustness(
             selected.promoted = True
 
     ema_row = next((row for row in rows if row.candidate_id == "ema_9_21"), None)
-    ema_clears = bool(ema_row is not None and ema_row.eligible)
+    ema_clears_legacy = False
+    ema_clears_balanced = False
+    if ema_row is not None:
+        ema_clears_legacy = not _gate_reasons(
+            ema_row, min_trades=min_trades, require_balanced_holdout=False
+        )
+        ema_clears_balanced = not _gate_reasons(
+            ema_row, min_trades=min_trades, require_balanced_holdout=True
+        )
     promoted_ids = [selected.candidate_id] if selected is not None and selected.promoted else []
     recommend_flag: str | None = None
     recommend_id: str | None = None
@@ -256,35 +327,52 @@ def run_daily_robustness(
             recommend_flag = "PAPER_PROMOTE_SEARCHED_STRATEGY_ID"
 
     count = len(catalog)
+    bar_name = (
+        "balanced-holdout bar (BTC and ETH WF total > 0 **and** BTC and ETH "
+        "holdout excess > 0, plus mean holdout excess > 0 and min trades)"
+        if require_balanced_holdout
+        else "multi-asset bar (BTC and ETH WF total > 0 plus holdout mean excess > 0)"
+    )
     honesty = (
         "No candidate is rewritten to look profitable. "
         "Walk-forward ranking never sees the holdout tail. "
         f"Selection is pre-registered top-1 of {count} daily-robustness "
         "catalog members. Promotion uses Kraken daily BTC/USD and ETH/USD "
-        "only: both must have fee-aware walk-forward mean total return > 0 "
-        "(this is the multi-asset bar that #93's three-asset mean did not "
-        "require), min trades must be met, and holdout mean excess return "
-        "on those two assets must be > 0 after fees. SOL/USD is supporting. "
-        "Yahoo Finance daily is a longer non-Kraken A/B and cannot promote. "
-        "Positive excess with a negative total return is not an edge. "
-        "A large ETH holdout on a two-year window is one tail, not a "
-        "live-capital claim."
+        "only. The #95 bar required both walk-forward totals > 0 and a "
+        "positive **mean** holdout excess — an ETH tail could still carry "
+        "that mean. The balanced-holdout bar additionally requires BTC "
+        "holdout excess > 0 **and** ETH holdout excess > 0 so one asset "
+        "cannot hide a losing holdout. SOL/USD is supporting and is not "
+        "required to promote. Yahoo Finance daily is a longer non-Kraken "
+        "A/B and cannot promote. Positive excess with a negative total "
+        "return is not an edge. A large ETH holdout on a two-year window "
+        "is one tail, not a live-capital claim. "
+        f"This run's promotion decision uses the {bar_name}."
     )
+    if ema_row is not None:
+        honesty += (
+            f" ema_9_21 #95 multi-asset bar: "
+            f"{'PASS' if ema_clears_legacy else 'FAIL'}. "
+            f"ema_9_21 balanced-holdout bar: "
+            f"{'PASS' if ema_clears_balanced else 'FAIL'}."
+        )
     if selected is None or not selected.promoted:
         honesty += (
-            " No candidate cleared the multi-asset bar on this Kraken daily "
-            "window; paper promotion must stay off. ema_9_21 fails the "
-            "BTC-and-ETH walk-forward total-return bar (or holdout / trades)."
+            " No candidate cleared the promotion bar on this Kraken daily "
+            "window; paper promotion must stay off."
         )
     elif selected.candidate_id == "ema_9_21":
         honesty += (
-            " ema_9_21 still clears the stricter BTC-and-ETH walk-forward "
-            "bar on this window. That does not flip the default flag."
+            " ema_9_21 cleared this run's promotion bar. That does not "
+            "flip PAPER_PROMOTE_EMA_9_21 (default false) and does not "
+            "enable live."
         )
     else:
         honesty += (
             f" A candidate other than ema_9_21 cleared ({selected.candidate_id}). "
-            "Document the id; do not enable live."
+            "Document the paper-only id; do not enable live; leave "
+            "PAPER_GARCH_SIZE false unless that id is a GARCH variant "
+            "and the operator explicitly pins it."
         )
 
     symbols = sorted({candles[0].symbol for candles in histories.values() if candles})
@@ -310,15 +398,24 @@ def run_daily_robustness(
         multiple_testing={
             "method": SELECTION_RULE,
             "n_candidates": count,
+            "catalog": resolved_catalog,
+            "require_balanced_holdout": require_balanced_holdout,
             "bonferroni": (
                 "K catalog members are scored on the same Kraken BTC/ETH daily "
                 "research window. At most the single pre-registered top-1 "
                 "(by walk-forward mean total return on BTC+ETH, min-trades "
                 "filter) may be promoted, and only if BTC and ETH both have "
-                "WF total > 0 and holdout mean excess > 0. "
+                "WF total > 0"
+                + (
+                    ", BTC holdout excess > 0, ETH holdout excess > 0, and holdout mean excess > 0"
+                    if require_balanced_holdout
+                    else " and holdout mean excess > 0"
+                )
+                + ". "
                 f"A classical Bonferroni p-cut would be 0.05/{count} ≈ "
                 f"{0.05 / max(count, 1):.4f}; this search has no per-fold "
-                "t-test, so holdout confirmation is the out-of-sample control."
+                "t-test, so per-asset holdout confirmation is the "
+                "out-of-sample control."
             ),
         },
         promotion_assets=list(PROMOTION_ASSETS),
@@ -329,7 +426,11 @@ def run_daily_robustness(
         any_promoted=bool(selected is not None and selected.promoted),
         recommended_promote_flag=recommend_flag,
         recommended_promote_id=recommend_id,
-        ema_9_21_clears_multi_asset=ema_clears,
+        require_balanced_holdout=require_balanced_holdout,
+        catalog_name=resolved_catalog,
+        catalog_note=catalog_note,
+        ema_9_21_clears_multi_asset=ema_clears_legacy,
+        ema_9_21_clears_balanced_holdout=ema_clears_balanced,
         honesty=honesty,
         data_notes=list(data_notes or []),
     )
@@ -363,11 +464,22 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
             f"holdout_fraction={report.holdout_fraction:.0%}"
         ),
         (
-            "Promotion floor: **BTC and ETH** Kraken daily WF mean total_return > 0 "
-            f"**and** holdout mean excess_return > 0 after fees, min trades="
-            f"{report.min_trades}. SOL is supporting. Yahoo is non-Kraken A/B."
+            "Promotion floor: **BTC and ETH** Kraken daily WF mean total_return > 0"
+            + (
+                ", **BTC holdout excess > 0 and ETH holdout excess > 0** "
+                "(balanced holdout — ETH cannot carry a losing BTC tail)"
+                if report.require_balanced_holdout
+                else ""
+            )
+            + f", holdout mean excess_return > 0 after fees, min trades="
+            f"{report.min_trades}. SOL is supporting (not required). "
+            "Yahoo is non-Kraken A/B and never enters the promotion average."
         ),
-        f"Selection: {report.selection_rule} (K={report.multiple_testing.get('n_candidates')})",
+        (
+            f"Selection: {report.selection_rule} "
+            f"(K={report.multiple_testing.get('n_candidates')}, "
+            f"catalog={report.catalog_name})"
+        ),
         "",
         "## Honesty",
         "",
@@ -376,6 +488,10 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
         "## Multiple testing",
         "",
         str(report.multiple_testing.get("bonferroni", "")),
+        "",
+        "## Pre-registered catalog",
+        "",
+        report.catalog_note or "See `default_balanced_holdout_candidates`.",
         "",
         "## Kraken public OHLC cap",
         "",
@@ -391,8 +507,8 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
         [
             "## Ranked candidates (Kraken BTC+ETH daily, walk-forward mean total after fees)",
             "",
-            "| rank | id | family | WF total | WF excess | WF trades | WF maxDD | holdout excess | holdout maxDD | BTC WF | ETH WF | eligible | promoted |",
-            "| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+            "| rank | id | family | WF total | WF excess | WF trades | WF maxDD | holdout excess | holdout maxDD | BTC WF | ETH WF | BTC holdout | ETH holdout | eligible | promoted |",
+            "| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
         ]
     )
     ordered = sorted(
@@ -415,6 +531,7 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
             f"{_pct(row.mean_holdout_excess_return)} | {_pct(ho_dd)} | "
             f"{_pct(btc.walkforward_mean_total_return if btc else None)} | "
             f"{_pct(eth.walkforward_mean_total_return if eth else None)} | "
+            f"{_pct(_holdout_excess(btc))} | {_pct(_holdout_excess(eth))} | "
             f"{'yes' if row.eligible else 'no'} | {'yes' if row.promoted else 'no'} |"
         )
 
@@ -462,17 +579,24 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
             and btc.holdout is not None
             and eth.holdout is not None
         ):
+            balanced_verdict = "PASS" if report.ema_9_21_clears_balanced_holdout else "FAIL"
+            legacy_verdict = "PASS" if report.ema_9_21_clears_multi_asset else "FAIL"
             lines.extend(
                 [
                     "## Holdout concentration (honesty)",
                     "",
                     (
-                        f"`ema_9_21` Kraken holdout excess is still ETH-heavy: "
+                        f"`ema_9_21` Kraken holdout excess: "
                         f"BTC {_pct(btc.holdout.excess_return)} vs ETH "
-                        f"{_pct(eth.holdout.excess_return)}. The multi-asset bar "
-                        "only requires both **walk-forward** totals > 0; it does "
-                        "not require a balanced holdout. A +50% ETH tail on one "
-                        "~144-day window is not a live-capital claim."
+                        f"{_pct(eth.holdout.excess_return)}. "
+                        f"#95 multi-asset bar (WF both > 0, mean holdout > 0): "
+                        f"**{legacy_verdict}**. "
+                        f"Balanced-holdout bar (also BTC holdout > 0 **and** "
+                        f"ETH holdout > 0): **{balanced_verdict}**. "
+                        "Magnitude skew is reported, not gated — both signs "
+                        "must be positive, but ETH can still be much larger. "
+                        "A +50% ETH tail on one ~144-day window is not a "
+                        "live-capital claim."
                     ),
                     "",
                 ]
@@ -505,9 +629,15 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
         lines.append("")
 
     lines.extend(["## Promotion decision", ""])
+    lines.append(
+        f"`ema_9_21` #95 multi-asset bar: "
+        f"**{'PASS' if report.ema_9_21_clears_multi_asset else 'FAIL'}**. "
+        f"`ema_9_21` balanced-holdout bar: "
+        f"**{'PASS' if report.ema_9_21_clears_balanced_holdout else 'FAIL'}**."
+    )
     if report.any_promoted:
         lines.append(
-            "Cleared the stricter multi-asset bar on Kraken daily BTC+ETH "
+            "Cleared the balanced-holdout bar on Kraken daily BTC+ETH "
             f"(research only): `{report.recommended_promote_id}`."
         )
         if report.recommended_promote_flag == "PAPER_PROMOTE_EMA_9_21":
@@ -517,36 +647,51 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
                 "not flip that flag and does not enable live."
             )
         else:
+            garch_note = ""
+            promoted = next(
+                row
+                for row in report.candidates
+                if row.candidate_id == report.recommended_promote_id
+            )
+            if promoted.family == "ema_cross_garch":
+                garch_note = (
+                    " Leave `PAPER_GARCH_SIZE=false` until an operator "
+                    "explicitly reviews this GARCH-sized pin; RiskEngine "
+                    "may only reduce notional."
+                )
             lines.append(
-                f"Documented pin: `{report.recommended_promote_flag}="
+                f"Documented paper-only pin: `{report.recommended_promote_flag}="
                 f"{report.recommended_promote_id}`. Leave "
-                "`PAPER_PROMOTE_SEARCHED_STRATEGIES=false` until an operator "
-                "reviews this report. This is not a live-capital claim."
+                "`PAPER_PROMOTE_SEARCHED_STRATEGIES=false` and "
+                "`PAPER_PROMOTE_EMA_9_21=false` until an operator reviews "
+                f"this report.{garch_note} This is not a live-capital claim."
             )
     else:
         lines.append(
-            "**No candidate cleared the multi-asset bar.** "
-            "`ema_9_21` fails the BTC-and-ETH walk-forward total-return "
-            "requirement (or holdout / min trades) when ETH cannot carry "
-            "the average. Leave `PAPER_PROMOTE_EMA_9_21=false` and "
-            "`PAPER_PROMOTE_SEARCHED_STRATEGIES=false`."
+            "**No candidate cleared the balanced-holdout bar.** "
+            "ETH-only holdout tails cannot carry promotion. Leave "
+            "`PAPER_PROMOTE_EMA_9_21=false` and "
+            "`PAPER_PROMOTE_SEARCHED_STRATEGIES=false`. "
+            "Finding no promotee is a successful research outcome."
         )
         if report.selected_candidate_id:
             selected = next(
                 row for row in report.candidates if row.candidate_id == report.selected_candidate_id
             )
             reasons = ", ".join(selected.ineligible_reasons) or "n/a"
+            btc = series_for_asset(selected.per_series, "BTC/USD")
+            eth = series_for_asset(selected.per_series, "ETH/USD")
             lines.append(
                 f"Pre-registered top-1 by BTC+ETH WF total was "
                 f"`{selected.candidate_id}` "
                 f"(WF total={_pct(selected.mean_wf_total_return)}, "
-                f"holdout excess={_pct(selected.mean_holdout_excess_return)}; "
+                f"holdout excess={_pct(selected.mean_holdout_excess_return)}, "
+                f"BTC holdout={_pct(_holdout_excess(btc))}, "
+                f"ETH holdout={_pct(_holdout_excess(eth))}; "
                 f"blocked by: {reasons})."
             )
-        if not report.ema_9_21_clears_multi_asset:
-            lines.append(
-                "`ema_9_21` does **not** clear the stricter multi-asset bar on this window."
-            )
+        if not report.ema_9_21_clears_balanced_holdout:
+            lines.append("`ema_9_21` does **not** clear the balanced-holdout bar on this window.")
     lines.append("")
     lines.append(
         "Yahoo rows above are a longer non-Kraken A/B. Do not average them "

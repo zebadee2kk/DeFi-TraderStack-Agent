@@ -12,6 +12,9 @@ from traderstack.models import Side
 from traderstack.research.daily_candidates import (
     BuyTheDipVolFilterStrategy,
     DualMomentumStrategy,
+    MaRiskOffStrategy,
+    ReferenceMaRiskOffStrategy,
+    default_balanced_holdout_candidates,
     default_daily_robustness_candidates,
 )
 from traderstack.research.daily_robustness import (
@@ -21,6 +24,7 @@ from traderstack.research.daily_robustness import (
     run_daily_robustness,
 )
 from traderstack.research.daily_robustness_cli import build_parser, run
+from traderstack.research.miles_candidates import EmaCrossoverStrategy
 from traderstack.research.yahoo_daily import parse_yahoo_chart, yahoo_symbol
 from traderstack.strategies import Regime
 
@@ -88,6 +92,7 @@ def _search(histories: dict[str, tuple[Candle, ...]], **overrides: object):
         "step_size": 40,
         "holdout_fraction": 0.2,
         "min_trades": 1,
+        "catalog_name": "legacy",
     }
     kwargs.update(overrides)
     return run_daily_robustness(histories, **kwargs)  # type: ignore[arg-type]
@@ -112,6 +117,39 @@ def test_catalog_is_pre_registered_and_includes_required_families() -> None:
     assert all(item.garch_sizing is False for item in catalog)
 
 
+def test_balanced_catalog_is_pre_registered_and_frozen() -> None:
+    catalog = default_balanced_holdout_candidates()
+    ids = [item.candidate_id for item in catalog]
+    assert len(ids) == len(set(ids))
+    assert ids == [
+        "ema_9_21",
+        "ema_12_26",
+        "ema_9_21_adx20",
+        "ema_12_26_adx20",
+        "ema_9_21_adx25",
+        "ema_12_26_adx25",
+        "ema_20_50",
+        "ema_50_200",
+        "ema_20_50_adx20",
+        "ema_9_21_garch",
+        "ema_20_50_garch",
+        "dual_mom_12_60",
+        "dual_mom_21_63",
+        "dual_mom_21_126",
+        "dual_mom_63_126",
+        "dip_mr_20_1_5_vol",
+        "dip_mr_20_2_0_vol",
+        "ema_9_21_ma200_riskoff",
+        "ema_20_50_ma200_riskoff",
+    ]
+    garch_ids = {item.candidate_id for item in catalog if item.garch_sizing}
+    assert garch_ids == {"ema_9_21_garch", "ema_20_50_garch"}
+    overlay = default_balanced_holdout_candidates(btc_overlay=uptrend(220, symbol="BTC/USD"))
+    overlay_ids = [item.candidate_id for item in overlay]
+    assert overlay_ids[-1] == "ema_9_21_btc_ma200_riskoff"
+    assert "ema_9_21_btc_ma200_riskoff" not in ids
+
+
 def test_dual_momentum_requires_both_lookbacks_to_agree() -> None:
     # Fast 3-bar return is negative while slow 10-bar return is positive.
     prices = [100.0 + 0.5 * index for index in range(20)]
@@ -129,6 +167,38 @@ def test_dual_momentum_requires_both_lookbacks_to_agree() -> None:
         downtrend(40), Regime.TRENDING_DOWN
     )
     assert down.side is Side.SELL
+
+
+def test_ma_riskoff_flattens_when_close_below_sma() -> None:
+    inner = EmaCrossoverStrategy(strategy_id="ema", fast_span=3, slow_span=5)
+    gated = MaRiskOffStrategy(strategy_id="ema_riskoff", inner=inner, ma_span=10)
+    rising = make_candles([100.0 + index for index in range(20)])
+    assert gated.evaluate(rising, Regime.TRENDING_UP).side is Side.BUY
+    crash = make_candles([100.0 + index for index in range(15)] + [80.0, 79.0, 78.0, 77.0, 76.0])
+    signal = gated.evaluate(crash, Regime.TRENDING_DOWN)
+    assert signal.side is None
+    assert "risk-off" in signal.rationale
+
+
+def test_btc_reference_riskoff_is_point_in_time() -> None:
+    btc = make_candles([100.0 + index for index in range(15)] + [80.0, 79.0, 78.0, 77.0, 76.0])
+    eth = make_candles([50.0 + 0.5 * index for index in range(20)], symbol="ETH/USD")
+    inner = EmaCrossoverStrategy(strategy_id="ema", fast_span=3, slow_span=5)
+    gated = ReferenceMaRiskOffStrategy(
+        strategy_id="ema_btc_riskoff",
+        inner=inner,
+        ma_span=10,
+        reference_symbol="BTC/USD",
+        reference_opened_at=tuple(candle.opened_at for candle in btc),
+        reference_close=tuple(candle.close for candle in btc),
+    )
+    signal = gated.evaluate(eth, Regime.TRENDING_UP)
+    assert signal.side is None
+    assert "BTC/USD" in signal.rationale
+    # Future BTC prints must not leak: truncate the overlay at the ETH as-of.
+    early_eth = eth[:12]
+    early = gated.evaluate(early_eth, Regime.TRENDING_UP)
+    assert early.side is Side.BUY
 
 
 def test_buy_the_dip_is_long_only_and_skips_vol_spikes() -> None:
@@ -276,6 +346,69 @@ def test_both_assets_positive_wf_can_promote() -> None:
         assert (eth.walkforward_mean_total_return or 0) > 0
 
 
+def test_positive_mean_holdout_fails_when_btc_holdout_is_not() -> None:
+    """ETH-only holdout tail must not promote under the balanced bar."""
+    # Research: both assets trend down so the EMA shorts and WF totals are > 0.
+    # Holdout: BTC reverses up (short loses) while ETH keeps falling (short wins).
+    btc_research = downtrend(280, symbol="BTC/USD")
+    eth_research = downtrend(280, symbol="ETH/USD")
+    btc_holdout = make_candles(
+        [btc_research[-1].close + 0.8 * index for index in range(1, 81)],
+        symbol="BTC/USD",
+        start=btc_research[-1].opened_at + timedelta(days=1),
+    )
+    eth_holdout = make_candles(
+        [eth_research[-1].close - 1.6 * index for index in range(1, 81)],
+        symbol="ETH/USD",
+        start=eth_research[-1].opened_at + timedelta(days=1),
+    )
+    report = _search(
+        {
+            "BTC/USD@1d": btc_research + btc_holdout,
+            "ETH/USD@1d": eth_research + eth_holdout,
+        },
+        require_balanced_holdout=True,
+    )
+    ema = next(row for row in report.candidates if row.candidate_id == "ema_9_21")
+    btc = next(series for series in ema.per_series if series.asset == "BTC/USD")
+    eth = next(series for series in ema.per_series if series.asset == "ETH/USD")
+    assert (btc.walkforward_mean_total_return or 0) > 0
+    assert (eth.walkforward_mean_total_return or 0) > 0
+    assert btc.holdout is not None and eth.holdout is not None
+    assert btc.holdout.excess_return <= 0
+    assert eth.holdout.excess_return > 0
+    if ema.mean_holdout_excess_return is not None and ema.mean_holdout_excess_return > 0:
+        assert report.ema_9_21_clears_multi_asset is True
+    assert "btc_holdout_excess_not_positive" in ema.ineligible_reasons
+    assert ema.eligible is False
+    assert report.ema_9_21_clears_balanced_holdout is False
+    rendered = render_daily_robustness_markdown(report)
+    assert "balanced-holdout bar: **FAIL**" in rendered
+    assert "BTC holdout" in rendered
+
+
+def test_both_assets_positive_holdout_can_clear_balanced_bar() -> None:
+    report = _search(
+        {
+            "BTC/USD@1d": downtrend(360, symbol="BTC/USD"),
+            "ETH/USD@1d": downtrend(360, symbol="ETH/USD"),
+        },
+        require_balanced_holdout=True,
+    )
+    ema = next(row for row in report.candidates if row.candidate_id == "ema_9_21")
+    btc = next(series for series in ema.per_series if series.asset == "BTC/USD")
+    eth = next(series for series in ema.per_series if series.asset == "ETH/USD")
+    assert (btc.walkforward_mean_total_return or 0) > 0
+    assert (eth.walkforward_mean_total_return or 0) > 0
+    assert btc.holdout is not None and eth.holdout is not None
+    assert btc.holdout.excess_return > 0
+    assert eth.holdout.excess_return > 0
+    assert report.ema_9_21_clears_balanced_holdout is True
+    assert report.ema_9_21_clears_multi_asset is True
+    if report.any_promoted:
+        assert report.recommended_promote_id in report.promoted_candidate_ids
+
+
 def test_holdout_tail_does_not_change_ranking() -> None:
     prefix = downtrend(280, symbol="BTC/USD")
     eth_prefix = downtrend(280, symbol="ETH/USD")
@@ -339,6 +472,8 @@ def test_markdown_reports_drawdown_trades_and_cap() -> None:
     assert "holdout trades" in text
     assert "non-Kraken" in text
     assert "Holdout concentration" in text
+    assert "balanced-holdout bar" in text
+    assert "BTC holdout" in text
     assert KRAKEN_DAILY_CAP_NOTE.split("`")[0].strip() in text or "720" in text
 
 
@@ -378,11 +513,20 @@ def test_cli_writes_json_and_markdown(tmp_path: Path) -> None:
     payload = json.loads(written_json.read_text())
     assert payload["selection_rule"] == "pre_registered_top1"
     assert payload["promotion_assets"] == ["BTC/USD", "ETH/USD"]
+    assert payload["require_balanced_holdout"] is True
+    assert payload["catalog_name"] == "balanced"
     assert "honesty" in payload
     ids = {row["candidate_id"] for row in payload["candidates"]}
     assert "ema_9_21" in ids
+    assert "ema_20_50" in ids
+    assert "ema_50_200" in ids
+    assert "dual_mom_12_60" in ids
     assert "dual_mom_21_126" in ids
     assert "dip_mr_20_1_5_vol" in ids
+    assert "ema_9_21_ma200_riskoff" in ids
+    assert "ema_9_21_garch" in ids
+    assert "ema_9_21_btc_ma200_riskoff" in ids
     text = written_md.read_text()
     assert "Daily robustness report" in text
     assert "Multiple testing" in text
+    assert "balanced-holdout" in text.lower() or "BTC holdout excess" in text

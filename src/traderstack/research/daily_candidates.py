@@ -1,26 +1,24 @@
-"""Pre-registered daily robustness catalog (paper/research only).
+"""Pre-registered daily robustness catalogs (paper/research only).
 
-Built around the #93 Miles daily winner plus two extra families the
-robustness pass is required to score:
+``default_daily_robustness_candidates`` is the frozen #95 list (K=8).
+``default_balanced_holdout_candidates`` is the pre-registered balanced-
+holdout expansion (slower EMAs, a tiny dual-mom / dip grid, asset-local
+and BTC-overlay MA risk-off, two GARCH size overlays). The grid is
+frozen before any Kraken window is scored. Ranking is pre-registered
+top-1; do not grow this list to chase a winner.
 
-* EMA 9/21 and 12/26, with and without ADX chop gates (no GARCH — that
-  family already failed fees on the Miles window).
-* Simple dual-momentum: long/short only when a fast and a slow lookback
-  agree; otherwise cash. Single-asset absolute confirmation, not
-  cross-sectional relative ranking.
-* Buy-the-dip mean-reversion with a vol spike filter: long-only when the
-  close z-score is oversold *and* short-horizon vol is not elevated
-  versus a slower vol baseline.
-
-Keep this list small and frozen. Ranking is pre-registered top-1.
+GARCH never chooses a side. ``PAPER_GARCH_SIZE`` stays false unless a
+GARCH-sized candidate clears the balanced-holdout bar in a committed
+report (research-only pin; never live).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from traderstack.candles import Candle
-from traderstack.indicators import momentum, realized_volatility, zscore
+from traderstack.indicators import momentum, moving_average, realized_volatility, zscore
 from traderstack.models import Side
 from traderstack.research.miles_candidates import EmaCrossoverStrategy, SearchCandidate
 from traderstack.strategies import Regime, StrategySignal
@@ -129,25 +127,120 @@ class BuyTheDipVolFilterStrategy:
         )
 
 
+def _flat_signal(
+    strategy_id: str,
+    candles: tuple[Candle, ...],
+    regime: Regime,
+    rationale: str,
+) -> StrategySignal:
+    return StrategySignal(
+        strategy_id=strategy_id,
+        symbol=candles[-1].symbol if candles else "",
+        side=None,
+        score=0.0,
+        confidence=0.0,
+        regime=regime,
+        rationale=rationale,
+    )
+
+
+@dataclass(frozen=True)
+class MaRiskOffStrategy:
+    """Inner signal, flattened when this asset's close is below its SMA."""
+
+    strategy_id: str
+    inner: EmaCrossoverStrategy
+    ma_span: int = 200
+
+    def evaluate(self, candles: tuple[Candle, ...], regime: Regime) -> StrategySignal:
+        signal = self.inner.evaluate(candles, regime)
+        if signal.side is None:
+            return signal
+        if len(candles) < self.ma_span:
+            return _flat_signal(
+                self.strategy_id,
+                candles,
+                regime,
+                f"insufficient candles for SMA{self.ma_span} risk-off",
+            )
+        ma = moving_average(candles, self.ma_span)
+        if candles[-1].close < ma:
+            return _flat_signal(
+                self.strategy_id,
+                candles,
+                regime,
+                f"risk-off: close < SMA{self.ma_span}",
+            )
+        return signal
+
+
+@dataclass(frozen=True)
+class ReferenceMaRiskOffStrategy:
+    """Inner signal, flattened when a reference series (BTC) is below its SMA.
+
+    Reference bars are point-in-time: only closes with ``opened_at`` <= the
+    evaluated bar are used. Missing or short history fails closed (flat).
+    """
+
+    strategy_id: str
+    inner: EmaCrossoverStrategy
+    ma_span: int
+    reference_symbol: str
+    reference_opened_at: tuple[datetime, ...]
+    reference_close: tuple[float, ...]
+
+    def evaluate(self, candles: tuple[Candle, ...], regime: Regime) -> StrategySignal:
+        signal = self.inner.evaluate(candles, regime)
+        if signal.side is None:
+            return signal
+        if not candles:
+            return _flat_signal(self.strategy_id, candles, regime, "no candles")
+        asof = candles[-1].opened_at
+        closes: list[float] = []
+        for opened_at, close in zip(self.reference_opened_at, self.reference_close, strict=True):
+            if opened_at > asof:
+                break
+            closes.append(close)
+        if len(closes) < self.ma_span:
+            return _flat_signal(
+                self.strategy_id,
+                candles,
+                regime,
+                (f"insufficient {self.reference_symbol} history for SMA{self.ma_span} risk-off"),
+            )
+        ma = sum(closes[-self.ma_span :]) / self.ma_span
+        if closes[-1] < ma:
+            return _flat_signal(
+                self.strategy_id,
+                candles,
+                regime,
+                f"risk-off: {self.reference_symbol} close < SMA{self.ma_span}",
+            )
+        return signal
+
+
 def _ema(
     candidate_id: str,
     *,
     fast: int,
     slow: int,
     adx_threshold: float | None = None,
+    garch_sizing: bool = False,
 ) -> SearchCandidate:
     parts = [f"EMA {fast}/{slow}"]
     if adx_threshold is not None:
         parts.append(f"ADX>{adx_threshold:g}")
+    if garch_sizing:
+        parts.append("GARCH size [0.25, 2.0]")
     return SearchCandidate(
         candidate_id=candidate_id,
-        family="ema_cross",
+        family="ema_cross_garch" if garch_sizing else "ema_cross",
         label=" × ".join(parts),
         params={
             "fast_span": fast,
             "slow_span": slow,
             "adx_threshold": adx_threshold,
-            "garch_sizing": False,
+            "garch_sizing": garch_sizing,
             "strategy_id": candidate_id,
         },
         strategy=EmaCrossoverStrategy(
@@ -156,7 +249,68 @@ def _ema(
             slow_span=slow,
             adx_threshold=adx_threshold,
         ),
-        garch_sizing=False,
+        garch_sizing=garch_sizing,
+    )
+
+
+def _ema_ma_riskoff(
+    candidate_id: str,
+    *,
+    fast: int,
+    slow: int,
+    ma_span: int,
+) -> SearchCandidate:
+    inner = EmaCrossoverStrategy(strategy_id=candidate_id, fast_span=fast, slow_span=slow)
+    return SearchCandidate(
+        candidate_id=candidate_id,
+        family="ema_cross_riskoff",
+        label=f"EMA {fast}/{slow} × asset SMA{ma_span} risk-off (flat below MA)",
+        params={
+            "fast_span": fast,
+            "slow_span": slow,
+            "ma_span": ma_span,
+            "garch_sizing": False,
+            "strategy_id": candidate_id,
+            "risk_off": "asset_sma",
+        },
+        strategy=MaRiskOffStrategy(strategy_id=candidate_id, inner=inner, ma_span=ma_span),
+    )
+
+
+def _ema_btc_ma_riskoff(
+    candidate_id: str,
+    *,
+    fast: int,
+    slow: int,
+    ma_span: int,
+    btc_overlay: tuple[Candle, ...],
+) -> SearchCandidate:
+    inner = EmaCrossoverStrategy(strategy_id=candidate_id, fast_span=fast, slow_span=slow)
+    return SearchCandidate(
+        candidate_id=candidate_id,
+        family="ema_cross_riskoff",
+        label=(
+            f"EMA {fast}/{slow} × {btc_overlay[0].symbol} SMA{ma_span} "
+            "risk-off (flat when BTC below MA)"
+        ),
+        params={
+            "fast_span": fast,
+            "slow_span": slow,
+            "ma_span": ma_span,
+            "garch_sizing": False,
+            "strategy_id": candidate_id,
+            "risk_off": "btc_sma",
+            "reference_symbol": btc_overlay[0].symbol,
+            "reference_bars": len(btc_overlay),
+        },
+        strategy=ReferenceMaRiskOffStrategy(
+            strategy_id=candidate_id,
+            inner=inner,
+            ma_span=ma_span,
+            reference_symbol=btc_overlay[0].symbol,
+            reference_opened_at=tuple(candle.opened_at for candle in btc_overlay),
+            reference_close=tuple(candle.close for candle in btc_overlay),
+        ),
     )
 
 
@@ -224,7 +378,7 @@ def _dip(
 
 
 def default_daily_robustness_candidates() -> tuple[SearchCandidate, ...]:
-    """Frozen daily catalog. Do not grow this list to chase a winner."""
+    """Frozen #95 daily catalog. Do not grow this list to chase a winner."""
     return (
         _ema("ema_9_21", fast=9, slow=21),
         _ema("ema_12_26", fast=12, slow=26),
@@ -242,3 +396,69 @@ def default_daily_robustness_candidates() -> tuple[SearchCandidate, ...]:
             vol_multiple=1.5,
         ),
     )
+
+
+BALANCED_HOLDOUT_GRID_NOTE = (
+    "Pre-registered balanced-holdout grid (frozen before the Kraken window "
+    "is scored): #95 EMA 9/21 and 12/26 ± ADX 20/25; slower EMA 20/50 and "
+    "50/200 (± ADX 20 on 20/50); dual-mom lookbacks 12/60, 21/63, 21/126, "
+    "63/126; buy-the-dip z=1.5 and z=2.0 with the same vol filter; asset-"
+    "local SMA200 risk-off on ema_9_21 and ema_20_50; BTC SMA200 overlay "
+    "on ema_9_21 when a Kraken BTC/USD daily series is bound; GARCH size "
+    "overlays on ema_9_21 and ema_20_50 only. SOL is reported, not a "
+    "promotion gate. Yahoo never enters the promotion average. "
+    "PAPER_GARCH_SIZE stays false unless a GARCH-sized name clears."
+)
+
+
+def default_balanced_holdout_candidates(
+    *,
+    btc_overlay: tuple[Candle, ...] | None = None,
+) -> tuple[SearchCandidate, ...]:
+    """Frozen balanced-holdout catalog. Do not grow this list after seeing PnL."""
+    catalog: list[SearchCandidate] = [
+        _ema("ema_9_21", fast=9, slow=21),
+        _ema("ema_12_26", fast=12, slow=26),
+        _ema("ema_9_21_adx20", fast=9, slow=21, adx_threshold=20.0),
+        _ema("ema_12_26_adx20", fast=12, slow=26, adx_threshold=20.0),
+        _ema("ema_9_21_adx25", fast=9, slow=21, adx_threshold=25.0),
+        _ema("ema_12_26_adx25", fast=12, slow=26, adx_threshold=25.0),
+        _ema("ema_20_50", fast=20, slow=50),
+        _ema("ema_50_200", fast=50, slow=200),
+        _ema("ema_20_50_adx20", fast=20, slow=50, adx_threshold=20.0),
+        _ema("ema_9_21_garch", fast=9, slow=21, garch_sizing=True),
+        _ema("ema_20_50_garch", fast=20, slow=50, garch_sizing=True),
+        _dual_mom("dual_mom_12_60", fast_lookback=12, slow_lookback=60),
+        _dual_mom("dual_mom_21_63", fast_lookback=21, slow_lookback=63),
+        _dual_mom("dual_mom_21_126", fast_lookback=21, slow_lookback=126),
+        _dual_mom("dual_mom_63_126", fast_lookback=63, slow_lookback=126),
+        _dip(
+            "dip_mr_20_1_5_vol",
+            lookback=20,
+            entry_z=1.5,
+            vol_lookback=20,
+            baseline_vol_lookback=60,
+            vol_multiple=1.5,
+        ),
+        _dip(
+            "dip_mr_20_2_0_vol",
+            lookback=20,
+            entry_z=2.0,
+            vol_lookback=20,
+            baseline_vol_lookback=60,
+            vol_multiple=1.5,
+        ),
+        _ema_ma_riskoff("ema_9_21_ma200_riskoff", fast=9, slow=21, ma_span=200),
+        _ema_ma_riskoff("ema_20_50_ma200_riskoff", fast=20, slow=50, ma_span=200),
+    ]
+    if btc_overlay:
+        catalog.append(
+            _ema_btc_ma_riskoff(
+                "ema_9_21_btc_ma200_riskoff",
+                fast=9,
+                slow=21,
+                ma_span=200,
+                btc_overlay=btc_overlay,
+            )
+        )
+    return tuple(catalog)

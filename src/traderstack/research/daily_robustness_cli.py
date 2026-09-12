@@ -1,10 +1,11 @@
-"""`traderstack-daily-robustness`: daily catalog + multi-asset bar.
+"""`traderstack-daily-robustness`: daily catalog + balanced-holdout bar.
 
 Loads the longest Kraken public Spot daily OHLC the API will return (720
 committed bars, ~2y), optionally a Yahoo Finance daily A/B (non-Kraken),
-scores the pre-registered daily robustness catalog, and writes JSON +
-Markdown. It never enables ``PAPER_PROMOTE_EMA_9_21`` or
-``PAPER_PROMOTE_SEARCHED_STRATEGIES``.
+scores the pre-registered balanced-holdout catalog, and writes JSON +
+Markdown. Promotion requires BTC **and** ETH walk-forward total > 0
+**and** BTC **and** ETH holdout excess > 0. It never enables
+``PAPER_PROMOTE_EMA_9_21`` or ``PAPER_PROMOTE_SEARCHED_STRATEGIES``.
 """
 
 from __future__ import annotations
@@ -35,11 +36,12 @@ DEFAULT_YAHOO_TICKERS = ("BTC-USD", "ETH-USD")
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Score the daily robustness catalog (EMA 9/21 and 12/26, ADX "
-            "gates, dual-momentum, buy-the-dip + vol filter) with fee-aware "
+            "Score the pre-registered balanced-holdout daily catalog (EMA "
+            "9/21, 12/26, 20/50, 50/200, ADX gates, dual-mom grid, "
+            "buy-the-dip, MA risk-off, optional GARCH size) with fee-aware "
             "walk-forward + holdout. Promote only if Kraken BTC and ETH both "
-            "have WF total return > 0. Writes a ranked report. Does not "
-            "enable PAPER_PROMOTE_* flags."
+            "have WF total > 0 AND both have holdout excess > 0. Writes a "
+            "ranked report. Does not enable PAPER_PROMOTE_* flags."
         )
     )
     source = parser.add_mutually_exclusive_group(required=True)
@@ -79,14 +81,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--holdout-fraction", type=float, default=0.20)
     parser.add_argument("--min-trades", type=int, default=3)
     parser.add_argument(
+        "--catalog",
+        choices=("balanced", "legacy"),
+        default="balanced",
+        help="balanced = expanded pre-registered grid; legacy = frozen #95 K=8",
+    )
+    parser.add_argument(
+        "--balanced-holdout",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="require BTC and ETH holdout excess > 0 (default on)",
+    )
+    parser.add_argument(
         "--output-json",
         type=Path,
-        default=Path("var/ops/daily_robustness_search.json"),
+        default=Path("var/ops/balanced_holdout_search.json"),
     )
     parser.add_argument(
         "--output-md",
         type=Path,
-        default=Path("docs/artifacts/strategy-search/daily-robustness-report.md"),
+        default=Path("docs/artifacts/strategy-search/balanced-holdout-report.md"),
     )
     parser.add_argument("--stdout-md", action="store_true")
     return parser
@@ -170,6 +184,8 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
         step_size=args.step_size,
         holdout_fraction=args.holdout_fraction,
         min_trades=args.min_trades,
+        catalog_name=args.catalog,
+        require_balanced_holdout=args.balanced_holdout,
         data_notes=notes,
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
