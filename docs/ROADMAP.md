@@ -101,6 +101,11 @@ on Kraken spot. Empty dual-print is success.
 optional short bottom-1 among {BTC, ETH, SOL} by frozen trailing
 N-day return on that same dual-print bar. SOL is reported, not a
 gate. Paper-executable on Kraken spot. Empty dual-print is success.
+`traderstack-donchian-breakout` is the post-#117 slice: long-only
+or long/short on a frozen prior N-day Donchian channel (optional
+ATR-14 buffer) on that same dual-print bar. SOL is reported, not
+a gate. Paper-executable on Kraken spot. Empty dual-print is
+success.
 **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy

@@ -573,3 +573,27 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `cross-sectional-momentum.md`.
 
+## Donchian / channel breakout (`traderstack-donchian-breakout`)
+
+#117 left the BTC+ETH+SOL cross-sectional dual-print empty.
+This command is a **different family**: long-only or long/short
+on a frozen prior N-day Donchian channel (N in {20, 55, 100};
+optional ATR(14) buffer on `lo` 20/55).
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | public Spot daily; #96+A+B+C on BTC+ETH (SOL reported); rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same #102 slice; must combined-PASS | no (gate only) |
+
+Catalog is frozen (K=9): six unbuffered books, two ATR-buffered
+long-only names, plus informational `ma_cross_10_30` (cannot
+promote). Decision at bar t uses the prior channel; fill at t+1
+open. Missing series skipped, not zero-filled. Multi-asset bar
+(frozen): BTC and ETH signs as #96+A+B+C; SOL reported, not a
+gate. Equal-weight portfolio metrics are not used. Paper-
+executable on Kraken spot BTC/ETH. Empty dual-print set is
+success. `PAPER_PROMOTE_*` stays false. No new pin unless a
+committed report names a passer (default false if added).
+
+See `donchian-breakout.md`.
+

@@ -106,3 +106,11 @@ At minimum:
   Paper-executable on Kraken spot. Empty dual-print is success.
   Not an EMA or residual reprint. See
   `docs/artifacts/strategy-search/cross-sectional-momentum.md`.
+- Does a fee-aware Donchian / channel breakout (prior N-day
+  high/low; N in {20, 55, 100}; optional ATR-14 buffer) clear the
+  same #96+A+B+C dual-print bar (Kraken 720 + Binance.US
+  older-720)? `traderstack-donchian-breakout` scores that family.
+  BTC and ETH signs remain the gate; SOL is reported, not required.
+  Paper-executable on Kraken spot. Empty dual-print is success.
+  Not an EMA, residual, or XS reprint. See
+  `docs/artifacts/strategy-search/donchian-breakout.md`.
