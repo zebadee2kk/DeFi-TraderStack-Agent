@@ -123,3 +123,14 @@ At minimum:
   Paper-executable on Kraken spot. Empty dual-print is
   success. Not an EMA, residual, XS, or Donchian reprint.
   See `docs/artifacts/strategy-search/tsmom.md`.
+- Does a fee-aware own-asset Bollinger band-fade (SMA ± k ×
+  sample stdev; fade-to-inside / long-only fade / squeeze
+  contrast; period×k in {20x2, 20x2.5, 40x2}) clear the same
+  #96+A+B+C dual-print bar (Kraken 720 + Binance.US
+  older-720)? `traderstack-bollinger-fade` scores that
+  family. BTC and ETH signs remain the gate; SOL is
+  reported, not required. Paper-executable on Kraken spot.
+  Empty dual-print is success. Distinct from existing
+  `mean_reversion_*` ids (#93 / #108 used different bars).
+  Not an EMA, residual, XS, Donchian, or TSMOM reprint.
+  See `docs/artifacts/strategy-search/bollinger-fade.md`.

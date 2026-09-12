@@ -111,6 +111,12 @@ long/short on each asset's own frozen trailing N-day
 close-to-close return (N in {21, 63, 126, 252}) on that same
 dual-print bar. SOL is reported, not a gate. Paper-executable
 on Kraken spot. Empty dual-print is success.
+`traderstack-bollinger-fade` is the post-#119 slice:
+fade-to-inside / long-only fade / squeeze-breakout contrast
+on own-asset Bollinger bands (period×k in {20x2, 20x2.5,
+40x2}) on that same dual-print bar. Distinct from existing
+`mean_reversion_*` ids. SOL is reported, not a gate.
+Paper-executable on Kraken spot. Empty dual-print is success.
 **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy

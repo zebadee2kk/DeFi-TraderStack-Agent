@@ -492,7 +492,8 @@ OKX as the second tape. Do not re-score carry on HL `premium` or
 BitMEX `.XBTUSDPI`. Do not rerun this BTC−ETH residual catalog or the
 BTC+ETH+SOL cross-sectional momentum catalog or the Donchian /
 channel-breakout catalog or the time-series momentum catalog on
-the same Kraken 720 + Binance.US older-720 windows.
+the same Kraken 720 + Binance.US older-720 windows. Do not reprint
+`mean_reversion_*` ids.
 
 1. **Second independent funding tape.** Done in #110: Hyperliquid +
    OKX dual-print. Spot-signal passers: **0**. Modeled
@@ -834,6 +835,50 @@ not an edge. `tsmom_ls_21` ETH holdout is also negative
 
 See `tsmom.md`.
 
+## This session — Bollinger band-fade (catalog frozen)
+
+Highest-leverage next experiment from #119: a **non-EMA /
+non-residual / non-XS / non-Donchian / non-TSMOM** family that
+is paper-executable on Kraken spot. Catalog and dual-print bar
+are frozen **before** any live OHLC pull. Do not retune period,
+k, exit rule, or squeeze percentile after seeing PnL. Do not
+re-run #104 / #108 / #116 / #117 / #118 / #119 on the same
+windows. Do not invent PIT basis. Distinct from existing
+`mean_reversion_*` catalog ids (#93 / #108 used different bars).
+
+### Catalog (frozen before the live pull)
+
+| family | ids |
+| --- | --- |
+| Fade to mid | `bb_fade_{20x2,20x2_5,40x2}` |
+| Long-only fade | `bb_lo_fade_{20x2,40x2}` |
+| Squeeze-breakout CONTRAST | `bb_squeeze_break_{20,40}` |
+| Control (cannot promote) | `ma_cross_10_30` |
+
+Treatment: SMA(period) ± k × sample stdev (ddof=1) using closes
+through t. Exit `flat_when_inside_bands` (not exit-at-mid).
+Squeeze: long when bandwidth expands from the frozen p20 of the
+prior 120 bandwidths and close > mid. Fill at t+1 open. Missing
+series skipped, not zero-filled.
+
+### Multi-asset bar (frozen)
+
+`btc_eth_signs_as_96_abc_sol_reported_not_required`: #96+A+B+C on
+BTC and ETH. SOL is reported when present and is **not** a gate.
+Equal-weight portfolio metrics were considered and **rejected**
+before scoring.
+
+### Print policy (frozen)
+
+| print | rule | can promote? |
+| --- | --- | --- |
+| Kraken primary 720 | #96+A+B+C on BTC+ETH; rank dual-print passers by Kraken mean HO | only if also Binance combined-PASS |
+| Binance.US older-720 | same #102 slice; must combined-PASS | no (gate only) |
+
+### Live print
+
+**Not yet run.** Catalog committed first.
+
 ## Pins
 
 | flag | default | status |
@@ -847,6 +892,7 @@ See `tsmom.md`.
 | new cross-sectional momentum pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `xs_mom_lo_vol_63` mean HO is ETH-carried (#96 FAIL); do not add a pin |
 | new Donchian pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational positive Kraken mean HO still fails #96 on BTC walk-forward; do not add a pin |
 | new TSMOM pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `tsmom_lo_63` / `tsmom_ls_63` mean HO is ETH-carried (#96 FAIL); `tsmom_lo_21` / `tsmom_ls_21` fail BTC walk-forward; do not add a pin |
+| new Bollinger fade pin | *(not added)* | live print not yet run; add only if a committed dual-print passer exists (default false) |
 | `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
 
 `TRADING_MODE=paper`. No live.

@@ -104,6 +104,13 @@ it is relied upon.
   trailing N-day close-to-close return (closes through t; fill
   at t+1 open). A missing/short series is skipped, not
   zero-filled. No exogenous series. Input to `traderstack-tsmom`.
+- **Bollinger band-fade (research only):** built from the same
+  public Spot daily closes — Kraken `GET /0/public/OHLC`
+  (720-bar cap) and Binance.US older-720 (`api.binance.us` when
+  `api.binance.com` is HTTP 451). Bands are SMA(period) ± k ×
+  sample stdev using closes through t; fill at t+1 open. A
+  missing/short series is skipped, not zero-filled. No
+  exogenous series. Input to `traderstack-bollinger-fade`.
 
 ## Robinhood Chain
 
