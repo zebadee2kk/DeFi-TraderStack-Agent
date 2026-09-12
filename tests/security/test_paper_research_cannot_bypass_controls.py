@@ -191,9 +191,11 @@ def test_promote_ema_cannot_silently_score_hourly_bars() -> None:
     )
     assert settings.effective_pretrade_candle_interval == "1d"
     assert settings.effective_pretrade_max_drawdown_pct == 0.30
+    assert settings.effective_pretrade_candle_count == 720
     gate = build_pretrade_gate(settings)
     assert gate.required_candle_interval == "1d"
     assert gate.max_drawdown == 0.30
+    assert gate.compare_full_history_drawdown is False
     hourly = mild_uptrend()
     check = gate.evaluate(hourly, now=datetime.now(UTC))
     assert not check.passed
@@ -213,6 +215,7 @@ def test_promote_ema_is_ignored_on_live_and_does_not_force_daily() -> None:
     assert settings.paper_promote_ema_9_21_active is False
     assert settings.effective_pretrade_candle_interval == "1h"
     assert settings.effective_pretrade_max_drawdown_pct == 0.15
+    assert settings.effective_pretrade_candle_count == 400
     assert settings.effective_cycle_symbols == ("BTC/USD", "ETH/USD", "SOL/USD")
     assert settings.promote_universe_allows("SOL/USD") is True
     gate = build_pretrade_gate(settings)
@@ -241,9 +244,11 @@ def test_promote_ema_9_21_adx15_cannot_relax_risk_or_run_live() -> None:
     )
     assert paper.effective_pretrade_candle_interval == "1d"
     assert paper.effective_pretrade_max_drawdown_pct == 0.30
+    assert paper.effective_pretrade_candle_count == 720
     gate = build_pretrade_gate(paper)
     assert gate.required_candle_interval == "1d"
     assert gate.max_drawdown == 0.30
+    assert gate.compare_full_history_drawdown is False
     engine = RiskEngine(paper)
     assert engine.settings.max_position_pct == 0.10
     assert engine.settings.kill_switch is True

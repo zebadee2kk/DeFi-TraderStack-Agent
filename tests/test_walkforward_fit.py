@@ -2,7 +2,11 @@ from datetime import UTC, datetime, timedelta
 
 from traderstack.backtest import BaselineBacktester
 from traderstack.candles import Candle
+from traderstack.cli import build_pretrade_gate
+from traderstack.config import Settings
 from traderstack.research.leakage import assert_no_lookahead
+from traderstack.research.miles_candidates import default_miles_candidates
+from traderstack.research.miles_search import walkforward_candidate_on_window
 from traderstack.research.tuning import grid_search_momentum_lookback
 from traderstack.walkforward import WalkForwardEvaluator
 
@@ -96,3 +100,31 @@ def test_grid_search_fit_hook_itself_has_no_lookahead() -> None:
         return tuned.ensemble.momentum_strategy.lookback
 
     assert_no_lookahead(fn, candles, min_index=150, step=50)
+
+
+def test_train_warmup_matches_research_walkforward_definition() -> None:
+    """Promote-path WF is the #95–#100 train-warmup fold, not an isolated test slice."""
+    candles = make_candles(count=400)
+    settings = Settings(
+        database_url="postgresql+asyncpg://x:x@localhost/x",
+        redis_url="redis://localhost:6379/0",
+        kill_switch=False,
+        paper_promote_ema_9_21=True,
+    )
+    gate = build_pretrade_gate(settings)
+    assert gate.walkforward is not None
+    assert gate.walkforward.train_warmup is True
+    report = gate.walkforward.evaluate(candles)
+    candidate = next(c for c in default_miles_candidates() if c.candidate_id == "ema_9_21")
+    research = walkforward_candidate_on_window(
+        candidate,
+        candles,
+        fee_bps=10.0,
+        slippage_bps=5.0,
+        starting_equity=settings.paper_starting_nav_usd,
+        train_size=180,
+        test_size=60,
+        step_size=60,
+    )
+    assert report.worst_drawdown == research.worst_drawdown
+    assert len(report.folds) == len(research.folds)

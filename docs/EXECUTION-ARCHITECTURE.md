@@ -120,8 +120,11 @@ On `TRADING_MODE=paper` they use the documented paper floors in
 `PAPER_PRETRADE_MIN_*` (non-catastrophic total return, modest room vs
 buy-and-hold, a Sharpe floor below the one-trade fee-shock artifact).
 When `PAPER_PROMOTE_EMA_9_21` is also on, the drawdown ceiling is
-`PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` (default 0.30, the daily
-`ema_9_21` research envelope) instead of `PRETRADE_MAX_DRAWDOWN_PCT=0.15`.
+`PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` (default 0.30) applied to
+research walk-forward maxDD (train=180 / test=60 / step=60,
+warmup=train — the #95–#100 definition), not to full-history
+backtest DD, and the fetch count is 720. The 1h path keeps
+`PRETRADE_MAX_DRAWDOWN_PCT=0.15` on the full-history book.
 The promote-path cycle list is `PAPER_PROMOTE_UNIVERSE` (default
 `BTC/USD,ETH/USD`, the #100 honesty envelope); SOL stays in
 `MVP_ASSETS` but is not cycled, and a leaked non-envelope tick is
@@ -187,7 +190,9 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
              paper may reuse last-good on 429 / open breaker — live/shadow do not)
         iii. fetch candle history (if the pre-trade gate is enabled;
              interval is Settings.effective_pretrade_candle_interval —
-             `1d` / Kraken 1440 when a daily paper promote pin is active)
+             `1d` / Kraken 1440 when a daily paper promote pin is active;
+             count is Settings.effective_pretrade_candle_count — 720 on
+             that path so the #95–#100 window is fetched, not the 1h 400)
         iv.  best-effort candle persistence (--persistent-events; failure never fails the cycle)
         v.   fetch external intelligence (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS,
              concurrent, isolated failures, cached)

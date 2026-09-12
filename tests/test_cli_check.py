@@ -185,6 +185,10 @@ def test_promote_ema_9_21_on_paper_is_safe() -> None:
     drawdown = next(i for i in report.items if i.label == "Paper promote ema_9_21 max drawdown")
     assert drawdown.value == "30.00%"
     assert "PRETRADE_MAX_DRAWDOWN_PCT=15.00%" in drawdown.detail
+    assert "walk-forward maxDD" in drawdown.detail
+    count = next(i for i in report.items if i.label == "Paper promote candle count")
+    assert count.value == "720"
+    assert "PRETRADE_CANDLE_COUNT=400" in count.detail
     universe = next(i for i in report.items if i.label == "Paper promote universe")
     assert universe.value == "BTC/USD, ETH/USD"
     assert "promote_universe_excluded" in universe.detail
@@ -199,6 +203,18 @@ def test_promote_ema_9_21_tight_drawdown_ceiling_warns() -> None:
     )
     assert not report.safe
     assert any("MAX_DRAWDOWN_PCT is tighter" in warning for warning in report.warnings)
+
+
+def test_promote_ema_9_21_raised_drawdown_ceiling_warns() -> None:
+    report = build_report(
+        settings(
+            paper_promote_ema_9_21=True,
+            paper_promote_ema_9_21_max_drawdown_pct=0.50,
+        )
+    )
+    assert not report.safe
+    assert any("above the documented 0.30" in warning for warning in report.warnings)
+    assert any("full-history" in warning for warning in report.warnings)
 
 
 def test_promote_ema_9_21_ignored_outside_paper() -> None:

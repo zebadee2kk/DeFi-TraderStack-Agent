@@ -94,6 +94,7 @@ from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
 from traderstack.strategies import PaperResearchStrategy, StrategyEnsemble
 from traderstack.tracing import configure_tracing  # observability (Epic 9)
+from traderstack.walkforward import WalkForwardEvaluator
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
 CandleSink = Callable[[tuple[Candle, ...]], Awaitable[None]]  # persistence (Epic 2)
@@ -231,6 +232,16 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
         # daily research envelope (~23% WF maxDD) is not rejected by the
         # 1h PRETRADE_MAX_DRAWDOWN_PCT=0.15 bar. Live/shadow stay on 0.15.
         max_drawdown=settings.effective_pretrade_max_drawdown_pct,
+        # --- paper daily promote DD series ---
+        # Research (#95–#100) reports walk-forward maxDD with train
+        # warmup, not full-history backtest DD. Promote path matches that
+        # definition; live/shadow keep the isolated test-slice evaluator
+        # and still compare the full-history book to 0.15.
+        walkforward=WalkForwardEvaluator(
+            backtester=backtester,
+            train_warmup=settings.paper_daily_promote_active,
+        ),
+        compare_full_history_drawdown=not settings.paper_daily_promote_active,
         min_sharpe=settings.effective_pretrade_min_sharpe,
         min_trades=settings.effective_pretrade_min_trades,
         require_walkforward=settings.pretrade_require_walkforward,
@@ -758,7 +769,9 @@ def build_service(
         # Promote path forces 1d (Kraken 1440). PRETRADE_CANDLE_INTERVAL=1h
         # must not silently feed the daily-validated EMA.
         candle_interval=settings.effective_pretrade_candle_interval,
-        candle_count=settings.pretrade_candle_count,
+        # Promote path forces 720 (Kraken / #95–#100 window).
+        # PRETRADE_CANDLE_COUNT=400 is the 1h MA lookback.
+        candle_count=settings.effective_pretrade_candle_count,
         intelligence=intelligence,
         # --- meta-agent (Epic 6) ---
         meta_reviewer=build_meta_reviewer(settings),

@@ -189,8 +189,10 @@ overlay under fees. Promotion requires walk-forward **total return > 0**
 and holdout **excess return > 0**. Default `PAPER_GARCH_SIZE=false` stays
 off (no GARCH-sized candidate cleared). `PAPER_PROMOTE_EMA_9_21=false` is
 the documented paper-only switch to register `ema_9_21` as the sole paper
-voter on daily candles (`1d` / Kraken 1440); the matching paper drawdown
-ceiling is `PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` (default 0.30). It
+voter on daily candles (`1d` / Kraken 1440, 720-bar lookback); the
+matching paper drawdown ceiling is
+`PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` (default 0.30) applied to
+research walk-forward maxDD, not full-history backtest DD. It
 does not enable live and must not be read as a 1h-runtime edge.
 `traderstack-daily-robustness` stress-tests that daily winner (plus a
 pre-registered slower-EMA / dual-mom / risk-off / optional-GARCH grid)
