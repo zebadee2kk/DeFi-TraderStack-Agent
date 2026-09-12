@@ -407,6 +407,17 @@ def test_binance_older_slice_is_scored_and_cannot_promote() -> None:
     assert "equal-weight" in rendered.lower()
 
 
+def test_committed_live_report_is_empty_success() -> None:
+    text = Path("docs/artifacts/strategy-search/cross-sectional-momentum.md").read_text()
+    assert "Dual-print passers: 0" in text
+    assert "`keep_flag_false=true`" in text
+    assert "Do not add a new promote flag" in text
+    assert "PAPER_PROMOTE_*" in text
+    assert "xs_mom_lo_vol_63" in text
+    assert settings().paper_promote_ema_9_21 is False
+    assert not hasattr(settings(), "paper_promote_xs_mom_ls_21")
+
+
 def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     args = build_parser().parse_args(["--candles", "unused.json", "--no-binance"])
     assert args.output_md.name == "cross-sectional-momentum.md"
