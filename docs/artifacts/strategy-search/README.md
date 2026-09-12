@@ -651,3 +651,49 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `tsmom.md`.
 
+## Bollinger band-fade (`traderstack-bollinger-fade`)
+
+#119 left the time-series momentum dual-print empty.
+This command is a **different family**: fade-to-inside,
+long-only fade, and a squeeze-breakout contrast against
+own-asset Bollinger bands (period×k in {20x2, 20x2.5, 40x2}).
+Distinct from existing `mean_reversion_*` catalog ids
+(#93 charts-spot / #108 4h). Not trend, not cross-section,
+not Donchian, not TSMOM.
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | public Spot daily; #96+A+B+C on BTC+ETH (SOL reported); rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same #102 slice; must combined-PASS | no (gate only) |
+
+Catalog is frozen (K=8): three fade-to-mid books, two
+long-only fade books, two squeeze-breakout contrast books,
+plus informational `ma_cross_10_30` (cannot promote).
+Bands use closes through t; exit `flat_when_inside_bands`;
+fill at t+1 open. Missing series skipped, not zero-filled.
+Multi-asset bar (frozen): BTC and ETH signs as #96+A+B+C;
+SOL reported, not a gate. Equal-weight portfolio metrics
+are not used. Paper-executable on Kraken spot BTC/ETH.
+Empty dual-print set is success. `PAPER_PROMOTE_*` stays
+false. No new pin unless a committed report names a passer
+(default false if added).
+
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720).
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Labeled Binance.US (`api.binance.com` HTTP 451).
+- Kraken combined-passers: **0**.
+- Binance.US combined-passers: **0**.
+- #96 FAIL ETH-carried: **none**.
+- Informational BTC WF-fail: **none**.
+- Informational `bb_squeeze_break_40` clears Kraken #96+A+B
+  (mean HO +3.72%; BTC HO +4.69%) but **fails gate C**. Binance
+  #96 FAIL (BTC HO −4.69%).
+- Informational `bb_squeeze_break_20` mean HO +1.33% with
+  positive BTC/ETH holdout still fails #96 on ETH walk-forward
+  (−1.87%).
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
+See `bollinger-fade.md`.
+

@@ -109,6 +109,13 @@ traderstack-donchian-breakout = "traderstack.research.donchian_breakout_cli:main
 # Paper spot executable. Never flips PAPER_PROMOTE_*. Empty
 # dual-print is success. Not an EMA / residual / XS / Donchian reprint.
 traderstack-tsmom = "traderstack.research.tsmom_cli:main"
+# Bollinger band-fade / mean-reversion at frozen period×k
+# {20x2, 20x2.5, 40x2} (fade / long-only fade / squeeze contrast).
+# Same #96+A+B+C dual-print bar as #104 (Kraken 720 + Binance.US
+# older-720). SOL reported, not a gate. Paper spot executable.
+# Never flips PAPER_PROMOTE_*. Empty dual-print is success. Not an
+# EMA / residual / XS / Donchian / TSMOM / mean_reversion_* reprint.
+traderstack-bollinger-fade = "traderstack.research.bollinger_fade_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
