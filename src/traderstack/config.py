@@ -221,6 +221,16 @@ class Settings(BaseSettings):
     # drawdown so the risk breakers are not systematically optimistic.
     # Default matches PRETRADE_FEE_BPS.
     paper_fee_bps: float = Field(default=10.0, ge=0)
+    # --- paper fill simulation ---
+    # After RiskEngine allow (and no meta-agent veto), book a fill at the
+    # primary mid plus PAPER_SLIPPAGE_BPS adverse slippage and charge
+    # PAPER_FEE_BPS. Does not require Hummingbot or --submit. Paper only;
+    # live is still rejected at service construction, and shadow never fills.
+    paper_simulate_fills: bool = True
+    # Adverse slippage from primary mid on the paper fill. Default matches
+    # PRETRADE_SLIPPAGE_BPS. Must stay at or below EXECUTION_MAX_SLIPPAGE_BPS
+    # or the planner rejects the fill.
+    paper_slippage_bps: float = Field(default=5.0, ge=0)
 
     # --- paper research mode ---
     # Documented paper default. When TRADING_MODE=paper, the pre-trade ensemble

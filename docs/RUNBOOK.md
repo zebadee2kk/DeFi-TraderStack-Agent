@@ -18,7 +18,7 @@ without activating the venv.
 
 | Script | What it does |
 |---|---|
-| `traderstack-paper` | Runs the continuous service (`ContinuousPaperService`). In `TRADING_MODE=paper`, `--submit` enables Hummingbot paper-venue orders; without it, proposals are computed and risk-checked but nothing is sent. In `TRADING_MODE=shadow`, `--submit` is ignored and would-have-been orders are written to `--shadow-ledger-path`. See "Zero to paper trading" and "Shadow-live" below. |
+| `traderstack-paper` | Runs the continuous service (`ContinuousPaperService`). In `TRADING_MODE=paper`, `PAPER_SIMULATE_FILLS=true` (default) books each risk-allowed `paper_order` into the local portfolio at mid ± `PAPER_SLIPPAGE_BPS` with `PAPER_FEE_BPS` — no Hummingbot and no `--submit` required. `--submit` is the optional Hummingbot paper-venue path (see below). In `TRADING_MODE=shadow`, `--submit` is ignored and would-have-been orders are written to `--shadow-ledger-path`. See "Zero to paper trading" and "Shadow-live" below. |
 | `traderstack-check-config` | Loads `Settings` exactly as the runtime does and prints what's enabled — venue feed, meta-agent mode, every provider, execution/reconciliation settings, provider quotas, kill-switch channels, risk limits — warning (and exiting non-zero) on unsafe combinations. Never prints secret values. Run this before every start and after every `.env` change. |
 | `traderstack-kill` | Engages the kill switch by writing the sentinel file (`--file`, default `$KILL_SWITCH_FILE` or `var/state/KILL`). Needs no access to the running process. See "Engaging / releasing the kill switch". |
 | `traderstack-resume` | Removes the sentinel file. Does **not** clear the `KILL_SWITCH` setting, the Redis key, or a latched `SIGUSR1` — those are separate channels and print as a reminder. |
@@ -78,16 +78,37 @@ without activating the venv.
    access in `ops/grafana/`. The same "don't expose it as shipped" caution
    applies to Prometheus, Loki and Postgres, none of which have their own
    auth in the default compose file.
-7. **Optional: real order submission through Hummingbot** — only after you've set
-   `HUMMINGBOT_API_USERNAME`/`HUMMINGBOT_API_PASSWORD` and, if you want the
-   `hummingbot-api` service defined in `docker-compose.yml` itself (rather than an
-   externally-run one), started it:
+7. **Paper PnL (default, no Hummingbot):** Compose `app.command` and
+   `make run-paper` do **not** pass `--submit`. That used to leave every
+   RiskEngine `allow` as a `paper_order` intent with `execution_status=null`,
+   no ledger row, and `traderstack_portfolio_nav_usd` stuck at the starting
+   10000. With `PAPER_SIMULATE_FILLS=true` (documented paper default) an
+   ALLOW that still has a `paper_order` after the meta-agent review is
+   filled in-process at the primary mid ± `PAPER_SLIPPAGE_BPS` (adverse),
+   charged `PAPER_FEE_BPS` (`fee_source=modelled`), written to the
+   execution ledger, and applied to cash/positions/NAV. Restart is
+   idempotent (same `paper-fill:<client_order_id>`). The kill switch, a
+   meta-agent veto, reconciliation-blocked, or a torn ledger still
+   withhold. Confirm with:
+   ```bash
+   curl -s http://localhost:9108/metrics | grep traderstack_portfolio_nav_usd
+   curl -s http://localhost:9108/metrics | grep traderstack_paper_fills_total
+   jq -r '.execution_status' var/audit/runtime.jsonl | sort | uniq -c
+   ```
+8. **Optional alternate: `--submit` + Hummingbot paper profile** — only
+   after you've set `HUMMINGBOT_API_USERNAME`/`HUMMINGBOT_API_PASSWORD` and,
+   if you want the `hummingbot-api` service defined in `docker-compose.yml`
+   itself (rather than an externally-run one), started it:
    ```bash
    docker compose --profile execution up -d
    ```
    Then run the app with `--submit` (edit the `app` service `command:` or run
-   `traderstack-paper --submit ...` directly). Until then, the runtime computes and
-   risk-checks proposals but places no orders — useful for a first dry run.
+   `traderstack-paper --submit ...` directly). That path still only *submits*;
+   venue fills land later via `HummingbotExecutionReconciler`. When
+   `PAPER_SIMULATE_FILLS=true` the local book is already filled on ALLOW, so
+   Hummingbot NAV reconcile is not wired (it would drift and freeze new
+   risk). Set `PAPER_SIMULATE_FILLS=false` if you want venue trades to be
+   the only fill source. Hummingbot is **not** required for basic paper PnL.
 
 At every step, the pre-trade backtest gate and the deterministic risk engine are
 active by default (`PRETRADE_BACKTEST_ENABLED=true`, `KILL_SWITCH=true`). With the
@@ -380,9 +401,12 @@ Two things it will not do, by design:
   matching `PRETRADE_FEE_BPS`) are read from the execution ledger and reported as
   fee drag, labelled `venue` / `modelled`. `--fee-bps` is only a *fallback* for
   fills that still carry no ledger fee — and the report states which it used.
-- It never assumes an unfilled order traded. Orders that were submitted but never
-  reconciled to a fill are excluded, so a report showing "no fills" means reconciliation
-  never confirmed one — check the ledger states, not the report.
+- It never assumes an unfilled order traded. Paper-simulated fills
+  (`execution_status=paper_filled`, ledger `FILLED`, `fee_source=modelled`)
+  are real ledger rows and are included. Orders that were only submitted
+  to Hummingbot and never filled (or never paper-simulated) are excluded,
+  so a report showing "no fills" means neither `PAPER_SIMULATE_FILLS` nor
+  venue reconciliation booked one — check the ledger states, not the report.
 
 Candles come from a JSON file (`--candles`, produced by `traderstack-download-candles`)
 or, with `--candle-store`, from the Postgres candle store populated by
@@ -751,6 +775,10 @@ Once a proposal clears the risk engine (and, in veto mode, the meta-agent),
 | `plan_rejected` | `ExecutionPlanner` refused the order — quantity rounds to zero at `EXECUTION_LOT_STEP`, below `EXECUTION_MIN_NOTIONAL_USD`, or the execution price is outside `EXECUTION_MAX_SLIPPAGE_BPS` of the pipeline's validated tick (in *either* direction — a suspiciously favourable price is treated as a data-integrity signal, not a gift). | Usually a sizing/liquidity artefact, not a bug. Persistent slippage rejections on a liquid pair warrant checking the venue's actual spread. |
 | `rejected` | Permanent failure — a 4xx from the venue, or retries exhausted after confirmed absence (see `SUBMISSION_UNCERTAIN` below). Terminal in the ledger; never retried automatically. | Read `execution_reason` for the venue's message. Investigate before manually intervening. |
 | `uncertain` | The venue's truth for this order is unknown right now (see next section). No retry is permitted until reconciliation resolves it. | See "Resolving `SUBMISSION_UNCERTAIN`" below. |
+| `paper_filled` | In-process paper fill booked at mid ± `PAPER_SLIPPAGE_BPS` with `PAPER_FEE_BPS`. Ledger `FILLED`, cash/positions/NAV updated. Does not require Hummingbot. | None. This is the default paper PnL path (`PAPER_SIMULATE_FILLS=true`). |
+| `paper_fill_duplicate` | This `decision_id` already has a paper fill (restart / replay). Book unchanged. | None; confirms the ledger guard. |
+| `paper_fill_rejected` | Planner or book refused the fill (lot/notional/slippage, or a SELL larger than the held position). | Read `execution_reason`. Persistent slippage rejects: check `PAPER_SLIPPAGE_BPS` ≤ `EXECUTION_MAX_SLIPPAGE_BPS`. |
+| `paper_fill_withheld` | Kill switch engaged, reconciliation blocked, or torn durable state. Intent was not filled. | Same as a withheld submission — fix the halt/reconcile/ledger before expecting NAV to move. |
 
 **`OrderLifecycleState`** (`execution/ledger.py`) tracks the order itself once
 submitted: `PLANNED` → `SUBMITTED` → (`SUBMISSION_UNCERTAIN` if uncertain) →

@@ -67,6 +67,8 @@ REPORTED_METRICS: tuple[str, ...] = (
     "traderstack_risk_decisions_total",
     "traderstack_proposals_total",
     "traderstack_paper_orders_submitted_total",
+    "traderstack_paper_fills_total",
+    "traderstack_paper_fill_fees_usd_total",
     "traderstack_shadow_intents_recorded_total",
     "traderstack_trading_mode_info",
     "traderstack_event_sink_failures_total",

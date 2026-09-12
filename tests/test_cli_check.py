@@ -273,6 +273,17 @@ def test_report_covers_provider_quotas_execution_and_kill_switch_channels() -> N
     assert any("CoinGecko quota" in label for label in labels)
     assert any("sentinel file path" in label for label in labels)
     assert "Paper fee (bps)" in labels
+    assert "Paper simulate fills" in labels
+    simulate = next(item for item in report.items if item.label == "Paper simulate fills")
+    assert simulate.value == "active"
+
+
+def test_paper_slippage_above_execution_cap_warns() -> None:
+    report = build_report(settings(paper_simulate_fills=True, paper_slippage_bps=80.0))
+    assert not report.safe
+    assert any(
+        "PAPER_SLIPPAGE_BPS exceeds EXECUTION_MAX_SLIPPAGE_BPS" in w for w in report.warnings
+    )
 
 
 def test_paper_fee_bps_zero_warns() -> None:

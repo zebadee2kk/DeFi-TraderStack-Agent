@@ -49,6 +49,17 @@ paper_orders_submitted_total = Counter(
     "Paper orders submitted for execution, by symbol and side",
     ("symbol", "side"),
 )
+# --- paper fill simulation ---
+paper_fills_total = Counter(
+    "traderstack_paper_fills_total",
+    "Paper fills booked into the local book, by symbol, side and status",
+    ("symbol", "side", "status"),
+)
+paper_fill_fees_usd_total = Counter(
+    "traderstack_paper_fill_fees_usd_total",
+    "Modelled paper-fill fees booked into the local book, by symbol",
+    ("symbol",),
+)
 
 # --- shadow-live (Roadmap Phase 7) -----------------------------------------
 
@@ -140,6 +151,12 @@ def record_pipeline_result(symbol: str, pipeline: PipelineResult) -> None:
 
 def record_paper_order_submitted(symbol: str, side: str) -> None:
     paper_orders_submitted_total.labels(symbol=symbol, side=side).inc()
+
+
+def record_paper_fill(symbol: str, side: str, status: str, fee_usd: float = 0.0) -> None:
+    paper_fills_total.labels(symbol=symbol, side=side, status=status).inc()
+    if fee_usd > 0:
+        paper_fill_fees_usd_total.labels(symbol=symbol).inc(fee_usd)
 
 
 def record_shadow_intent(symbol: str, side: str, status: str) -> None:

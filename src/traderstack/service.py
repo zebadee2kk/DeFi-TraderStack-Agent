@@ -8,6 +8,7 @@ import structlog
 
 from traderstack.config import Settings
 from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
+from traderstack.execution.paper_fill import PaperFillSimulator, PaperFillStatus
 from traderstack.execution.reconcile import ExecutionReconciliationResult
 from traderstack.health import RuntimeHealth
 
@@ -16,6 +17,7 @@ from traderstack.killswitch import KillSwitch
 from traderstack.market.providers import EdgeFeedCollector
 from traderstack.metrics import (  # --- observability (Epic 9) ---
     record_event_sink_failure,
+    record_paper_fill,
     record_portfolio_snapshot,
 )
 from traderstack.portfolio import InMemoryPortfolioBook
@@ -69,6 +71,10 @@ class ContinuousPaperService:
     portfolio_reconciler: PortfolioReconcilerProtocol | None = None
     ledger_store: LedgerPersistence | None = None
     reconcile_interval_seconds: float = 60.0
+    # --- paper fill simulation ---
+    # Books ALLOW'd paper_order intents into the local book without Hummingbot.
+    # Compose `app.command` has no --submit; this is the paper PnL path.
+    paper_fill_simulator: PaperFillSimulator | None = None
     # --- paper-research edge data plane ---
     # Background WS collectors (Binance liquidations / optional bookTicker).
     # Failure here is informational: missing features, not a halt.
@@ -177,6 +183,11 @@ class ContinuousPaperService:
                 # --- execution hardening (Epic 8) ---
                 submit=self.submission_enabled,
             )
+            # --- paper fill simulation ---
+            # Apply after risk allow + meta-agent review (paper_order set) and
+            # before mark-to-market / audit / checkpoint so NAV, daily PnL and
+            # the risk trail see the fill on the same cycle.
+            result = await self._maybe_apply_paper_fill(result)
             asset = (
                 result.pipeline.feature_vector.asset
                 if result.pipeline.feature_vector is not None
@@ -269,6 +280,70 @@ class ContinuousPaperService:
             self.submit
             and not self.health.reconciliation_blocked
             and self.health.durable_state_error is None
+        )
+
+    # --- paper fill simulation ---
+    @property
+    def paper_fill_enabled(self) -> bool:
+        """Local paper fills are new risk; the same gates as venue submit apply.
+
+        Kill switch / meta-agent veto already null ``paper_order``. This also
+        withholds when venue state is unreconciled or durable state is torn.
+        Does **not** require ``--submit`` or Hummingbot.
+        """
+
+        return (
+            self.paper_fill_simulator is not None
+            and self.execution_ledger is not None
+            and not self.health.reconciliation_blocked
+            and self.health.durable_state_error is None
+        )
+
+    async def _maybe_apply_paper_fill(self, result: RuntimeResult) -> RuntimeResult:
+        if result.trading_mode != "paper":
+            return result
+        intent = result.pipeline.paper_order
+        if intent is None or self.paper_fill_simulator is None:
+            return result
+        if self.kill_switch is not None and self.kill_switch.engaged:
+            return result.model_copy(
+                update={
+                    "execution_status": PaperFillStatus.WITHHELD.value,
+                    "execution_reason": "kill switch engaged; paper fill withheld",
+                }
+            )
+        if not self.paper_fill_enabled or self.execution_ledger is None:
+            reason = "paper fill withheld: unreconciled or torn durable state"
+            if self.health.durable_state_error is not None:
+                reason = f"paper fill withheld: {self.health.durable_state_error}"
+            elif self.health.reconciliation_blocked:
+                reason = "paper fill withheld: reconciliation blocked"
+            return result.model_copy(
+                update={
+                    "execution_status": PaperFillStatus.WITHHELD.value,
+                    "execution_reason": reason,
+                }
+            )
+
+        outcome = self.paper_fill_simulator.apply(
+            intent,
+            mid_usd=result.tick.mid,
+            ledger=self.execution_ledger,
+            portfolio=self.portfolio,
+        )
+        if self.ledger_store is not None:
+            await self.ledger_store.save(self.execution_ledger)
+        record_paper_fill(
+            result.tick.symbol,
+            intent.side.value,
+            outcome.status.value,
+            fee_usd=outcome.fee_usd,
+        )
+        return result.model_copy(
+            update={
+                "execution_status": outcome.status.value,
+                "execution_reason": outcome.reason,
+            }
         )
 
     async def _maybe_reconcile(self) -> None:

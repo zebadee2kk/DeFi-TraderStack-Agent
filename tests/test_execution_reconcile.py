@@ -2,11 +2,13 @@ import httpx
 import pytest
 
 from traderstack.execution.ledger import (
+    ExecutionFill,
     ExecutionLedger,
     ExecutionOrder,
     FeeSource,
     OrderLifecycleState,
 )
+from traderstack.execution.paper_fill import paper_fill_id
 from traderstack.execution.reconcile import HummingbotExecutionReconciler
 from traderstack.models import Side
 from traderstack.portfolio import InMemoryPortfolioBook
@@ -213,3 +215,59 @@ async def test_missing_venue_fee_is_modelled_and_labelled() -> None:
     assert fill_order.fee_source is FeeSource.MODELLED
     assert book.snapshot().nav_usd == pytest.approx(10_000 - modelled)
     assert book.snapshot().cash_usd == pytest.approx(9_000 - modelled)
+
+
+@pytest.mark.asyncio
+async def test_local_paper_fill_is_not_double_applied_by_venue_lag() -> None:
+    """A paper-simulated FILLED order must not conflict with an still-open venue row."""
+
+    ledger = ExecutionLedger()
+    ledger.register_order(
+        ExecutionOrder(
+            order_id="ts-abc",
+            decision_id="d1",
+            asset="BTC",
+            side=Side.BUY,
+            requested_quantity=0.05,
+            state=OrderLifecycleState.PLANNED,
+            client_order_id="ts-abc",
+            venue_order_id="venue-1",
+        )
+    )
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    assert ledger.record_fill(
+        ExecutionFill(
+            fill_id=paper_fill_id("ts-abc"),
+            order_id="ts-abc",
+            asset="BTC",
+            side=Side.BUY,
+            quantity=0.05,
+            price_usd=20_000,
+            fee_usd=1.0,
+            fee_source=FeeSource.MODELLED,
+        )
+    )
+    book.apply_fill("BTC", Side.BUY, 0.05, 20_000, fee_usd=1.0)
+    nav_after = book.nav_usd
+
+    trades = [
+        {
+            "trade_id": "venue-f1",
+            "order_id": "venue-1",
+            "trading_pair": "BTC-USD",
+            "trade_type": "BUY",
+            "amount": 0.05,
+            "price": 20_000,
+            "fee": 1.0,
+        }
+    ]
+    client = _client(_state_handler([{"order_id": "venue-1", "status": "open"}], trades))
+    reconciler = HummingbotExecutionReconciler("http://test", "u", "p", client=client)
+
+    result = await reconciler.reconcile_state(ledger, book)
+    await client.aclose()
+
+    assert result.applied_fills == 0
+    assert result.matched
+    assert book.nav_usd == pytest.approx(nav_after)
+    assert ledger.orders["ts-abc"].state is OrderLifecycleState.FILLED

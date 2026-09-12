@@ -73,6 +73,23 @@ def test_record_pipeline_result_counts_proposal_and_risk_decision() -> None:
     )
 
 
+def test_record_paper_fill() -> None:
+    before = _counter_value(
+        "traderstack_paper_fills_total", symbol="BTC/USD", side="buy", status="paper_filled"
+    )
+    before_fees = _counter_value("traderstack_paper_fill_fees_usd_total", symbol="BTC/USD")
+    metrics.record_paper_fill("BTC/USD", "buy", "paper_filled", fee_usd=1.25)
+    assert (
+        _counter_value(
+            "traderstack_paper_fills_total", symbol="BTC/USD", side="buy", status="paper_filled"
+        )
+        == before + 1
+    )
+    assert _counter_value(
+        "traderstack_paper_fill_fees_usd_total", symbol="BTC/USD"
+    ) == pytest.approx(before_fees + 1.25)
+
+
 def test_record_paper_order_submitted() -> None:
     before = _counter_value(
         "traderstack_paper_orders_submitted_total", symbol="SOL/USD", side="buy"

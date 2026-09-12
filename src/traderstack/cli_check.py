@@ -458,6 +458,37 @@ def build_report(settings: Settings) -> ConfigReport:
             "drawdown breakers will be optimistic versus a live fee schedule. Set this "
             "to match PRETRADE_FEE_BPS (default 10) unless the venue always reports fees."
         )
+    # --- paper fill simulation ---
+    items.append(
+        CheckItem(
+            "Paper simulate fills",
+            (
+                "active"
+                if settings.trading_mode == "paper" and settings.paper_simulate_fills
+                else "ignored"
+            ),
+            (
+                f"mid ± {settings.paper_slippage_bps:g} bps; fee {settings.paper_fee_bps:g} bps; "
+                "no Hummingbot required"
+                if settings.trading_mode == "paper" and settings.paper_simulate_fills
+                else (
+                    f"TRADING_MODE={settings.trading_mode}"
+                    if settings.trading_mode != "paper"
+                    else "PAPER_SIMULATE_FILLS=false; NAV stays flat until a venue fill"
+                )
+            ),
+        )
+    )
+    if (
+        settings.trading_mode == "paper"
+        and settings.paper_simulate_fills
+        and settings.paper_slippage_bps > settings.execution_max_slippage_bps
+    ):
+        warnings.append(
+            "PAPER_SLIPPAGE_BPS exceeds EXECUTION_MAX_SLIPPAGE_BPS: the planner will "
+            "reject every paper fill (fail closed). Lower PAPER_SLIPPAGE_BPS or raise "
+            "the execution slippage cap."
+        )
 
     # --- polymarket weather research (paper-only, opt-in) ------------------------------
     items.append(

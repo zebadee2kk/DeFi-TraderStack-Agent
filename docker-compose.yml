@@ -32,6 +32,8 @@ services:
       postgres: {condition: service_healthy}
       redis: {condition: service_started}
     # Dockerfile ENTRYPOINT is already `traderstack-paper`; these are its args.
+    # No --submit: paper PnL uses PAPER_SIMULATE_FILLS (local fills, no Hummingbot).
+    # Add --submit only for the optional Hummingbot paper-venue path (see RUNBOOK).
     command: ["--persistent-events", "--checkpoint-path", "/app/var/state/portfolio.json", "--audit-path", "/app/var/audit/runtime.jsonl"]
     ports: ["127.0.0.1:9108:9108"]
     volumes:
