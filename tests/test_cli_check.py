@@ -398,8 +398,21 @@ def test_edge_feeds_enabled_in_non_paper_mode_warns_as_not_an_execution_venue() 
 
 def test_crucix_is_off_by_default_in_check_config() -> None:
     report = build_report(settings())
-    crucix = next(item for item in report.items if "Crucix" in item.label)
+    crucix = next(item for item in report.items if item.label.startswith("  Crucix"))
     assert crucix.value == "no"
+    outage = next(item for item in report.items if "Crucix outage" in item.label)
+    assert outage.value == "no"
+    assert "unused unless" in outage.detail
+
+
+def test_crucix_outage_fail_closed_is_reported_when_opted_in() -> None:
+    report = build_report(settings(crucix_enabled=True))
+    crucix = next(item for item in report.items if item.label.startswith("  Crucix"))
+    assert crucix.value == "yes"
+    outage = next(item for item in report.items if "Crucix outage" in item.label)
+    assert outage.value == "yes"
+    assert "intelligence_provider_unavailable" in outage.detail
+    assert "paper/shadow/live" in outage.detail
 
 
 def test_altfins_is_reported_as_an_intelligence_provider() -> None:

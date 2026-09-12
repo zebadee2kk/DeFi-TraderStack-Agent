@@ -199,6 +199,18 @@ class PaperRuntime:
                     )
                 except Exception as exc:  # noqa: BLE001 - intelligence failure degrades to no-new-risk downstream.
                     intelligence_error = f"{type(exc).__name__}: {exc}"
+                    # --- crucix fail-closed ---
+                    # gather() itself should return provider_unavailable rather
+                    # than raise for Crucix, but any unexpected raise still
+                    # fails closed when fail-closed news is opted in.
+                    if self.intelligence.fail_closed_news:
+                        external = ExternalIntelligence(asset=asset, provider_unavailable=True)
+                if (
+                    external is not None
+                    and external.provider_unavailable
+                    and intelligence_error is None
+                ):
+                    intelligence_error = "intelligence_provider_unavailable"
 
             # --- providers (Epic 2): order-book snapshot handling -------------------
             book_snapshot: BookSnapshot | None = None

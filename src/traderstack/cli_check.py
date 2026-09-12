@@ -518,6 +518,18 @@ def build_report(settings: Settings) -> ConfigReport:
             crucix_effective_base_url(settings.crucix_base_url) if crucix_present else "",
         )
     )
+    items.append(
+        CheckItem(
+            "Intelligence: Crucix outage fails closed",
+            _flag(crucix_present),
+            (
+                "opted in: timeout/error rejects new risk with "
+                "intelligence_provider_unavailable (paper/shadow/live share this path)"
+                if crucix_present
+                else "unused unless CRUCIX_ENABLED or CRUCIX_BASE_URL / CRUCIX_API_KEY is set"
+            ),
+        )
+    )
 
     items.append(
         CheckItem(

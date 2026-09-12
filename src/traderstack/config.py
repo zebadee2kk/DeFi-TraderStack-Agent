@@ -90,7 +90,8 @@ class Settings(BaseSettings):
     altfins_api_key: SecretStr | None = None
     # --- crucix intel ---
     # Local/operator Crucix alert service. Off unless CRUCIX_ENABLED=true or a
-    # URL / API key is set. Adverse flags only add rejections.
+    # URL / API key is set. Adverse flags only add rejections. When registered,
+    # a provider timeout/outage/error fails closed (intelligence_provider_unavailable).
     crucix_enabled: bool = False
     crucix_base_url: str = ""
     crucix_api_key: SecretStr | None = None

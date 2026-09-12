@@ -102,13 +102,15 @@ def test_build_intelligence_skips_crucix_by_default() -> None:
 def test_build_intelligence_registers_crucix_when_enabled() -> None:
     orchestrator = build_intelligence(Settings(crucix_enabled=True))
     assert orchestrator is not None
-    assert len(orchestrator.news) == 1
+    assert orchestrator.news == ()
+    assert len(orchestrator.fail_closed_news) == 1
 
 
 def test_build_intelligence_registers_crucix_when_url_set() -> None:
     orchestrator = build_intelligence(Settings(crucix_base_url="http://127.0.0.1:8787"))
     assert orchestrator is not None
-    assert len(orchestrator.news) == 1
+    assert orchestrator.news == ()
+    assert len(orchestrator.fail_closed_news) == 1
 
 
 def test_build_intelligence_skips_blank_crucix_key_without_flag() -> None:
@@ -157,6 +159,17 @@ async def test_orchestrator_wraps_crucix_like_other_news() -> None:
     async def fetch(asset: str):
         return parse_crucix_alerts({"alerts": [{"tier": "high"}]}, asset=asset)
 
-    bundle = await IntelligenceOrchestrator(news=(fetch,)).gather("BTC")
+    bundle = await IntelligenceOrchestrator(fail_closed_news=(fetch,)).gather("BTC")
     assert bundle.news is not None
     assert bundle.news.adverse_event is True
+    assert bundle.provider_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_crucix_outage_is_fail_closed() -> None:
+    async def broken(asset: str):
+        raise TimeoutError("crucix unreachable")
+
+    bundle = await IntelligenceOrchestrator(fail_closed_news=(broken,)).gather("BTC")
+    assert bundle.provider_unavailable is True
+    assert bundle.news is None

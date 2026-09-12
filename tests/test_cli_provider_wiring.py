@@ -48,6 +48,7 @@ def test_build_intelligence_includes_altfins_alone() -> None:
     assert orchestrator.onchain is None
     assert orchestrator.social is None
     assert orchestrator.news == ()
+    assert orchestrator.fail_closed_news == ()
 
 
 def test_build_service_carries_pipeline_max_spread_bps_from_settings(tmp_path: Path) -> None:

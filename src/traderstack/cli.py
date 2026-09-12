@@ -310,6 +310,9 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
     Blank or whitespace-only keys are treated as unset so a copied `.env.example`
     does not register providers that then 401/404 every cycle.
 
+    Crucix, when opted in, is registered on ``fail_closed_news`` so a timeout
+    or error blocks new risk. Optional news providers stay fail-open.
+
     Every fetcher is wrapped through a per-provider `ProviderRegistry`
     (timeout, circuit breaker, quota) - see build_provider_registry above.
     """
@@ -363,14 +366,15 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
             build_provider_registry(settings, "altfins", calls_per_minute=quota),
         )
 
-    # --- crucix intel ---
+    # --- crucix intel (fail-closed on outage) ---
+    fail_closed_news: list[NewsFetcher] = []
     crucix_key = _secret(settings.crucix_api_key)
     if crucix_should_register(
         enabled=settings.crucix_enabled,
         base_url=settings.crucix_base_url,
         api_key=crucix_key,
     ):
-        news.append(
+        fail_closed_news.append(
             registered_fetcher(
                 CrucixIntelProvider(
                     base_url=crucix_effective_base_url(settings.crucix_base_url),
@@ -381,7 +385,7 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
         )
     # --- end crucix intel ---
 
-    if onchain is None and social is None and not news and altfins is None:
+    if onchain is None and social is None and not news and altfins is None and not fail_closed_news:
         return None
     return IntelligenceOrchestrator(
         onchain=onchain,
@@ -390,6 +394,7 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
         cache=IntelligenceCache(max_age_seconds=settings.intelligence_cache_seconds),
         require_any_external=settings.intelligence_required,
         altfins=altfins,
+        fail_closed_news=tuple(fail_closed_news),
     )
 
 

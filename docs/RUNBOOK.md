@@ -243,7 +243,15 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
   copied blank `.env.example` does **not** register it. High-tier alerts
   become `NewsFeatures.adverse_event` (an extra rejection source only;
   never a way to size up or authorise). Default URL when registered
-  without an override is `http://host.docker.internal:8787`.
+  without an override is `http://host.docker.internal:8787`. When Crucix
+  **is** opted in, a provider timeout, HTTP error, or unexpected payload
+  fails closed: new risk is rejected with
+  `intelligence_provider_unavailable`. Existing positions and
+  deterministic exits are untouched. Optional news providers
+  (CryptoPanic, Perplexity) still isolate failures. The same
+  `build_intelligence` / `PaperRuntime` path is used for paper, shadow,
+  and live — live does **not** ignore Crucix. This is safety plumbing,
+  not a trading edge; it does not flip `PAPER_PROMOTE_*`.
 
 ## Starting and stopping
 
@@ -864,6 +872,7 @@ proposal):
 |---|---|---|
 | `no_external_intelligence` | `INTELLIGENCE_REQUIRED=true` but no configured provider (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS/Crucix) returned anything this cycle. | Check provider keys/circuit breakers, or set `INTELLIGENCE_REQUIRED=false` if trading on market data alone is acceptable. |
 | `adverse_news_event` | `INTELLIGENCE_BLOCK_ON_ADVERSE_NEWS=true` (default) and a news provider flagged an adverse event for this asset — new risk is blocked for the cycle; existing positions are untouched. | Expected behaviour during a real news event. Read the `news` feature fields in the audit line for which provider/asset triggered it. |
+| `intelligence_provider_unavailable` | Crucix is opted in (`CRUCIX_ENABLED=true` or `CRUCIX_BASE_URL` / `CRUCIX_API_KEY` set) and that provider timed out, raised, or returned a non-snapshot this cycle. New risk is blocked; existing positions/exits are untouched. Other optional intel failures are still isolated. Same reject on paper, shadow, and live. | Check Crucix reachability (`host.docker.internal:8787` by default), the `crucix` circuit breaker, and `PROVIDER_TIMEOUT_SECONDS`. This is **not** a news event — distinguish it from `adverse_news_event`. Do not set `CRUCIX_ENABLED=false` to "fix" an outage unless you intend to stop using Crucix as a safety source. |
 
 **Pre-trade backtest gate** (`PreTradeBacktestGate.evaluate`, only when
 `PRETRADE_BACKTEST_ENABLED=true`):

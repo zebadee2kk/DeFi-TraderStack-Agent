@@ -263,10 +263,12 @@ Every external JSON parse was walked:
 | `JsonPortfolioCheckpointStore` / `JsonExecutionLedgerStore` | `model_validate_json` raises on a corrupt file | good |
 | `risk_audit.verify_chain` | treats a malformed line as tampering | good |
 
-The one place a "safe-looking default" remains by design is intelligence
-absence: a news provider that fails yields `news=None`, which merges as
-`event_score=0, adverse_event=False`. That is mitigated only by
-`INTELLIGENCE_REQUIRED`, which **defaults to `false`** — see residual risks.
+The one place a "safe-looking default" remains by design is *optional*
+intelligence absence: a CryptoPanic/Perplexity/Dune/LunarCrush/altFINS
+provider that fails is still isolated, which merges as
+`event_score=0, adverse_event=False`. That is mitigated by
+`INTELLIGENCE_REQUIRED` (default `false`) and, when Crucix is opted in, by
+fail-closed `intelligence_provider_unavailable` — see residual risks.
 
 ---
 
@@ -341,7 +343,10 @@ explicitly accepted before any real money reaches this system.
    intelligence outage degrades silently to `adverse_event=False` and the cycle
    trades on market data alone. The adverse-news block is only as good as the
    providers being up, and nothing distinguishes "no adverse news" from "no
-   news".
+   news". **Exception:** when Crucix is opted in, a Crucix timeout/error now
+   fails closed with `intelligence_provider_unavailable` rather than being
+   swallowed. Optional news (CryptoPanic, Perplexity) and other intel slots
+   still isolate failures. Crucix remains off unless already opted in.
 6. **Reconciled fill prices have no sanity bound.** The planner enforces
    `EXECUTION_MAX_SLIPPAGE_BPS` against the validated tick on the way *out*, but
    a fill arriving through reconciliation is booked at whatever price the venue
