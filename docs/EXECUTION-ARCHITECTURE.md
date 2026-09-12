@@ -386,6 +386,17 @@ reading, since concluding "not found" would license a resubmission.
 
 Paper, shadow and live environments require different credentials and database namespaces. Live keys must never be accepted by development configuration.
 
+### Polymarket weather research is not on this path
+
+`traderstack-polymarket-weather-paper` is a **parallel paper research
+process**. It is not a step in the cycle above, is not imported by
+`cli.build_service` / `ContinuousPaperService` / `RiskEngine`, and must not
+be wired into Hummingbot or the CLOB as a side effect of an unrelated
+change. It records would-trade intents to
+`var/audit/polymarket_weather_paper.jsonl` (`venue_submitted=false`) and
+refuses `TRADING_MODE` other than `paper`. See `docs/RUNBOOK.md`,
+"Polymarket weather paper research".
+
 ## Venue Credentials
 
 For CEX operation:

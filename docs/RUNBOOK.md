@@ -27,6 +27,7 @@ without activating the venv.
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles` and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
+| `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
 
 ## Zero to paper trading
 
@@ -420,6 +421,7 @@ specifically:
 |---|---|---|---|
 | `--audit-path` (default `var/audit/runtime.jsonl`) | `JsonlAuditSink` | One line per symbol cycle: the full `RuntimeResult` — tick, references, pipeline result (including the pre-trade backtest/walk-forward check), risk result, meta-agent review, execution receipt/status. The complete, replayable decision trail. | No — plain JSONL, easy to `jq`, not hash-chained. |
 | `--risk-audit-path` (default `var/audit/risk_decisions.jsonl`) | `JsonlRiskAuditTrail` | One line per risk decision *that actually reached the risk engine* (no line at all for cycles rejected upstream by market-data/intelligence/pre-trade gates): the full `TradeProposal`, the full `RiskResult`, the risk limits in force (inline and hashed), the meta-agent review and execution outcome from the *same* cycle, plus a SHA-256 hash chained to the previous record. | **Yes** — this is the record built specifically to survive an "did the agent secretly relax risk" audit. |
+| `POLYMARKET_WEATHER_LEDGER_PATH` (default `var/audit/polymarket_weather_paper.jsonl`) | `PolymarketWeatherPaperLedger` | One line per weather-market observation or would-trade intent from `traderstack-polymarket-weather-paper`. Always `venue_submitted=false`. Isolated from the crypto audit files so a weather run cannot rewrite crypto risk history. | No — plain JSONL research ledger. |
 
 ```bash
 tail -f var/audit/runtime.jsonl | jq .
@@ -1094,3 +1096,61 @@ Symptoms: `HummingbotPortfolioReconciler.reconcile` returns `matched: false`, or
    understanding why it drifted first.
 5. Release the kill switch only once you can explain the divergence and the next
    reconciliation cycle reports `matched: true`.
+
+## Polymarket weather paper research
+
+Opt-in research profile. It does **not** run inside `traderstack-paper` and does
+**not** call `RiskEngine` on crypto assets. Invoking the dedicated CLI is the
+only way it executes. `POLYMARKET_WEATHER_ENABLED` is a documentation / 
+`traderstack-check-config` flag; leaving it `false` (the default) keeps the
+crypto loop unchanged.
+
+### What it does
+
+1. GET public Polymarket Gamma events tagged `POLYMARKET_WEATHER_TAG_SLUG`
+   (default `weather`).
+2. Parse temperature contracts (threshold "N°F or higher", or "low–high°F"
+   buckets) only when the city is on `POLYMARKET_WEATHER_CITIES`.
+3. GET public CLOB `/midpoint` for the Yes token (no signing, no `/order`).
+4. GET Open-Meteo daily `temperature_2m_max` (or NOAA `/points` → `/forecast`)
+   for that city/date.
+5. Compare a Normal(`forecast_high`, `POLYMARKET_WEATHER_SIGMA_F`) model
+   probability to the CLOB mid. If `|model − mid| − POLYMARKET_WEATHER_FEE_HAIRCUT`
+   ≥ `POLYMARKET_WEATHER_MIN_EDGE` (the namespaced MIN_EDGE), record a
+   **would-trade** paper intent.
+6. Append the intent to `POLYMARKET_WEATHER_LEDGER_PATH`.
+   `venue_submitted` is always `false`.
+
+### Hard constraints
+
+- `TRADING_MODE` must be `paper`. `live` and `shadow` raise at startup.
+- The four-channel operator kill switch is consulted. If engaged (including
+  the default `KILL_SWITCH=true`), qualifying edges are recorded as
+  `kill_switch` withheld intents with `paper_notional_usd=0`.
+- There is no Polymarket private-key / L2 / signing setting. Do not add one.
+- Unknown city slugs fail closed. The catalog default prefers warm/stable
+  climates (`honolulu`, `san_diego`, `miami`, `phoenix`, `singapore`,
+  `lisbon`). High-variance cities (`new_york`, `chicago`) exist in the catalog
+  but are not defaults.
+
+### Offline / first run
+
+```bash
+# kill switch off only in APP_ENV=development — otherwise check-config warns
+KILL_SWITCH=false TRADING_MODE=paper \
+  .venv/bin/traderstack-polymarket-weather-paper \
+    --fixtures-dir tests/fixtures/polymarket \
+    --ledger-path var/audit/polymarket_weather_paper.jsonl
+```
+
+`--fixtures-dir` needs no network. A live cycle (public GETs only) omits that
+flag. `traderstack-check-config` prints the weather block, including
+"paper intents only (no CLOB orders)".
+
+### Do not trust claimed win rates
+
+Blog / social claims that "NWP vs Polymarket temperature" is a high-win-rate
+edge are **unvalidated** for this repo. A `WOULD_TRADE` row is a hypothesis,
+not alpha. Required A/B and walk-forward gates are in
+`docs/EVALUATION-FRAMEWORK.md` ("Polymarket weather — validation A/B"). Do not
+promote this module toward live CLOB trading from paper intents alone.

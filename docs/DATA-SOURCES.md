@@ -221,6 +221,22 @@ still backtests on the base asset's Kraken USD candles.
 | freqtrade | 2026.8, 31 Aug 2026 [V] |
 | hummingbot | 2.16.0, 29 Jul 2026 [V]; Gateway covers Uniswap |
 
+## Polymarket weather (paper research only)
+
+Read-only public APIs used by `traderstack-polymarket-weather-paper`. No
+credentials. Not on the crypto execution path.
+
+| Source | Role | Auth | Write |
+|---|---|---|---|
+| Gamma `https://gamma-api.polymarket.com/events` [S] | Discover open weather-tagged events/markets | None | None |
+| CLOB `https://clob.polymarket.com/midpoint` [S] | Probability-like mid for a token id | None | **None — client refuses order/auth paths** |
+| Open-Meteo `https://api.open-meteo.com/v1/forecast` [V] | Daily `temperature_2m_max` in °F | None | None |
+| NOAA `https://api.weather.gov` [V] | Optional forecast; User-Agent required | None | None |
+
+Re-verify Gamma/CLOB query parameters against Polymarket's current public
+docs before relying on a live (still paper) cycle. Tag slugs and weather
+question phrasing change. The adapters fail closed on unparseable payloads.
+
 ## Explicitly unverified
 
 - Numeric public-RPC rate limits for Robinhood Chain.
