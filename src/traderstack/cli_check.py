@@ -523,6 +523,22 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
 
+    # --- BTC→ETH lead-lag (report-only; no promote pin) ---
+    items.append(
+        CheckItem(
+            "BTC→ETH lead-lag search",
+            "report-only",
+            "traderstack-lead-lag; ETH follows or fades lagged BTC "
+            "L-day return (L in {1,2,3,5} follow-lo; {1,2,3} "
+            "follow-ls / fade-lo; BTC-follows-ETH mirror lo {1,2}); "
+            "not same-bar residual z-score; #96+A+B+C on Kraken "
+            "Spot daily 720 and Binance.US older-720 (other leg "
+            "flat; both legs required); paper-executable on "
+            "Kraken spot BTC/ETH; no new PAPER_PROMOTE_* unless a "
+            "dual-print passer exists (default false)",
+        )
+    )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(

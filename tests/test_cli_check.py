@@ -212,6 +212,18 @@ def test_calendar_seasonality_is_report_only() -> None:
     assert "SOL reported" in item.detail
 
 
+def test_lead_lag_is_report_only() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "BTC→ETH lead-lag search")
+    assert item.value == "report-only"
+    assert "traderstack-lead-lag" in item.detail
+    assert "PAPER_PROMOTE_*" in item.detail
+    assert "Kraken" in item.detail
+    assert "Binance.US" in item.detail
+    assert "paper-executable" in item.detail
+    assert "other leg" in item.detail
+
+
 def test_funding_carry_is_report_only() -> None:
     report = build_report(settings())
     item = next(i for i in report.items if i.label == "Funding / carry search")

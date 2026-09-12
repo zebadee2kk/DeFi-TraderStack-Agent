@@ -736,3 +736,42 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `calendar-seasonality.md`.
 
+## BTC→ETH lead-lag (`traderstack-lead-lag`)
+
+#121 left the calendar seasonality dual-print empty.
+This command is a **different family**: ETH follows or fades
+**lagged BTC** L-day return. Not same-bar residual z-score
+on `r_BTC − r_ETH` (#116). Not own-asset TSMOM (#119).
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | public Spot daily; #96+A+B+C on BTC+ETH (other leg flat); rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same #102 slice; must combined-PASS | no (gate only) |
+
+Catalog is frozen (K=13): `leadlag_eth_follow_lo_{1,2,3,5}`,
+`leadlag_eth_follow_ls_{1,2,3}`, `leadlag_eth_fade_lo_{1,2,3}`,
+`leadlag_btc_follow_lo_{1,2}`, plus informational
+`ma_cross_10_30` (cannot promote). Decision
+`lead_closes_through_t`; fill at t+1 open of the traded
+asset. Unpaired days skipped, not zero-filled. Multi-asset
+bar (frozen): both BTC and ETH legs; other leg **flat**.
+Equal-weight portfolio metrics are not used.
+Paper-executable on Kraken spot BTC/ETH. Empty dual-print
+set is success. `PAPER_PROMOTE_*` stays false. No new pin
+unless a committed report names a passer (default false if
+added).
+
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720).
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Labeled Binance.US (`api.binance.com` HTTP 451).
+- Kraken combined-passers: **0**.
+- Binance.US combined-passers: **0**.
+- #96 FAIL ETH-carried: `leadlag_eth_follow_lo_5` (mean HO
+  +6.67%; BTC HO −1.80%).
+- Informational BTC WF-fail: **none**.
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
+See `lead-lag.md`.
+

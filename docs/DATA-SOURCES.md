@@ -118,6 +118,14 @@ it is relied upon.
   date of bar t only (fill at t+1 open). A missing/short series
   is skipped, not zero-filled. No exogenous series. Input to
   `traderstack-calendar-seasonality`.
+- **BTC→ETH lead-lag (research only):** built from the same
+  public Spot daily closes — Kraken `GET /0/public/OHLC`
+  (720-bar cap) and Binance.US older-720 (`api.binance.us` when
+  `api.binance.com` is HTTP 451). The traded asset follows or
+  fades the lead asset's L-day close-to-close return (lead
+  closes through t; fill at t+1 open of the traded asset).
+  Unpaired BTC/ETH days are skipped, not zero-filled. No
+  exogenous series. Input to `traderstack-lead-lag`.
 
 ## Robinhood Chain
 

@@ -145,3 +145,14 @@ At minimum:
   success. Not an EMA, residual, XS, Donchian, TSMOM, or
   Bollinger reprint. See
   `docs/artifacts/strategy-search/calendar-seasonality.md`.
+- Does a fee-aware BTC→ETH lead-lag book (ETH follows or
+  fades lagged BTC L-day return; L in {1,2,3,5} follow-lo;
+  {1,2,3} follow-ls / fade-lo; BTC-follows-ETH mirror lo
+  {1,2}) clear the same #96+A+B+C dual-print bar (Kraken 720
+  + Binance.US older-720)? `traderstack-lead-lag` scores that
+  family. Not same-bar residual z-score (#116). Other leg is
+  frozen flat; both BTC and ETH legs remain the gate.
+  Paper-executable on Kraken spot. Empty dual-print is
+  success. Not an EMA, residual, XS, Donchian, TSMOM,
+  Bollinger, or calendar reprint. See
+  `docs/artifacts/strategy-search/lead-lag.md`.

@@ -123,6 +123,11 @@ on the civil calendar of bar t (not a price-indicator
 retune) on that same dual-print bar. SOL is reported, not
 a gate. Paper-executable on Kraken spot. Empty dual-print
 is success.
+`traderstack-lead-lag` is the post-#121 slice: ETH follows
+or fades lagged BTC L-day return (not same-bar residual
+z-score) on that same dual-print bar. Other leg is frozen
+flat; both legs still required. Paper-executable on Kraken
+spot. Empty dual-print is success.
 **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
