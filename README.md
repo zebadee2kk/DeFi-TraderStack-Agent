@@ -175,6 +175,7 @@ simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-strategy-search`, `traderstack-miles-search`,
 `traderstack-daily-robustness`, `traderstack-harder-gates`,
 `traderstack-honesty-pack`,
+`traderstack-second-print`,
 `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
@@ -204,7 +205,11 @@ Default `PAPER_PROMOTE_EMA_9_21` remains false. The expanded catalog's
 combined-passer top-1 is documented as `PAPER_PROMOTE_EMA_9_21_ADX15`
 (default false; paper only; daily candles). `traderstack-honesty-pack`
 reprints that id only (Yahoo A/B, WF maxDD vs 0.30, multi-window) and
-does not flip the pin. An empty promotee would also have been success.
+does not flip the pin. `traderstack-second-print` adds a pre-registered
+older Binance Spot daily 720 (report-only; cannot enter the promotion
+average) after documenting that Kraken public OHLC cannot unlock a
+second 720. An honest FAIL is success. An empty promotee would also
+have been success.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but
 is not traded under that envelope.

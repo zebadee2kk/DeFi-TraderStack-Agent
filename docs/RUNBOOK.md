@@ -29,7 +29,8 @@ without activating the venv.
 | `traderstack-daily-robustness` | Daily robustness / balanced-holdout pass: EMA 9/21, 12/26, 20/50, 50/200 (ADX variants), dual-mom grid, buy-the-dip, MA risk-off, optional GARCH size on the longest Kraken public daily OHLC (720-bar ≈ 2y cap). Optional Yahoo Finance BTC-USD/ETH-USD daily is a non-Kraken A/B only. Promotes only if **BTC and ETH** both have WF total > 0 **and** both have holdout excess > 0 (ETH cannot carry a losing BTC holdout). Writes `docs/artifacts/strategy-search/balanced-holdout-report.md`. Never flips `PAPER_PROMOTE_*`. |
 | `traderstack-harder-gates` | Harder honesty gates on the Kraken daily 720-bar window: **A** magnitude (BTC and ETH holdout excess > 0 and min/max ratio ≥ 0.25), **B** three contiguous 240-bar windows (BTC and ETH WF total > 0 in ≥ 2 of 3), **C** 2× fees (20+10 bps) still clearing #96 balanced signs. Default catalog is the frozen expanded post-#97 grid. Ranking key (frozen before scoring): mean holdout excess among combined-passers. Yahoo is A/B only. Writes `docs/artifacts/strategy-search/expanded-harder-gates-report.md`. Never flips `PAPER_PROMOTE_*`. An empty promotee is success. |
 | `traderstack-honesty-pack` | Focused honesty reprint for one combined-passer (default `ema_9_21_adx15`): Kraken A/B/C row, Yahoo `period1`/`period2` A/B for **that** id only (cannot promote), WF maxDD vs paper DD ceiling 0.30, and the gate-B multi-window table. Writes `docs/artifacts/strategy-search/ema-9-21-adx15-honesty.md`. Never flips `PAPER_PROMOTE_*`. Empty or negative Yahoo is success. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-second-print` | Second independent print for `ema_9_21_adx15` (and the other #99/#100 combined-passers). Kraken public OHLC cannot unlock a second 720; scores the holdout-blind prefix (same venue; not independent) and a pre-registered older Binance Spot daily 720 (BTCUSDT+ETHUSDT) ending before the primary Kraken first bar. Labeled non-Kraken / report-only; cannot enter the promotion average. Writes `docs/artifacts/strategy-search/ema-9-21-adx15-second-print.md`. Never flips `PAPER_PROMOTE_*`. An honest FAIL is success. |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
@@ -572,6 +573,37 @@ command never flips the pin and never enables live.
 ```
 
 See `docs/artifacts/strategy-search/ema-9-21-adx15-honesty.md`.
+
+## Second print (`ema_9_21_adx15`)
+
+The #100 honesty pack still had only one Kraken 720-bar window.
+`traderstack-second-print` pre-registers the slice rules **before**
+scoring:
+
+- Kraken public OHLC cannot retrieve a second 720-bar era (`since`
+  pages forward only). That path is documented as UNAVAILABLE.
+- Kraken-compatible path that exists: **holdout-blind prefix** (drop
+  the last 20% holdout tail). Same venue; overlapping walk-forward;
+  not an independent era. Gate B still needs 3×240 bars and fails
+  closed if the prefix is short.
+- Binance Spot daily BTCUSDT+ETHUSDT: 720 committed bars ending
+  strictly before the primary Kraken first bar. This environment's
+  `api.binance.com` is HTTP 451; `api.binance.us` is the reachable
+  public Spot host and is labeled Binance.US, not Binance.com.
+  Report-only. **Cannot enter the promotion average** (a multi-venue
+  bar is not pre-registered).
+
+Same strategy definition and #96 + A + B + C gates. Fees are the
+paper-research defaults (10+5; gate C 20+10). An honest FAIL is
+success. This command never flips
+`PAPER_PROMOTE_EMA_9_21_ADX15`.
+
+```bash
+.venv/bin/traderstack-second-print --live
+.venv/bin/traderstack-second-print --live --no-binance
+```
+
+See `docs/artifacts/strategy-search/ema-9-21-adx15-second-print.md`.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
 the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:

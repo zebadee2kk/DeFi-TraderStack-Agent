@@ -231,3 +231,21 @@ a name outside the envelope. Universe alignment, not a claim of edge.
 
 See `ema-9-21-adx15-honesty.md`.
 
+## Second print (`traderstack-second-print`)
+
+Closes the #100 gap: one Kraken 720-bar window is not a second
+independent venue or era. Slice rules are frozen before scoring.
+
+| path | rule | can promote? |
+| --- | --- | --- |
+| Kraken second 720 | public OHLC cannot page backward | n/a (UNAVAILABLE) |
+| Kraken holdout-blind prefix | drop last 20% of the public 720 | no (same venue) |
+| Binance Spot daily BTCUSDT+ETHUSDT | 720 committed bars ending before the primary Kraken first bar | no (report-only; multi-venue bar not pre-registered) |
+
+`api.binance.com` is HTTP 451 here; `api.binance.us` is labeled
+Binance.US. Yahoo is not re-averaged. Same #96+A+B+C gates and 10+5
+bps (gate C 20+10). An honest FAIL is success.
+`PAPER_PROMOTE_EMA_9_21_ADX15` stays false.
+
+See `ema-9-21-adx15-second-print.md`.
+
