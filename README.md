@@ -174,6 +174,7 @@ pilot → controlled scale-up. Benchmarks include BTC/ETH buy-and-hold and
 simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-strategy-search`, `traderstack-miles-search`,
 `traderstack-daily-robustness`, `traderstack-harder-gates`,
+`traderstack-honesty-pack`,
 `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
@@ -201,8 +202,9 @@ the frozen expanded catalog. Combined-passers are ranked by mean
 holdout excess; a non-passer is never promoted. Yahoo stays A/B only.
 Default `PAPER_PROMOTE_EMA_9_21` remains false. The expanded catalog's
 combined-passer top-1 is documented as `PAPER_PROMOTE_EMA_9_21_ADX15`
-(default false; paper only; daily candles). An empty promotee would
-also have been success.
+(default false; paper only; daily candles). `traderstack-honesty-pack`
+reprints that id only (Yahoo A/B, WF maxDD vs 0.30, multi-window) and
+does not flip the pin. An empty promotee would also have been success.
 
 ## Roadmap
 

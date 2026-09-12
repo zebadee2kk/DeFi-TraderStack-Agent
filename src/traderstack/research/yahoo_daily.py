@@ -20,6 +20,10 @@ from traderstack.candles import Candle
 
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
 YAHOO_SOURCE = "yahoo_finance_yfinance"
+# 2014-09-17T00:00:00Z: first Yahoo BTC-USD daily. ETH starts later; Yahoo clips.
+# ``range=max`` downsamples crypto to monthly; period1/period2 keeps 1d.
+YAHOO_PERIOD1_UNIX = 1_410_912_000
+YAHOO_PERIOD1_ISO = "2014-09-17T00:00:00+00:00"
 # Browser-like UA: the chart endpoint often 429s a bare Python client.
 _YAHOO_HEADERS = {
     "User-Agent": ("Mozilla/5.0 (compatible; traderstack-daily-robustness/0.1; research-only)"),
@@ -144,8 +148,11 @@ async def download_yahoo_daily(
     del range_label
     yahoo_ticker = YAHOO_TICKERS.get(ticker.upper(), ticker)
     period2 = int(datetime.now(UTC).timestamp())
-    # 2014-09-17: first Yahoo BTC-USD daily. ETH starts later; Yahoo clips.
-    params = {"interval": interval, "period1": "1410912000", "period2": str(period2)}
+    params = {
+        "interval": interval,
+        "period1": str(YAHOO_PERIOD1_UNIX),
+        "period2": str(period2),
+    }
     url = YAHOO_CHART_URL.format(ticker=yahoo_ticker)
 
     async def _get(active: httpx.AsyncClient) -> object:

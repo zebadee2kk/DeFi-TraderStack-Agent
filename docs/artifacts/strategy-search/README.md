@@ -204,3 +204,14 @@ Documented paper-only pin: `PAPER_PROMOTE_EMA_9_21_ADX15` (default
 
 See `expanded-harder-gates-report.md`.
 
+## Honesty pack (`traderstack-honesty-pack`)
+
+Focused reprint for the `#99` promotee `ema_9_21_adx15` only. Re-scores
+the Kraken combined row (still top-1?), Yahoo Finance daily A/B for
+**this** candidate (`period1`/`period2`; labeled non-Kraken; cannot
+promote), WF maxDD on BTC/ETH/SOL vs the paper DD ceiling 0.30, and
+the gate-B multi-window table. Empty or negative Yahoo is success.
+The pin stays default **false**.
+
+See `ema-9-21-adx15-honesty.md`.
+

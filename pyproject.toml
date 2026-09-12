@@ -58,6 +58,9 @@ traderstack-daily-robustness = "traderstack.research.daily_robustness_cli:main"
 # by mean holdout excess. Offline/batch; never flips PAPER_PROMOTE_*.
 # An empty promotee is success.
 traderstack-harder-gates = "traderstack.research.harder_gates_cli:main"
+# Honesty pack for one combined-passer (default ema_9_21_adx15).
+# Offline/batch; never flips PAPER_PROMOTE_* flags.
+traderstack-honesty-pack = "traderstack.research.honesty_pack_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
