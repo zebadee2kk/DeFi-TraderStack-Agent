@@ -42,6 +42,7 @@ a missing series is a skip, not a zero-filled z.
 | #120 | Bollinger band-fade (`traderstack-bollinger-fade`) | **0** dual-print passers | Frozen `bb_fade_{20x2,20x2_5,40x2}` / `bb_lo_fade_{20x2,40x2}` / `bb_squeeze_break_{20,40}`. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. #96 FAIL ETH-carried: **none**. BTC WF-fail: **none**. Informational `bb_squeeze_break_40` clears Kraken #96+A+B (mean HO +3.72%) but fails gate C; Binance #96 FAIL (BTC HO −4.69%). Paper path ready; still cannot promote. |
 | #121 | Calendar seasonality (`traderstack-calendar-seasonality`) | **0** dual-print passers | Frozen `cal_dow_lo_{mon,fri,mon_fri}` / `cal_dow_skip_weekend` / `cal_moy_lo_{q4,jan,nov_dec}` / `cal_tom_lo_3_3`. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. #96 FAIL ETH-carried: **none**. BTC WF-fail: **none**. Every Kraken mean HO negative (−5.24% to −26.42%). Paper path ready; still cannot promote. |
 | #122 | BTC→ETH lead-lag (`traderstack-lead-lag`) | **0** dual-print passers | Frozen `leadlag_eth_follow_lo_{1,2,3,5}` / `leadlag_eth_follow_ls_{1,2,3}` / `leadlag_eth_fade_lo_{1,2,3}` / `leadlag_btc_follow_lo_{1,2}`. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. Informational #96 FAIL ETH-carried: `leadlag_eth_follow_lo_5` (mean HO +6.67%; BTC HO −1.80%). BTC WF-fail: **none**. Other leg frozen flat. Paper path ready; still cannot promote. |
+| this PR | Volume-confirmed breakout (`traderstack-volume-breakout`) | **0** dual-print passers | Frozen `volbrk_lo_{20x1_5,55x1_5,20x2}` / `volbrk_ls_{20x1_5,55x1_5}` / `volsurge_lo_{20x2,20x2_5}`. Not a Donchian N retune. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. #96 FAIL ETH-carried: **none**. Informational BTC WF-fail: `volbrk_lo_20x1_5`, `volbrk_lo_20x2`, `volsurge_lo_20x2`, `volsurge_lo_20x2_5`. Paper path ready; still cannot promote. |
 
 Earlier daily work (#93–#103) documented `ema_9_21` / `ema_9_21_adx15`
 as paper-only pins. Those flags remain default **false**. The #102
@@ -556,9 +557,9 @@ Donchian N after seeing #118.
     passers: **0**. Not a residual z-score reprint of #116.
 22. **Not** an L / book retune of this lead-lag catalog on the
     same windows after seeing that print.
-23. **Volume-confirmed breakout (price + volume gate).** This
-    session. See below and `volume-breakout.md`. Not a
-    Donchian N retune of #118.
+23. **Volume-confirmed breakout (price + volume gate).** Done
+    this session. See below and `volume-breakout.md`. Dual-print
+    passers: **0**. Not a Donchian N retune of #118.
 24. **Not** an N / V / vol_mult retune of this volume-breakout
     catalog on the same windows after seeing that print.
 
@@ -698,10 +699,54 @@ before scoring.
 | Kraken primary 720 | #96+A+B+C on BTC+ETH; rank dual-print passers by Kraken mean HO | only if also Binance combined-PASS |
 | Binance.US older-720 | same #102 slice; must combined-PASS | no (gate only) |
 
-### Live print
+### Live print (2026-09-12)
 
-**Not yet run.** Catalog frozen in this commit before any
-live Kraken or Binance.US OHLC pull.
+`traderstack-volume-breakout --live` (Kraken public Spot 1d
+BTC+ETH+SOL, 720-bar cap 2024-09-22 → 2026-09-11 UTC; Binance.US
+older-720 2022-10-03 → 2024-09-21, no overlap; costs 10+5 bps).
+Catalog frozen in a prior commit before this pull. Base volume
+usable on both venues (720/720 per asset). Quote volume was not
+substituted.
+
+| series | status |
+| --- | --- |
+| Kraken BTC/USD + ETH/USD + SOL/USD daily | **ok** — 720 / 720 / 720 |
+| Binance.US BTCUSDT + ETHUSDT + SOLUSDT older-720 | **ok** — 720 / 720 / 720 (`api.binance.com` HTTP 451; labeled Binance.US) |
+| Print kind | **dual_print** (two non-overlapping venue/era tapes) |
+| Hard gates (#96+A+B+C) | **available** on both prints |
+| Paper path | **true** (Kraken spot BTC/ETH; SOL optional) |
+| Dual-print passers | **0** |
+| Kraken combined-passers (ex-control) | **0** |
+| Binance.US combined-passers (ex-control) | **0** |
+| #96 FAIL ETH-carried informational names | **none** |
+| Informational BTC walk-forward fails | `volbrk_lo_20x1_5`, `volbrk_lo_20x2`, `volsurge_lo_20x2`, `volsurge_lo_20x2_5` |
+
+Informational (every name **ineligible**; rank is Kraken
+walk-forward among volume-confirmed names):
+
+| rank | id | Kraken mean HO | Binance mean HO |
+| ---: | --- | ---: | ---: |
+| 1 | `volbrk_lo_55x1_5` | −1.16% | −0.40% |
+| 3 | `volbrk_lo_20x2` | +5.22% | −6.49% |
+| 4 | `volsurge_lo_20x2_5` | +3.87% | +4.57% |
+| 5 | `volsurge_lo_20x2` | +3.87% | +3.75% |
+| 7 | `volbrk_lo_20x1_5` | +1.52% | −2.05% |
+| 2 | `ma_cross_10_30` (control) | −2.08% | −37.11% |
+
+Four names have a **positive** Kraken mean HO and **positive**
+BTC holdout (`volbrk_lo_20x2` +5.22% / BTC HO +7.69%;
+`volsurge_lo_{20x2,20x2_5}` +3.87% / BTC HO +9.14%;
+`volbrk_lo_20x1_5` +1.52% / BTC HO +7.69%) but BTC
+walk-forward is negative. Same honesty as #118 Donchian /
+#119 TSMOM. `volsurge_lo_*` ETH holdout is also negative
+(−1.41%). That is **#96 FAIL** on BTC walk-forward (and ETH
+holdout for the surge names), not a combined-passer. A
+positive holdout with a losing walk-forward is not an edge.
+Empty dual-print set is success.
+
+**Cannot promote. No new `PAPER_PROMOTE_*` pin.**
+
+See `volume-breakout.md`.
 
 ## This session — BTC−ETH relative-value residual
 
@@ -1199,7 +1244,7 @@ See `calendar-seasonality.md`.
 | new Bollinger fade pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `bb_squeeze_break_40` clears Kraken #96+A+B but fails gate C; no ETH-carried / BTC-WF-fail names; do not add a pin |
 | new calendar seasonality pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; every Kraken mean HO negative; no ETH-carried / BTC-WF-fail names; do not add a pin |
 | new lead-lag pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `leadlag_eth_follow_lo_5` mean HO is ETH-carried (#96 FAIL); do not add a pin |
-| new volume-breakout pin | *(not added)* | catalog frozen; live print not yet run; do not add a pin unless a dual-print passer exists |
+| new volume-breakout pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; no ETH-carried names; informational BTC WF-fail: `volbrk_lo_20x1_5` / `volbrk_lo_20x2` / `volsurge_lo_20x2` / `volsurge_lo_20x2_5`; do not add a pin |
 | `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
 
 `TRADING_MODE=paper`. No live.

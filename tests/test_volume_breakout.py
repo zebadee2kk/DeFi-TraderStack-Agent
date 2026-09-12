@@ -593,6 +593,20 @@ def test_signals_alias_binance_symbols() -> None:
     assert "BTCUSDT" in mapping
 
 
+def test_committed_live_report_is_empty_success() -> None:
+    text = Path("docs/artifacts/strategy-search/volume-breakout.md").read_text()
+    assert "Dual-print passers: 0" in text
+    assert "`keep_flag_false=true`" in text
+    assert "Do not add a new promote flag" in text
+    assert "PAPER_PROMOTE_*" in text
+    assert "volbrk_lo_20x1_5" in text
+    assert "volbrk_lo_20x2" in text
+    assert "volsurge_lo_20x2_5" in text
+    assert "volbrk_lo_20x1_5" in text
+    assert settings().paper_promote_ema_9_21 is False
+    assert not hasattr(settings(), "paper_promote_volbrk_lo_20x1_5")
+
+
 def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     args = build_parser().parse_args(["--candles", "unused.json", "--no-binance"])
     assert args.output_md.name == "volume-breakout.md"
