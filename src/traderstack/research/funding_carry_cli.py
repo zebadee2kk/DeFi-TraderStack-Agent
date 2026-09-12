@@ -1,8 +1,9 @@
 """`traderstack-funding-carry`: fee-aware funding-z / carry catalog.
 
 Scores the frozen funding-z threshold + spot-overlay + hedged-carry
-catalog on Kraken public Spot (default 4h) aligned to OKX (or Binance
-when reachable) funding-rate history. Dual-print only if two
+catalog on Kraken public Spot (default 4h) aligned to public
+funding-rate history. Probes Binance, Bybit, OKX, and Hyperliquid
+independently (skip-not-invent; do not blend). Dual-print only if two
 independent funding venues cover BTC and ETH. Otherwise SINGLE-PRINT
 and cannot promote. Never flips ``PAPER_PROMOTE_*``. Empty search is
 success. No live.
@@ -23,8 +24,12 @@ from traderstack.research.daily_robustness import KRAKEN_PUBLIC_OHLC_MAX_BARS
 from traderstack.research.download_candles import download_spot_histories
 from traderstack.research.edge_series import (
     BINANCE_FAPI_BASE,
+    BYBIT_BASE,
+    HYPERLIQUID_BASE,
     OKX_BASE,
     fetch_binance_funding,
+    fetch_bybit_funding,
+    fetch_hyperliquid_funding,
     fetch_okx_funding,
 )
 from traderstack.research.funding_carry import (
@@ -51,9 +56,10 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Score a pre-registered funding-z / carry catalog on Kraken "
             "public Spot (default 4h) aligned to public funding-rate "
-            "history (OKX, plus Binance when reachable). Dual-print only "
-            "if two independent funding venues cover BTC and ETH. "
-            "Otherwise SINGLE-PRINT and cannot promote. Does not flip "
+            "history (OKX + Hyperliquid when reachable; Binance/Bybit "
+            "probed and skipped if geo-blocked). Dual-print only if two "
+            "independent funding venues cover BTC and ETH. Otherwise "
+            "SINGLE-PRINT and cannot promote. Does not flip "
             "PAPER_PROMOTE_*. Empty search is success."
         )
     )
@@ -70,7 +76,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "fetch BTC/ETH from Kraken public OHLC "
             f"(hard cap {KRAKEN_PUBLIC_OHLC_MAX_BARS} bars) and probe "
-            "Binance + OKX funding-rate history independently"
+            "Binance + Bybit + OKX + Hyperliquid funding-rate history "
+            "independently (skip-not-invent)"
         ),
     )
     parser.add_argument(
@@ -180,44 +187,56 @@ async def fetch_funding_venues(
     symbols: tuple[str, ...],
     *,
     timeout: float = 20.0,
-) -> tuple[
-    dict[str, tuple[tuple, ...]],
-    dict[str, tuple[tuple, ...]],
-    list[dict[str, str]],
-]:
-    """Fetch Binance and OKX independently. Do not blend the tapes."""
-    binance_map: dict[str, tuple] = {}
-    okx_map: dict[str, tuple] = {}
+) -> tuple[dict[str, dict[str, tuple]], list[dict[str, str]]]:
+    """Fetch each venue independently. Do not blend the tapes."""
+    venue_maps: dict[str, dict[str, tuple]] = {
+        "binance": {},
+        "bybit": {},
+        "okx": {},
+        "hyperliquid": {},
+    }
     notes: list[dict[str, str]] = []
     async with httpx.AsyncClient(base_url=BINANCE_FAPI_BASE, timeout=timeout) as client:
         for symbol in symbols:
             result = await fetch_binance_funding(symbol, client=client)
             notes.append(result.as_note())
             if result.status == "ok":
-                binance_map[symbol.upper()] = result.points
+                venue_maps["binance"][symbol.upper()] = result.points
+    async with httpx.AsyncClient(base_url=BYBIT_BASE, timeout=timeout) as client:
+        for symbol in symbols:
+            result = await fetch_bybit_funding(symbol, client=client)
+            notes.append(result.as_note())
+            if result.status == "ok":
+                venue_maps["bybit"][symbol.upper()] = result.points
     async with httpx.AsyncClient(base_url=OKX_BASE, timeout=timeout) as client:
         for symbol in symbols:
             result = await fetch_okx_funding(symbol, client=client)
             notes.append(result.as_note())
             if result.status == "ok":
-                okx_map[symbol.upper()] = result.points
-    return binance_map, okx_map, notes
+                venue_maps["okx"][symbol.upper()] = result.points
+    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=timeout) as client:
+        for symbol in symbols:
+            result = await fetch_hyperliquid_funding(symbol, client=client)
+            notes.append(result.as_note())
+            if result.status == "ok":
+                venue_maps["hyperliquid"][symbol.upper()] = result.points
+    return venue_maps, notes
 
 
 def _pick_venues(
-    binance_map: dict[str, tuple],
-    okx_map: dict[str, tuple],
+    venue_maps: dict[str, dict[str, tuple]],
 ) -> tuple[dict[str, tuple] | None, str | None, dict[str, tuple] | None, str | None]:
-    binance_ok = funding_usable(funding_by_symbol=binance_map)
-    okx_ok = funding_usable(funding_by_symbol=okx_map)
-    if binance_ok and okx_ok:
-        if venue_mean_points(okx_map) >= venue_mean_points(binance_map):
-            return okx_map, "okx", binance_map, "binance"
-        return binance_map, "binance", okx_map, "okx"
-    if okx_ok:
-        return okx_map, "okx", None, None
-    if binance_ok:
-        return binance_map, "binance", None, None
+    """Prefer the two usable venues with the most mean BTC+ETH points."""
+    usable = [
+        (name, mapping)
+        for name, mapping in venue_maps.items()
+        if funding_usable(funding_by_symbol=mapping)
+    ]
+    usable.sort(key=lambda item: (-venue_mean_points(item[1]), item[0]))
+    if len(usable) >= 2:
+        return usable[0][1], usable[0][0], usable[1][1], usable[1][0]
+    if len(usable) == 1:
+        return usable[0][1], usable[0][0], None, None
     return None, None, None, None
 
 
@@ -242,16 +261,17 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
 
     fetch_funding = args.fetch_funding if args.fetch_funding is not None else bool(args.live)
     if fetch_funding:
-        binance_map, okx_map, edge_notes = asyncio.run(fetch_funding_venues(symbols))
-        primary_map, primary_venue, second_map, second_venue = _pick_venues(binance_map, okx_map)
+        venue_maps, edge_notes = asyncio.run(fetch_funding_venues(symbols))
+        primary_map, primary_venue, second_map, second_venue = _pick_venues(venue_maps)
         funding_by_symbol = primary_map
         second_funding_by_symbol = second_map
         if funding_by_symbol is None and funding is None:
             history_notes.append(
                 {
                     "note": (
-                        "No usable Binance or OKX funding series — families "
-                        "skipped, not invented. Labeled single-print; cannot promote."
+                        "No usable Binance / Bybit / OKX / Hyperliquid funding "
+                        "series — families skipped, not invented. Labeled "
+                        "single-print; cannot promote."
                     ),
                     "source": "funding_carry",
                 }

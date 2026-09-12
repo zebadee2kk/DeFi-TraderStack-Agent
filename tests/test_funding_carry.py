@@ -25,7 +25,7 @@ from traderstack.research.funding_carry import (
     slice_to_funding_overlap,
     spot_candidates,
 )
-from traderstack.research.funding_carry_cli import build_parser, run
+from traderstack.research.funding_carry_cli import _pick_venues, build_parser, run
 
 
 def settings(**overrides: object) -> Settings:
@@ -241,6 +241,36 @@ def test_dual_print_without_passer_still_cannot_promote() -> None:
     text = render_funding_carry_markdown(report)
     assert "dual_print" in text
     assert "No candidate is promoted" in text
+    assert "Second funding print" in text
+    assert report.second_venue == "binance"
+
+
+def test_pick_venues_selects_two_usable_and_skips_empty() -> None:
+    series = tuple(
+        (datetime(2024, 1, 1, tzinfo=UTC) + timedelta(hours=8 * i), 0.0001)
+        for i in range(40)
+    )
+    long_series = series + tuple(
+        (datetime(2024, 2, 15, tzinfo=UTC) + timedelta(hours=i), 0.0001) for i in range(80)
+    )
+    primary, primary_name, second, second_name = _pick_venues(
+        {
+            "binance": {},
+            "bybit": {},
+            "okx": {"BTC/USD": series, "ETH/USD": series},
+            "hyperliquid": {"BTC/USD": long_series, "ETH/USD": long_series},
+        }
+    )
+    assert primary_name == "hyperliquid"
+    assert second_name == "okx"
+    assert primary is not None and second is not None
+    none_primary, none_name, none_second, none_second_name = _pick_venues(
+        {"binance": {}, "bybit": {}}
+    )
+    assert none_primary is None
+    assert none_name is None
+    assert none_second is None
+    assert none_second_name is None
 
 
 def test_hedged_carry_measures_constant_rate_after_fees() -> None:

@@ -392,12 +392,14 @@ modeled hedged cash-and-carry on BTC+ETH.
 | print | when | can promote? |
 | --- | --- | --- |
 | single-print | only one usable funding venue on BTC+ETH | **no** |
-| dual-print | Binance **and** OKX (or two operator-supplied independent tapes) | still no Settings flip |
+| dual-print | two independent funding venues (e.g. OKX **and** Hyperliquid) | still no Settings flip |
 
 OKX public funding-rate-history is typically ~90d of 8h prints.
-Binance USDT-M funding is often HTTP 451 here. Hard gates
-(#96+A+B+C) stay UNAVAILABLE on that overlap. Hedged carry does not
-invent basis. `PAPER_PROMOTE_*` stays false. Empty search is success.
+Hyperliquid `fundingHistory` is hourly and typically reachable here.
+Binance USDT-M is often HTTP 451; Bybit linear is often HTTP 403.
+Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars
+exist on two venues. Hedged carry does not invent basis.
+`PAPER_PROMOTE_*` stays false. Empty dual-print is success.
 
 On the 2026-09-12 live run (catalog committed first):
 
@@ -409,6 +411,11 @@ On the 2026-09-12 live run (catalog committed first):
   (ineligible). Every overlay and the MA control also lost after fees.
 - Modeled `carry_hedged_sign` WF +0.16% / holdout +0.33% on this one
   tape — not dual-print, basis not modeled, cannot promote.
+
+Follow-up the same day: Hyperliquid public `fundingHistory` is
+reachable here and is the wired second tape. Bybit is HTTP 403
+(CloudFront). Same frozen catalog. Dual-print numbers overwrite
+`funding-carry.md`. Empty dual-print is still success. No new pin.
 
 See `funding-carry.md` and the 2026-09-12 status memo
 `edge-status-2026-09-12.md`.

@@ -242,9 +242,10 @@ live tape is empty (no PIT mid + official station high). Default
 `PAPER_PROMOTE_*` stays false. Report:
 `docs/artifacts/strategy-search/polymarket-weather-eval.md`.
 `traderstack-funding-carry` scores a frozen funding-z / carry catalog
-on BTC+ETH aligned to OKX (or Binance) funding-rate history. One venue
-/ a ~90d tape is **single-print** and **cannot promote**. Default
-`PAPER_PROMOTE_*` stays false. Reports:
+on BTC+ETH aligned to public funding-rate history (OKX + Hyperliquid
+when reachable; Binance/Bybit skipped if geo-blocked). One venue is
+**single-print** and **cannot promote**. Empty dual-print is success.
+Default `PAPER_PROMOTE_*` stays false. Reports:
 `docs/artifacts/strategy-search/funding-carry.md`,
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default)

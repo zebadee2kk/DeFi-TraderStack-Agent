@@ -19,6 +19,18 @@ OKX (used when Binance is unreachable from this environment):
 * ``GET /api/v5/public/liquidation-orders`` — ~100 recent fills (hours, not
   months). Skipped for historical z.
 
+Second independent funding tapes (skip-not-invent; do not blend):
+
+* Hyperliquid ``POST /info`` ``fundingHistory`` — public, hourly, paginable
+  from listing (~2023). Typically reachable from this environment.
+* Bybit ``GET /v5/market/funding/history`` — public when reachable; this
+  environment typically gets HTTP 403 (CloudFront country block).
+* Deribit ``public/get_funding_rate_history`` is reachable but returns
+  the 8h interest restated every hour. Using each row as a settlement
+  would invent 8× carry — not wired.
+* Gate / Bitget / MEXC / dYdX public funding REST can also respond here;
+  they are not blended into this adapter. See the edge-status memo.
+
 Cross-venue divergence is not built here (needs two aligned venues).
 """
 
@@ -32,6 +44,8 @@ import httpx
 
 BINANCE_FAPI_BASE = "https://fapi.binance.com"
 OKX_BASE = "https://www.okx.com"
+BYBIT_BASE = "https://api.bybit.com"
+HYPERLIQUID_BASE = "https://api.hyperliquid.xyz"
 
 _BINANCE_SYMBOL: dict[str, str] = {
     "BTC/USD": "BTCUSDT",
@@ -43,6 +57,18 @@ _OKX_SWAP: dict[str, str] = {
     "ETH/USD": "ETH-USDT-SWAP",
     "SOL/USD": "SOL-USDT-SWAP",
 }
+_BYBIT_SYMBOL: dict[str, str] = {
+    "BTC/USD": "BTCUSDT",
+    "ETH/USD": "ETHUSDT",
+    "SOL/USD": "SOLUSDT",
+}
+_HYPERLIQUID_COIN: dict[str, str] = {
+    "BTC/USD": "BTC",
+    "ETH/USD": "ETH",
+    "SOL/USD": "SOL",
+}
+HYPERLIQUID_PAGE_SIZE = 500
+HYPERLIQUID_DEFAULT_LOOKBACK_DAYS = 180
 
 MIN_LIQUIDATION_SPAN_SECONDS = 7 * 24 * 3600
 
@@ -134,12 +160,39 @@ def okx_swap(symbol: str) -> str:
     raise ValueError(f"no OKX swap mapping for {symbol!r}")
 
 
+def bybit_contract(symbol: str) -> str:
+    key = symbol.upper()
+    if key in _BYBIT_SYMBOL:
+        return _BYBIT_SYMBOL[key]
+    raise ValueError(f"no Bybit linear mapping for {symbol!r}")
+
+
+def hyperliquid_coin(symbol: str) -> str:
+    key = symbol.upper()
+    if key in _HYPERLIQUID_COIN:
+        return _HYPERLIQUID_COIN[key]
+    raise ValueError(f"no Hyperliquid coin mapping for {symbol!r}")
+
+
 def _geo_or_http_skip(name: str, source: str, exc: BaseException) -> EdgeSeriesFetch:
     detail = str(exc)
-    if "451" in detail:
+    response_text = ""
+    response = getattr(exc, "response", None)
+    if response is not None:
+        try:
+            response_text = response.text or ""
+        except (httpx.HTTPError, TypeError, ValueError):
+            response_text = ""
+    lowered = f"{detail} {response_text}".lower()
+    if "451" in detail or "451" in response_text:
         detail = "HTTP 451 (geo-blocked / unavailable in this environment)"
-    elif "403" in detail:
-        detail = "HTTP 403 (forbidden in this environment)"
+    elif "403" in detail or "403" in response_text:
+        if "cloudfront" in lowered or "country" in lowered:
+            detail = (
+                "HTTP 403 (CloudFront / country block — unavailable in this environment)"
+            )
+        else:
+            detail = "HTTP 403 (forbidden in this environment)"
     return EdgeSeriesFetch(
         name=name,
         status="skipped",
@@ -352,6 +405,134 @@ async def fetch_okx_funding(
         source="okx:/api/v5/public/funding-rate-history",
         points=points,
         ok_reason="OKX swap funding-rate-history (public; ~90d of 8h prints)",
+    )
+
+
+async def fetch_bybit_funding(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+    limit_pages: int = 8,
+) -> EdgeSeriesFetch:
+    """Linear USDT funding history. Typically HTTP 403 from this environment."""
+    name = f"bybit_funding:{symbol}"
+    try:
+        contract = bybit_contract(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="bybit")
+    points: list[tuple[datetime, float]] = []
+    end_time: int | None = None
+    try:
+        for _ in range(limit_pages):
+            params: dict[str, Any] = {
+                "category": "linear",
+                "symbol": contract,
+                "limit": 200,
+            }
+            if end_time is not None:
+                params["endTime"] = end_time
+            response = await client.get("/v5/market/funding/history", params=params)
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                return EdgeSeriesFetch(
+                    name=name,
+                    status="skipped",
+                    reason="unexpected Bybit funding payload",
+                    source="bybit",
+                )
+            ret_code = payload.get("retCode")
+            if ret_code not in (0, "0", None):
+                return EdgeSeriesFetch(
+                    name=name,
+                    status="skipped",
+                    reason=f"Bybit retCode={ret_code} {payload.get('retMsg', '')}".strip(),
+                    source="bybit",
+                )
+            result = payload.get("result")
+            rows = result.get("list") if isinstance(result, dict) else None
+            if not isinstance(rows, list) or not rows:
+                break
+            oldest_ms: int | None = None
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                ts = _ms_to_dt(row["fundingRateTimestamp"])
+                points.append((ts, float(row["fundingRate"])))
+                raw_ms = int(row["fundingRateTimestamp"])
+                oldest_ms = raw_ms if oldest_ms is None else min(oldest_ms, raw_ms)
+            if oldest_ms is None or oldest_ms <= (end_time or 0):
+                break
+            end_time = oldest_ms - 1
+            if len(rows) < 200:
+                break
+    except (httpx.HTTPError, TypeError, ValueError, KeyError) as exc:
+        return _geo_or_http_skip(name, "bybit", exc)
+    return _finish(
+        name,
+        source="bybit:/v5/market/funding/history",
+        points=points,
+        ok_reason="Bybit linear funding-history (public; paginated newest-first)",
+    )
+
+
+async def fetch_hyperliquid_funding(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+    start_ms: int | None = None,
+    limit_pages: int = 16,
+    lookback_days: int = HYPERLIQUID_DEFAULT_LOOKBACK_DAYS,
+) -> EdgeSeriesFetch:
+    """Hourly public fundingHistory. Paginate forward from startTime."""
+    name = f"hyperliquid_funding:{symbol}"
+    try:
+        coin = hyperliquid_coin(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(
+            name=name, status="skipped", reason=str(exc), source="hyperliquid"
+        )
+    now_ms = int(datetime.now(UTC).timestamp() * 1000)
+    cursor = (
+        start_ms
+        if start_ms is not None
+        else now_ms - lookback_days * 24 * 3600 * 1000
+    )
+    points: list[tuple[datetime, float]] = []
+    try:
+        for _ in range(limit_pages):
+            response = await client.post(
+                "/info",
+                json={"type": "fundingHistory", "coin": coin, "startTime": cursor},
+            )
+            response.raise_for_status()
+            rows = response.json()
+            if not isinstance(rows, list) or not rows:
+                break
+            last_ms = cursor
+            new = 0
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                ts = _ms_to_dt(row["time"])
+                points.append((ts, float(row["fundingRate"])))
+                last_ms = max(last_ms, int(row["time"]))
+                new += 1
+            if new == 0 or last_ms <= cursor:
+                break
+            cursor = last_ms + 1
+            if len(rows) < HYPERLIQUID_PAGE_SIZE:
+                break
+    except (httpx.HTTPError, TypeError, ValueError, KeyError) as exc:
+        return _geo_or_http_skip(name, "hyperliquid", exc)
+    return _finish(
+        name,
+        source="hyperliquid:/info fundingHistory",
+        points=points,
+        ok_reason=(
+            "Hyperliquid public fundingHistory (hourly; paginated; "
+            f"lookback {lookback_days}d)"
+        ),
     )
 
 

@@ -110,21 +110,55 @@ not a hard-gate pass, not a basis-aware result, and **cannot promote**.
 
 See `funding-carry.md`.
 
+## This session — second independent funding tape
+
+Highest-leverage next experiment from the list below: find a **second
+funding venue** that works from this environment, wire it
+skip-not-invent, and re-run the frozen funding-carry dual-print bar.
+Do not invent a series. Empty dual-print is success. No new
+`PAPER_PROMOTE_*` pin unless a dual-print passer exists.
+
+### Venue probe (this environment, 2026-09-12)
+
+| venue | public path | result |
+| --- | --- | --- |
+| Binance USDT-M | `GET /fapi/v1/fundingRate` | **UNAVAILABLE** — HTTP 451 |
+| Bybit linear | `GET /v5/market/funding/history` | **UNAVAILABLE** — HTTP 403 CloudFront country block |
+| OKX swap | `GET /api/v5/public/funding-rate-history` | **ok** — ~90d of 8h prints (already wired) |
+| Hyperliquid | `POST /info` `fundingHistory` | **ok** — hourly, paginable from 2023-05-12; BTC+ETH live |
+| Deribit | `public/get_funding_rate_history` | reachable, **not wired** — `interest_8h` restated every hour; treating each row as a settlement would invent 8× carry |
+| Gate USDT | `GET /futures/usdt/funding_rate` | reachable, **not wired** — default ~90 prints; `from` capped at 180d |
+| Bitget USDT-M | `GET /api/v2/mix/market/history-fund-rate` | reachable, **not wired** — ~270 8h prints (~90d) |
+| MEXC | `GET /contract/funding_rate/history` | reachable, **not wired** — ~1618 8h prints from 2025-03-22 |
+| dYdX v4 indexer | `GET /v4/historicalFunding/{ticker}` | reachable, **not wired** — hourly; not needed once Hyperliquid covers dual-print |
+
+Wired second tape: **Hyperliquid**. Bybit is probed and recorded as a
+skip. Binance stays a skip. Other reachable CEX/DEX tapes are
+documented, not blended.
+
+### Live dual-print
+
+Re-run is `traderstack-funding-carry --live` after the Hyperliquid
+adapter. Numbers go in `funding-carry.md`. Hard gates stay
+UNAVAILABLE unless 720 aligned **daily** bars exist on **two**
+venues (OKX is still ~90d). `PAPER_PROMOTE_*` stays false. No live
+trading.
+
 ## Next falsifiable experiments
 
 Do not rerun #104 / #105 / #106 / #108 on the same windows.
 
-1. **Second independent funding tape.** Binance USDT-M
-   `/fapi/v1/fundingRate` when not HTTP 451, or an operator-supplied
-   point-in-time tape that does not overlap the OKX ~90d window.
-   Same catalog, dual-print bar already frozen. Without this, funding /
-   carry stays single-print.
+1. **Second independent funding tape.** Done this session:
+   Hyperliquid public `fundingHistory` is reachable and wired.
+   Binance remains HTTP 451; Bybit remains HTTP 403. Same frozen
+   catalog / dual-print bar. Empty dual-print is still success.
 2. **Basis-aware carry, only if a PIT perp−spot series exists.** Do
    not invent basis from last-trade or from funding itself. Skip if
    the series is missing.
 3. **Longer funding overlap that can actually run #96+A+B+C.** That
    means 720 aligned **daily** bars of funding on BTC and ETH, on two
-   venues. Not a 4h 90d reprint labeled as daily.
+   venues. Hyperliquid is long enough; OKX is still ~90d. Not a 4h
+   90d reprint labeled as daily. Do not promote on a single long tape.
 4. **Not** another daily-EMA catalog expansion on the same Kraken 720
    + Binance.US older-720 pair.
 5. **Not** liquidation-conditioned promotion until a public historical

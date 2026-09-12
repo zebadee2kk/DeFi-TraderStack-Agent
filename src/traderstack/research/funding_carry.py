@@ -6,9 +6,13 @@ Investigation (do not invent a series):
 
 * Binance USDT-M ``/fapi/v1/fundingRate`` is historical and paginable when
   reachable; this environment typically gets HTTP 451.
+* Bybit ``/v5/market/funding/history`` is public when reachable; this
+  environment typically gets HTTP 403 (CloudFront country block).
 * OKX ``/api/v5/public/funding-rate-history`` is public and typically
-  returns ~90 days of 8h prints. That is **one venue / one history
-  length**.
+  returns ~90 days of 8h prints.
+* Hyperliquid ``POST /info`` ``fundingHistory`` is public hourly and
+  typically reachable here — that is an independent second tape, not a
+  reprint of OKX.
 * A second candle venue (Binance.US older-720) without a second
   *funding* tape is not an independent funding print.
 * Splitting one OKX tape into prefix/suffix is the same venue — not
@@ -18,8 +22,8 @@ Investigation (do not invent a series):
 
 Print policy (frozen):
 
-* Dual-print requires two **independent funding venues** (e.g. Binance
-  and OKX) each covering BTC and ETH with a usable point count.
+* Dual-print requires two **independent funding venues** (e.g. OKX and
+  Hyperliquid) each covering BTC and ETH with a usable point count.
 * Absent that, the run is **single-print** and **cannot promote**.
 * #96+A+B+C hard gates need 720 aligned **daily** bars. A ~90d funding
   overlap cannot unlock them; they are recorded UNAVAILABLE, not faked.
@@ -107,7 +111,7 @@ FUNDING_CARRY_RULES = (
     "zero-filled. Hedged carry is a research model of cash-and-carry: "
     "received |funding| minus two-leg (spot+perp) fees on each flip; "
     "perp-spot basis is not invented and is not in the PnL. Dual-print "
-    "requires two independent funding venues (e.g. Binance and OKX) each "
+    "requires two independent funding venues (e.g. OKX and Hyperliquid) each "
     "covering BTC and ETH. A second candle venue without a second funding "
     "tape is not dual-print. Same-venue prefix/suffix is not independent. "
     "Hard gates (#96+A+B+C) need 720 aligned daily bars; a ~90d OKX tape "
@@ -1011,7 +1015,7 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
         "| --- | --- | --- |",
         (
             "| single-print | only one usable funding venue on BTC+ETH "
-            "(typical: OKX ~90d; Binance HTTP 451) | **no** |"
+            "(typical leftover: OKX only; Binance 451 / Bybit 403) | **no** |"
         ),
         (
             "| dual-print | two independent funding venues each covering "
@@ -1128,6 +1132,65 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
                 f"{_pct(carry_row.full_sample_total_return)} | "
                 f"{'yes' if carry_row.eligible else 'no'} |"
             )
+
+    if report.print_kind == PRINT_DUAL:
+        lines.extend(
+            [
+                "",
+                f"## Second funding print (`{report.second_venue or 'unknown'}`)",
+                "",
+                (
+                    "Independent tape. Not averaged with the primary. "
+                    "A name must clear the fee-aware bar on **both** prints "
+                    "to be a dual-print passer."
+                ),
+                "",
+            ]
+        )
+        if report.second_search is None or not report.second_search.candidates:
+            lines.append("Second-print spot-signal catalog was not scored.")
+        else:
+            lines.extend(
+                [
+                    "| rank | id | family | WF excess | WF total | holdout excess | eligible |",
+                    "| ---: | --- | --- | ---: | ---: | ---: | :---: |",
+                ]
+            )
+            ordered = sorted(
+                report.second_search.candidates,
+                key=lambda row: (
+                    row.rank is None,
+                    row.rank if row.rank is not None else 10_000,
+                    row.candidate_id,
+                ),
+            )
+            for row in ordered:
+                rank = str(row.rank) if row.rank is not None else "—"
+                lines.append(
+                    f"| {rank} | `{row.candidate_id}` | {row.family} | "
+                    f"{_pct(row.mean_wf_excess_return)} | "
+                    f"{_pct(row.mean_wf_total_return)} | "
+                    f"{_pct(row.mean_holdout_excess_return)} | "
+                    f"{'yes' if row.eligible else 'no'} |"
+                )
+        lines.extend(
+            [
+                "",
+                "| id | WF total | holdout total | full-sample | eligible |",
+                "| --- | ---: | ---: | ---: | :---: |",
+            ]
+        )
+        if not report.second_carry:
+            lines.append("| *(none scored)* |  |  |  |  |")
+        else:
+            for carry_row in report.second_carry:
+                lines.append(
+                    f"| `{carry_row.candidate_id}` | "
+                    f"{_pct(carry_row.mean_wf_total_return)} | "
+                    f"{_pct(carry_row.mean_holdout_total_return)} | "
+                    f"{_pct(carry_row.full_sample_total_return)} | "
+                    f"{'yes' if carry_row.eligible else 'no'} |"
+                )
 
     lines.extend(["", "## Dual-print passers", ""])
     if report.print_kind != PRINT_DUAL:
