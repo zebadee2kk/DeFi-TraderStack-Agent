@@ -21,10 +21,13 @@ from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
 from traderstack.models import PortfolioSnapshot, Side
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.research.miles_candidates import (
+    EMA_9_21_ADX15_STRATEGY_ID,
     EMA_9_21_STRATEGY_ID,
     EmaCrossoverStrategy,
+    build_ema_9_21_adx15_paper_ensemble,
     build_ema_9_21_paper_ensemble,
     default_miles_candidates,
+    ema_9_21_adx15_paper_voter,
     ema_9_21_paper_voter,
 )
 from traderstack.research.miles_cli import build_parser, run
@@ -329,6 +332,53 @@ def test_promote_ema_9_21_default_is_off_and_paper_only() -> None:
     assert live.paper_promote_ema_9_21_active is False
     assert shadow.paper_promote_ema_9_21_active is False
     assert paper.paper_promote_ema_9_21_active is True
+
+
+def test_promote_ema_9_21_adx15_default_is_off_and_paper_only() -> None:
+    off = settings()
+    assert off.paper_promote_ema_9_21_adx15 is False
+    assert off.paper_promote_ema_9_21_adx15_active is False
+    live = settings(trading_mode="live", paper_promote_ema_9_21_adx15=True)
+    shadow = settings(trading_mode="shadow", paper_promote_ema_9_21_adx15=True)
+    paper = settings(trading_mode="paper", paper_promote_ema_9_21_adx15=True)
+    assert live.paper_promote_ema_9_21_adx15_active is False
+    assert shadow.paper_promote_ema_9_21_adx15_active is False
+    assert paper.paper_promote_ema_9_21_adx15_active is True
+    assert paper.paper_daily_promote_active is True
+    both = settings(
+        trading_mode="paper",
+        paper_promote_ema_9_21=True,
+        paper_promote_ema_9_21_adx15=True,
+    )
+    assert both.paper_promote_ema_9_21_active is True
+    assert both.paper_promote_ema_9_21_adx15_active is False
+
+
+def test_ema_9_21_adx15_paper_voter_is_adx_gated() -> None:
+    voter = ema_9_21_adx15_paper_voter()
+    assert voter.strategy_id == EMA_9_21_ADX15_STRATEGY_ID
+    assert voter.fast_span == 9
+    assert voter.slow_span == 21
+    assert voter.adx_threshold == 15.0
+    ensemble = build_ema_9_21_adx15_paper_ensemble()
+    assert ensemble.suppress_defaults is True
+    assert [item.strategy_id for item in ensemble.extra_voters] == [EMA_9_21_ADX15_STRATEGY_ID]
+
+
+def test_promote_ema_9_21_adx15_does_not_move_risk_policy_version() -> None:
+    off = settings(paper_promote_ema_9_21_adx15=False, paper_fee_bps=10.0)
+    on = settings(paper_promote_ema_9_21_adx15=True, paper_fee_bps=99.0)
+    assert derive_policy_version(off) == derive_policy_version(on)
+
+
+def test_build_pretrade_gate_registers_only_ema_9_21_adx15_when_flagged() -> None:
+    cfg = settings(paper_promote_ema_9_21_adx15=True, pretrade_backtest_enabled=True)
+    gate = build_pretrade_gate(cfg)
+    ensemble = gate.backtester.ensemble
+    assert ensemble.suppress_defaults is True
+    assert [voter.strategy_id for voter in ensemble.extra_voters] == [EMA_9_21_ADX15_STRATEGY_ID]
+    assert gate.required_candle_interval == EMA_9_21_PAPER_CANDLE_INTERVAL
+    assert gate.max_drawdown == 0.30
 
 
 def test_promote_ema_9_21_does_not_move_risk_policy_version() -> None:

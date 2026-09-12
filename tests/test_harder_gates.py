@@ -128,6 +128,9 @@ def _search(histories: dict[str, tuple[Candle, ...]], **overrides: object):
 def test_promote_ema_9_21_default_stays_false() -> None:
     assert settings().paper_promote_ema_9_21 is False
     assert settings().paper_promote_ema_9_21_active is False
+    assert settings().paper_promote_ema_9_21_adx15 is False
+    assert settings().paper_promote_ema_9_21_adx15_active is False
+    assert settings().paper_daily_promote_active is False
 
 
 def test_pre_registered_constants_are_frozen() -> None:

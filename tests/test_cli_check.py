@@ -198,6 +198,41 @@ def test_promote_ema_9_21_ignored_outside_paper() -> None:
     assert any("PAPER_PROMOTE_EMA_9_21" in warning for warning in report.warnings)
 
 
+def test_promote_ema_9_21_adx15_default_is_off() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Promote ema_9_21_adx15 as paper voter")
+    assert item.value == "no"
+
+
+def test_promote_ema_9_21_adx15_on_paper_is_safe() -> None:
+    report = build_report(
+        settings(paper_promote_ema_9_21_adx15=True, pretrade_candle_interval="1h")
+    )
+    assert report.safe
+    item = next(i for i in report.items if i.label == "Promote ema_9_21_adx15 as paper voter")
+    assert item.value == "active"
+    assert "ema_9_21_adx15" in item.detail
+    drawdown = next(i for i in report.items if i.label == "Paper promote ema_9_21 max drawdown")
+    assert drawdown.value == "30.00%"
+    assert "PRETRADE_MAX_DRAWDOWN_PCT=15.00%" in drawdown.detail
+
+
+def test_promote_ema_9_21_adx15_ignored_outside_paper() -> None:
+    report = build_report(settings(trading_mode="shadow", paper_promote_ema_9_21_adx15=True))
+    assert not report.safe
+    assert any("PAPER_PROMOTE_EMA_9_21_ADX15" in warning for warning in report.warnings)
+
+
+def test_promote_ema_9_21_wins_over_adx15() -> None:
+    report = build_report(settings(paper_promote_ema_9_21=True, paper_promote_ema_9_21_adx15=True))
+    assert not report.safe
+    assert any("EMA_9_21_ADX15" in warning for warning in report.warnings)
+    older = next(i for i in report.items if i.label == "Promote ema_9_21 as paper voter")
+    newer = next(i for i in report.items if i.label == "Promote ema_9_21_adx15 as paper voter")
+    assert older.value == "active"
+    assert newer.value == "ignored"
+
+
 def test_promote_ema_9_21_and_searched_together_warns() -> None:
     report = build_report(
         settings(

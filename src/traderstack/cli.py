@@ -192,12 +192,19 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
     # PAPER_PROMOTE_EMA_9_21 (paper only) registers the documented Miles
     # daily winner, forces daily candles (1d / 1440), and takes precedence
     # over the #89 search-report gate.
+    # PAPER_PROMOTE_EMA_9_21_ADX15 (paper only) registers the expanded
+    # harder-gates combined-passer top-1. PAPER_PROMOTE_EMA_9_21 wins if
+    # both are set. Also forces daily candles.
     # PAPER_PROMOTE_SEARCHED_STRATEGIES: only gate-clearing searched voters;
     # never a silent fallback to the unpromoted MA baseline.
     if settings.paper_promote_ema_9_21_active:
         from traderstack.research.miles_candidates import build_ema_9_21_paper_ensemble
 
         ensemble = build_ema_9_21_paper_ensemble()
+    elif settings.paper_promote_ema_9_21_adx15_active:
+        from traderstack.research.miles_candidates import build_ema_9_21_adx15_paper_ensemble
+
+        ensemble = build_ema_9_21_adx15_paper_ensemble()
     elif settings.paper_promote_searched_strategies:
         ensemble = build_paper_ensemble(settings)
     else:
@@ -215,7 +222,7 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
         # --- miles-inspired ema_9_21 paper voter ---
         required_candle_interval=(
             settings.effective_pretrade_candle_interval
-            if settings.paper_promote_ema_9_21_active
+            if settings.paper_daily_promote_active
             else None
         ),
         min_excess_return=settings.effective_pretrade_min_excess_return,
