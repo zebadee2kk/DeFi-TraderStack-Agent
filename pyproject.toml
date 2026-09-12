@@ -80,6 +80,10 @@ traderstack-liq-regime-search = "traderstack.research.liq_regime_search_cli:main
 # Kraken Spot and the #102-style Binance.US older-720. Never flips
 # PAPER_PROMOTE_*. Empty dual-print set is success. No live.
 traderstack-intraday-dual-print = "traderstack.research.intraday_dual_print_cli:main"
+# Funding-z threshold + hedged-carry search. Dual-print only if two
+# independent funding venues cover BTC+ETH; otherwise single-print and
+# cannot promote. Never flips PAPER_PROMOTE_*. Empty search is success.
+traderstack-funding-carry = "traderstack.research.funding_carry_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.

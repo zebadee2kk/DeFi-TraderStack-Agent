@@ -307,22 +307,27 @@ def run_search(
     history_notes: list[dict[str, str]] | None = None,
     edge_notes: list[dict[str, str]] | None = None,
     now: datetime | None = None,
+    include_feature_candidates: bool = True,
 ) -> StrategySearchReport:
     if not histories:
         raise ValueError("no candle histories provided")
 
     catalog = list(candidates if candidates is not None else default_price_candidates())
-    catalog.extend(
-        feature_candidates(
-            liquidation=liquidation,
-            liquidation_by_symbol=liquidation_by_symbol,
-            funding=funding,
-            funding_by_symbol=funding_by_symbol,
-            open_interest=open_interest,
-            open_interest_by_symbol=open_interest_by_symbol,
-            cross_venue=cross_venue,
+    # --- funding/carry research (paper-only) ---
+    # Dedicated catalogs bake FeatureZ voters in; skip the default
+    # funding_z_fade/follow pair so K stays the pre-registered list.
+    if include_feature_candidates:
+        catalog.extend(
+            feature_candidates(
+                liquidation=liquidation,
+                liquidation_by_symbol=liquidation_by_symbol,
+                funding=funding,
+                funding_by_symbol=funding_by_symbol,
+                open_interest=open_interest,
+                open_interest_by_symbol=open_interest_by_symbol,
+                cross_venue=cross_venue,
+            )
         )
-    )
 
     present_features = {
         *(["liquidation_z"] if liquidation is not None or liquidation_by_symbol else []),
@@ -330,21 +335,25 @@ def run_search(
         *(["open_interest_z"] if open_interest is not None or open_interest_by_symbol else []),
         *(["cross_venue_divergence_z"] if cross_venue is not None else []),
     }
-    skipped_feature_families = [
-        {
-            "family": family,
-            "candidate_id": candidate_id,
-            "reason": (
-                f"{label}: skipped — no aligned series supplied. "
-                "This feature is not present on the Kraken Spot OHLC paper path."
-            ),
-        }
-        for family, candidate_id, label in FEATURE_CATALOG
-        if (family == "liquidation_z" and "liquidation_z" not in present_features)
-        or (family == "funding_z" and "funding_z" not in present_features)
-        or (family == "open_interest_z" and "open_interest_z" not in present_features)
-        or (family == "cross_venue" and "cross_venue_divergence_z" not in present_features)
-    ]
+    skipped_feature_families = (
+        [
+            {
+                "family": family,
+                "candidate_id": candidate_id,
+                "reason": (
+                    f"{label}: skipped — no aligned series supplied. "
+                    "This feature is not present on the Kraken Spot OHLC paper path."
+                ),
+            }
+            for family, candidate_id, label in FEATURE_CATALOG
+            if (family == "liquidation_z" and "liquidation_z" not in present_features)
+            or (family == "funding_z" and "funding_z" not in present_features)
+            or (family == "open_interest_z" and "open_interest_z" not in present_features)
+            or (family == "cross_venue" and "cross_venue_divergence_z" not in present_features)
+        ]
+        if include_feature_candidates
+        else []
+    )
 
     rows: list[CandidateSearchResult] = []
     for candidate in catalog:

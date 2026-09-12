@@ -415,6 +415,17 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
 
+    # --- funding / carry search (report-only; no promote pin) ---
+    items.append(
+        CheckItem(
+            "Funding / carry search",
+            "report-only",
+            "traderstack-funding-carry; OKX (or Binance) funding-z + "
+            "hedged carry on BTC+ETH; single-print cannot promote; no new "
+            "PAPER_PROMOTE_* unless a dual-print passer exists (default false)",
+        )
+    )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(

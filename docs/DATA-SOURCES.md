@@ -48,6 +48,13 @@ it is relied upon.
 - **Coinbase public candles** (350/call, paginate by start/end).
 - **Tardis.dev** only if order-book replay becomes necessary (trial first; paid).
 - Freqtrade's `download-data` already handles Kraken's 720-candle REST cap.
+- **Funding-rate history (research only):** OKX
+  `GET /api/v5/public/funding-rate-history` is typically ~90d of 8h
+  prints. Binance USDT-M `GET /fapi/v1/fundingRate` is paginable when
+  reachable (often HTTP 451 from this environment). These are
+  skip-not-invent inputs for `traderstack-funding-carry`. One venue /
+  one history length is single-print and cannot promote. Perp-spot
+  basis is not on those endpoints and must not be invented.
 
 ## Robinhood Chain
 

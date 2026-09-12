@@ -383,3 +383,22 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `intraday-dual-print.md`.
 
+## Funding / carry (`traderstack-funding-carry`)
+
+#104–#106 and #108 were empty. This command is a **different family**:
+fee-aware funding-z thresholds, funding-agree spot overlays, and a
+modeled hedged cash-and-carry on BTC+ETH.
+
+| print | when | can promote? |
+| --- | --- | --- |
+| single-print | only one usable funding venue on BTC+ETH | **no** |
+| dual-print | Binance **and** OKX (or two operator-supplied independent tapes) | still no Settings flip |
+
+OKX public funding-rate-history is typically ~90d of 8h prints.
+Binance USDT-M funding is often HTTP 451 here. Hard gates
+(#96+A+B+C) stay UNAVAILABLE on that overlap. Hedged carry does not
+invent basis. `PAPER_PROMOTE_*` stays false. Empty search is success.
+
+See `funding-carry.md` and the 2026-09-12 status memo
+`edge-status-2026-09-12.md`.
+

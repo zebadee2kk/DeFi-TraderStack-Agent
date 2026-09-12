@@ -141,6 +141,15 @@ def test_intraday_dual_print_is_report_only() -> None:
     assert "PAPER_PROMOTE_*" in item.detail
 
 
+def test_funding_carry_is_report_only() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Funding / carry search")
+    assert item.value == "report-only"
+    assert "traderstack-funding-carry" in item.detail
+    assert "PAPER_PROMOTE_*" in item.detail
+    assert "single-print cannot promote" in item.detail
+
+
 def test_promote_without_report_is_unsafe() -> None:
     report = build_report(
         settings(
