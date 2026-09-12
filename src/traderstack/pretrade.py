@@ -52,6 +52,9 @@ class PreTradeBacktestGate:
     min_trades: int = 3
     require_walkforward: bool = True
     min_walkforward_excess_return: float = 0.0
+    # Paper-only positive-evidence floor (total return, not excess vs B&H).
+    # None (live/shadow default) skips the check so PRETRADE_MIN_* stay the bar.
+    min_total_return: float | None = None
 
     def evaluate(
         self,
@@ -101,6 +104,8 @@ class PreTradeBacktestGate:
             )
 
         metrics = self.backtester.run(candles)
+        if self.min_total_return is not None and metrics.total_return < self.min_total_return:
+            reasons.append("backtest_total_return_below_minimum")
         if metrics.excess_return < self.min_excess_return:
             reasons.append("backtest_excess_return_below_minimum")
         if metrics.max_drawdown > self.max_drawdown:

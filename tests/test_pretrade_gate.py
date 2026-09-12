@@ -13,6 +13,7 @@ from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.pretrade import PreTradeBacktestGate
 from traderstack.risk import RiskEngine
 from traderstack.runtime import PaperRuntime
+from traderstack.strategies import PaperResearchStrategy, StrategyEnsemble
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -117,6 +118,69 @@ def test_gate_rejects_when_no_consensus() -> None:
     check = lenient_gate().evaluate(candles, Side.BUY, now=end_time(candles))
     assert not check.passed
     assert check.reasons == ["no_strategy_consensus"]
+
+
+def mild_uptrend(count: int = 300, *, start: datetime = START) -> tuple[Candle, ...]:
+    """Kraken-like 1h drift: MA tilt without 2%/12-bar momentum."""
+    candles: list[Candle] = []
+    previous = 100.0
+    for index in range(count):
+        close = 100.0 + index * 0.08
+        candles.append(
+            Candle(
+                symbol="BTC/USD",
+                interval="1h",
+                opened_at=start + timedelta(hours=index),
+                open=previous,
+                high=max(previous, close) * 1.001,
+                low=min(previous, close) * 0.999,
+                close=close,
+                volume=1_000 + index,
+            )
+        )
+        previous = close
+    return tuple(candles)
+
+
+def test_gate_still_fails_closed_on_flat_book_in_paper_research_mode() -> None:
+    candles = flat()
+    gate = lenient_gate(
+        backtester=BaselineBacktester(
+            ensemble=StrategyEnsemble(
+                paper_research_strategy=PaperResearchStrategy(),
+                min_agreeing=1,
+            )
+        )
+    )
+    check = gate.evaluate(candles, Side.BUY, now=end_time(candles))
+    assert not check.passed
+    assert check.reasons == ["no_strategy_consensus"]
+
+
+def test_paper_research_gate_reaches_consensus_on_mild_uptrend() -> None:
+    candles = mild_uptrend()
+    default = lenient_gate().evaluate(candles, now=end_time(candles))
+    assert not default.passed
+    assert default.reasons == ["no_strategy_consensus"]
+
+    research = lenient_gate(
+        backtester=BaselineBacktester(
+            ensemble=StrategyEnsemble(
+                paper_research_strategy=PaperResearchStrategy(),
+                min_agreeing=1,
+            )
+        )
+    ).evaluate(candles, now=end_time(candles))
+    assert research.passed, research.reasons
+    assert research.confirmed_side is Side.BUY
+
+
+def test_gate_rejects_on_total_return_floor_when_configured() -> None:
+    candles = uptrend()
+    check = lenient_gate(min_total_return=5.0).evaluate(candles, Side.BUY, now=end_time(candles))
+    assert not check.passed
+    assert "backtest_total_return_below_minimum" in check.reasons
+    assert check.metrics is not None
 
 
 def test_gate_rejects_on_backtest_thresholds() -> None:

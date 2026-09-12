@@ -55,6 +55,54 @@ def test_robinhood_chain_feed_fully_configured_is_safe_on_that_axis() -> None:
     assert not any("robinhood_chain" in w for w in report.warnings)
 
 
+def test_paper_research_mode_is_active_on_default_paper_settings() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Paper research mode")
+    assert item.value == "active"
+    assert "min agreeing strategies=1" in item.detail
+    assert report.safe
+
+
+def test_paper_research_mode_off_is_reported() -> None:
+    report = build_report(settings(paper_research_mode=False))
+    item = next(i for i in report.items if i.label == "Paper research mode")
+    assert item.value == "off"
+    assert report.safe
+
+
+def test_paper_research_mode_ignored_on_live_is_unsafe() -> None:
+    report = build_report(settings(trading_mode="live", paper_research_mode=True))
+    item = next(i for i in report.items if i.label == "Paper research mode")
+    assert item.value == "ignored"
+    assert any("PAPER_RESEARCH_MODE" in w for w in report.warnings)
+
+
+def test_paper_reference_resilience_and_pretrade_thresholds_are_active_on_paper() -> None:
+    report = build_report(settings())
+    resilience = next(i for i in report.items if i.label == "Paper reference resilience")
+    thresholds = next(i for i in report.items if i.label == "Paper pretrade thresholds")
+    assert resilience.value == "active"
+    assert "last-good" in resilience.detail
+    assert thresholds.value == "active"
+    assert "min total return=0.0" in thresholds.detail
+    assert report.safe
+
+
+def test_paper_reference_resilience_ignored_on_live() -> None:
+    report = build_report(settings(trading_mode="live"))
+    resilience = next(i for i in report.items if i.label == "Paper reference resilience")
+    thresholds = next(i for i in report.items if i.label == "Paper pretrade thresholds")
+    assert resilience.value == "ignored"
+    assert thresholds.value == "ignored"
+
+
+def test_paper_research_keeps_two_voters_when_intel_configured() -> None:
+    report = build_report(settings(lunarcrush_api_key="secret-key"))
+    item = next(i for i in report.items if i.label == "Paper research mode")
+    assert item.value == "active"
+    assert "min agreeing strategies=2" in item.detail
+
+
 def test_pretrade_gate_disabled_warns() -> None:
     report = build_report(settings(pretrade_backtest_enabled=False))
     assert not report.safe

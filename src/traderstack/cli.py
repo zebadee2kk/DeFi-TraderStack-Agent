@@ -78,6 +78,7 @@ from traderstack.risk import RiskEngine
 from traderstack.risk_audit import JsonlRiskAuditTrail
 from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
+from traderstack.strategies import PaperResearchStrategy, StrategyEnsemble
 from traderstack.tracing import configure_tracing  # observability (Epic 9)
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]
@@ -108,21 +109,45 @@ class ServiceOverrides:
 # --- end paper-trading acceptance (Epic 10) ---
 
 
+def paper_research_ensemble(settings: Settings) -> StrategyEnsemble:
+    """Build the pre-trade ensemble, applying paper-research voters only on paper.
+
+    Live/shadow keep the default two-of-three candle ensemble even if
+    ``PAPER_RESEARCH_MODE`` is true. Paper research never changes risk limits.
+    """
+    if not settings.paper_research_active:
+        return StrategyEnsemble()
+    # Optional intel (and unset edge slots such as Crucix) cannot vote in the
+    # candle ensemble. When they are intentionally off, a single healthy
+    # candle-side signal is enough to form consensus; when they are
+    # configured, keep the two-voter bar.
+    min_agreeing = 1 if not settings.optional_intelligence_configured else 2
+    return StrategyEnsemble(
+        paper_research_strategy=PaperResearchStrategy(),
+        min_agreeing=min_agreeing,
+    )
+
+
 def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
     backtester = BaselineBacktester(
         starting_equity=settings.paper_starting_nav_usd,
         fee_bps=settings.pretrade_fee_bps,
         slippage_bps=settings.pretrade_slippage_bps,
+        # --- paper research mode ---
+        ensemble=paper_research_ensemble(settings),
     )
     return PreTradeBacktestGate(
         backtester=backtester,
         min_candles=settings.pretrade_min_candles,
         max_candle_age_seconds=settings.pretrade_max_candle_age_seconds,
-        min_excess_return=settings.pretrade_min_excess_return,
+        min_excess_return=settings.effective_pretrade_min_excess_return,
         max_drawdown=settings.pretrade_max_drawdown_pct,
-        min_sharpe=settings.pretrade_min_sharpe,
-        min_trades=settings.pretrade_min_trades,
+        min_sharpe=settings.effective_pretrade_min_sharpe,
+        min_trades=settings.effective_pretrade_min_trades,
         require_walkforward=settings.pretrade_require_walkforward,
+        # --- paper pretrade thresholds ---
+        min_total_return=settings.effective_pretrade_min_total_return,
+        min_walkforward_excess_return=settings.effective_pretrade_min_walkforward_excess_return,
     )
 
 
@@ -149,6 +174,7 @@ def build_provider_registry(
     calls_per_minute: int | None = None,
     calls_per_day: int | None = None,
     cache_ttl_seconds: float = 0.0,
+    last_good_ttl_seconds: float = 0.0,
 ) -> ProviderRegistry:
     """One `ProviderRegistry` per named provider, using the shared timeout/
     breaker defaults from settings plus that provider's own quota/cache.
@@ -161,6 +187,7 @@ def build_provider_registry(
         calls_per_minute=calls_per_minute,
         calls_per_day=calls_per_day,
         cache_ttl_seconds=cache_ttl_seconds,
+        last_good_ttl_seconds=last_good_ttl_seconds,
     )
 
 
@@ -450,7 +477,14 @@ def build_service(
             )
 
     # --- providers (Epic 2/3): provider health, quota and caching wrapper ------
-    reference_registry_kwargs = {"cache_ttl_seconds": settings.reference_price_cache_seconds}
+    # --- paper reference resilience ---
+    # Paper uses a longer cache and last-good reuse so a CoinGecko 429 does
+    # not fail-close every cycle. Live/shadow keep the short TTL and never
+    # serve a last-good mid after a fetch failure.
+    reference_registry_kwargs = {
+        "cache_ttl_seconds": settings.effective_reference_cache_seconds,
+        "last_good_ttl_seconds": settings.effective_reference_last_good_seconds,
+    }
     # (registry name, provider, calls/minute, calls/day)
     reference_specs: tuple[tuple[str, ReferencePriceProvider, int | None, int | None], ...] = (
         (

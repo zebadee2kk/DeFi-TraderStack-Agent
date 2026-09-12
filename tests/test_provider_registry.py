@@ -192,6 +192,124 @@ async def test_cache_hit_avoids_upstream_call_and_preserves_original_payload() -
 
 
 @pytest.mark.asyncio
+async def test_last_good_served_on_failure_and_preserves_original_payload() -> None:
+    clock = _Clock()
+    registry = ProviderRegistry(
+        name="last-good",
+        cache_ttl_seconds=0,
+        last_good_ttl_seconds=300,
+        failure_threshold=3,
+        clock=clock,
+    )
+    calls = 0
+    fail = False
+
+    async def fetch() -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if fail:
+            raise RuntimeError("429")
+        return {"price": 100.0, "fetched_at": clock.now}
+
+    first = await registry.call(fetch, cache_key="btc")
+    fail = True
+    clock.advance(60)
+    second = await registry.call(fetch, cache_key="btc")
+
+    assert calls == 2
+    assert second is first
+    assert second["fetched_at"] == first["fetched_at"]
+    assert registry.health().state is BreakerState.CLOSED
+    assert registry.health().consecutive_failures == 1
+
+
+@pytest.mark.asyncio
+async def test_last_good_served_when_circuit_is_open() -> None:
+    clock = _Clock()
+    registry = ProviderRegistry(
+        name="last-good-open",
+        last_good_ttl_seconds=300,
+        failure_threshold=1,
+        cooldown_seconds=30,
+        clock=clock,
+    )
+    calls = 0
+    fail = False
+
+    async def fetch() -> str:
+        nonlocal calls
+        calls += 1
+        if fail:
+            raise RuntimeError("down")
+        return "ok"
+
+    assert await registry.call(fetch, cache_key="btc") == "ok"
+    fail = True
+    assert await registry.call(fetch, cache_key="btc") == "ok"
+    assert registry.health().state is BreakerState.OPEN
+    before = calls
+    assert await registry.call(fetch, cache_key="btc") == "ok"
+    assert calls == before  # open breaker never reached the function
+
+
+@pytest.mark.asyncio
+async def test_last_good_disabled_by_default_still_fail_closes() -> None:
+    registry = ProviderRegistry(name="strict", failure_threshold=5)
+    calls = 0
+
+    async def ok_then_fail() -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "ok"
+        raise RuntimeError("429")
+
+    assert await registry.call(ok_then_fail, cache_key="btc") == "ok"
+    with pytest.raises(RuntimeError, match="429"):
+        await registry.call(ok_then_fail, cache_key="btc")
+
+
+@pytest.mark.asyncio
+async def test_last_good_served_when_quota_is_exhausted() -> None:
+    clock = _Clock()
+    registry = ProviderRegistry(
+        name="quota-last-good",
+        calls_per_minute=1,
+        last_good_ttl_seconds=300,
+        clock=clock,
+    )
+    calls = 0
+
+    async def ping() -> str:
+        nonlocal calls
+        calls += 1
+        return "pong"
+
+    assert await registry.call(ping, cache_key="btc") == "pong"
+    assert await registry.call(ping, cache_key="btc") == "pong"
+    assert calls == 1  # second call was last-good, not a quota-consuming retry
+
+
+@pytest.mark.asyncio
+async def test_last_good_expires_and_then_fail_closes() -> None:
+    clock = _Clock()
+    registry = ProviderRegistry(
+        name="expired", last_good_ttl_seconds=30, failure_threshold=5, clock=clock
+    )
+
+    async def ok() -> str:
+        return "ok"
+
+    async def boom() -> str:
+        raise RuntimeError("429")
+
+    assert await registry.call(ok, cache_key="btc") == "ok"
+    clock.advance(31)
+    with pytest.raises(RuntimeError, match="429"):
+        await registry.call(boom, cache_key="btc")
+
+
+@pytest.mark.asyncio
 async def test_cache_disabled_by_default_calls_upstream_every_time() -> None:
     registry = ProviderRegistry(name="uncached")
     calls = 0

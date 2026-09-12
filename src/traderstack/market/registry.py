@@ -20,6 +20,10 @@ candle history, intelligence fetchers) that in one wrapper:
   allowance) - a cache hit returns the exact prior value (including its
   original ``observed_at``), so downstream freshness checks still see real
   data age, not a refreshed timestamp
+- an optional last-good window (``last_good_ttl_seconds``, paper-only in
+  ``cli.build_service``): on a fetch failure, open breaker, or quota refusal,
+  return the last successful payload if it is still inside that window.
+  Live/shadow leave this at 0 so an unanswered reference stays unanswered
 - a ``health()`` report and Prometheus counters/gauges, following the pattern
   in ``traderstack.health``
 
@@ -68,6 +72,11 @@ provider_quota_rejections_total = Counter(
 provider_cache_hits_total = Counter(
     "traderstack_provider_cache_hits_total",
     "TTL cache hits that avoided an upstream call",
+    ("provider",),
+)
+provider_last_good_hits_total = Counter(
+    "traderstack_provider_last_good_hits_total",
+    "Last-good values served after an upstream failure or open breaker",
     ("provider",),
 )
 
@@ -124,6 +133,11 @@ class ProviderRegistry:
     calls_per_day: int | None = None
     # 0 (default) disables caching.
     cache_ttl_seconds: float = 0.0
+    # 0 (default) disables last-good reuse. Paper wiring sets this so a
+    # transient 429 can serve the last successful payload (original
+    # observed_at preserved) instead of fail-closing the cycle. Live/shadow
+    # leave it at 0 — an unanswered reference stays unanswered.
+    last_good_ttl_seconds: float = 0.0
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))
 
     _state: BreakerState = field(init=False, default=BreakerState.CLOSED)
@@ -136,6 +150,7 @@ class ProviderRegistry:
     _day: date | None = field(init=False, default=None)
     _day_count: int = field(init=False, default=0)
     _cache: dict[Hashable, _CacheEntry] = field(init=False, default_factory=dict)
+    _last_good: dict[Hashable, _CacheEntry] = field(init=False, default_factory=dict)
 
     def _now(self) -> datetime:
         return self.clock()
@@ -154,19 +169,32 @@ class ProviderRegistry:
                 provider_cache_hits_total.labels(provider=self.name).inc()
                 return cached  # type: ignore[no-any-return]
 
-        self._check_breaker(now)
-        self._reserve_quota(now)
+        try:
+            self._check_breaker(now)
+            self._reserve_quota(now)
+        except (ProviderCircuitOpenError, ProviderQuotaExceededError):
+            last_good = self._last_good_get(cache_key, now)
+            if last_good is not _MISS:
+                provider_last_good_hits_total.labels(provider=self.name).inc()
+                return last_good  # type: ignore[no-any-return]
+            raise
 
         start = time.monotonic()
         try:
             result = await asyncio.wait_for(func(*args, **kwargs), timeout=self.timeout_seconds)
-        except Exception as exc:  # recorded then re-raised for the caller to handle
+        except Exception as exc:  # recorded then last-good, else re-raised
             self._record_failure(exc)
+            last_good = self._last_good_get(cache_key, now)
+            if last_good is not _MISS:
+                provider_last_good_hits_total.labels(provider=self.name).inc()
+                return last_good  # type: ignore[no-any-return]
             raise
         latency = time.monotonic() - start
         self._record_success(latency)
-        if cache_key is not None and self.cache_ttl_seconds > 0:
-            self._cache_put(cache_key, result, now)
+        if cache_key is not None:
+            if self.cache_ttl_seconds > 0:
+                self._cache_put(cache_key, result, now)
+            self._last_good_put(cache_key, result, now)
         return result
 
     def _check_breaker(self, now: datetime) -> None:
@@ -240,6 +268,24 @@ class ProviderRegistry:
     def _cache_put(self, key: Hashable, value: Any, now: datetime) -> None:
         self._cache[key] = _CacheEntry(
             value=value, expires_at=now + timedelta(seconds=self.cache_ttl_seconds)
+        )
+
+    def _last_good_get(self, key: Hashable | None, now: datetime) -> Any:
+        if key is None or self.last_good_ttl_seconds <= 0:
+            return _MISS
+        entry = self._last_good.get(key)
+        if entry is None:
+            return _MISS
+        if now >= entry.expires_at:
+            del self._last_good[key]
+            return _MISS
+        return entry.value
+
+    def _last_good_put(self, key: Hashable, value: Any, now: datetime) -> None:
+        if self.last_good_ttl_seconds <= 0:
+            return
+        self._last_good[key] = _CacheEntry(
+            value=value, expires_at=now + timedelta(seconds=self.last_good_ttl_seconds)
         )
 
     def health(self) -> ProviderHealthReport:

@@ -89,7 +89,11 @@ At every step, the pre-trade backtest gate and the deterministic risk engine are
 active by default (`PRETRADE_BACKTEST_ENABLED=true`, `KILL_SWITCH=true`). With the
 kill switch on, every proposal is deterministically rejected with
 `kill_switch_enabled` — that's expected. See "Engaging/releasing the kill switch"
-before disengaging it.
+before disengaging it. Paper dry-runs on Kraken Spot OHLC with intel keys left
+blank use `PAPER_RESEARCH_MODE=true` (documented paper default) so the
+strategy ensemble can form a candle-only consensus and reach that risk
+decision; see "Paper research mode and strategy consensus". Live/shadow never
+get that voter rule.
 
 ## Filling in `.env` safely
 
@@ -386,7 +390,7 @@ vector exists — a data-quality gate, not risk policy):
 |---|---|---|
 | `stale_primary_tick` | The venue tick is older than `MAX_MARKET_DATA_AGE_SECONDS`. | Usually transient (network/venue latency). Persistent → check the venue feed (Kraken WS reconnects, or the Robinhood Chain websocket) is actually delivering. |
 | `spread_limit_exceeded` | Bid/ask spread on the primary tick exceeds `MAX_SPREAD_BPS`. | Expected in thin/volatile conditions. Persistent on a liquid pair → check venue/pool liquidity, not a bug. |
-| `no_independent_reference_price` | Neither CoinGecko nor CoinMarketCap returned a price for this asset. | Check `traderstack-check-config` shows both configured (or their unauthenticated fallback isn't rate-limited) and their provider circuit breakers aren't open — see "Provider circuit breakers and quotas". |
+| `no_independent_reference_price` | Neither CoinGecko nor CoinMarketCap returned a price for this asset (and, on paper, no last-good mid was still inside `PAPER_REFERENCE_LAST_GOOD_SECONDS`). | On paper, a burst of CoinGecko HTTP 429s should be absorbed by last-good / the longer paper cache — see "Paper reference-price resilience". Persistent rejects after that window, or any reject on live/shadow, mean both providers failed cold (or last-good expired): check keys, circuit breakers, and "Provider circuit breakers and quotas". |
 | `reference_price_divergence` | The primary tick diverges from the independent reference(s) by more than `MAX_REFERENCE_DIVERGENCE_BPS`. | Investigate before loosening the threshold — this is the control that catches a wrong/manipulated venue price. |
 
 **External intelligence gating** (after market data is accepted, before a
@@ -405,21 +409,185 @@ proposal):
 | `missing_candle_history` | The gate is enabled but no candle history was fetched for this cycle at all. |
 | `insufficient_candle_history` | Fewer candles than `PRETRADE_MIN_CANDLES`. |
 | `stale_candle_history` | The most recent candle is older than `PRETRADE_MAX_CANDLE_AGE_SECONDS`. |
-| `no_strategy_consensus` | The deterministic strategy ensemble, re-run on current candles, produced no consensus side. |
+| `no_strategy_consensus` | The deterministic strategy ensemble, re-run on current candles, produced no consensus side. See "Paper research mode and strategy consensus" below for when this is expected vs. a paper-config gap. |
 | `strategy_does_not_confirm_side` | The ensemble's consensus side doesn't match the side a caller explicitly requested confirmation for. |
-| `backtest_excess_return_below_minimum` | Backtested return net of fees/slippage, vs. buy-and-hold, is below `PRETRADE_MIN_EXCESS_RETURN`. |
+| `backtest_total_return_below_minimum` | Paper-only. Backtested total return (not vs. buy-and-hold) is below `PAPER_PRETRADE_MIN_TOTAL_RETURN`. Live/shadow never emit this. |
+| `backtest_excess_return_below_minimum` | Backtested return net of fees/slippage, vs. buy-and-hold, is below the active floor (`PAPER_PRETRADE_MIN_EXCESS_RETURN` on paper, `PRETRADE_MIN_EXCESS_RETURN` on live/shadow). |
 | `backtest_drawdown_above_maximum` | Backtested max drawdown exceeds `PRETRADE_MAX_DRAWDOWN_PCT`. |
-| `backtest_sharpe_below_minimum` | Backtested Sharpe ratio is below `PRETRADE_MIN_SHARPE`. |
-| `backtest_trade_count_below_minimum` | Fewer backtested trades than `PRETRADE_MIN_TRADES` (too little evidence). |
+| `backtest_sharpe_below_minimum` | Backtested Sharpe ratio is below the active floor (`PAPER_PRETRADE_MIN_SHARPE` on paper, `PRETRADE_MIN_SHARPE` on live/shadow). |
+| `backtest_trade_count_below_minimum` | Fewer backtested trades than the active floor (`PAPER_PRETRADE_MIN_TRADES` on paper, `PRETRADE_MIN_TRADES` on live/shadow). |
 | `walkforward_insufficient_history` | Not enough history for a walk-forward evaluation, and `PRETRADE_REQUIRE_WALKFORWARD=true`. |
-| `walkforward_excess_return_below_minimum` | Mean out-of-sample excess return across walk-forward folds is below minimum. |
+| `walkforward_excess_return_below_minimum` | Mean out-of-sample excess return across walk-forward folds is below the active floor (`PAPER_PRETRADE_MIN_WALKFORWARD_EXCESS_RETURN` on paper, `0.0` on live/shadow). |
 | `walkforward_drawdown_above_maximum` | Worst walk-forward fold's drawdown exceeds `PRETRADE_MAX_DRAWDOWN_PCT`. |
 
 None of these need operator action beyond monitoring — a rejecting gate here is
 working as intended (no history yet, or the ensemble genuinely doesn't clear its
 own bar). Persistent `missing_candle_history`/`insufficient_candle_history` on
 every cycle for one asset is the one worth investigating (candle provider outage
-or a newly-added asset with too little history).
+or a newly-added asset with too little history). Persistent
+`no_strategy_consensus` on every cycle, with healthy Kraken candles and no
+other rejection, is the paper-research-mode case described next.
+
+## Paper research mode and strategy consensus
+
+`no_strategy_consensus` is raised in `PreTradeBacktestGate.evaluate` after
+`StrategyEnsemble.consensus` / `combine_signals` finds no majority side. It is
+**not** a risk-engine rejection: market-data validation already passed, and
+RiskEngine is never called for that cycle.
+
+### Why a typical paper dry-run used to fail-closed here
+
+The default candle ensemble has three voters (momentum, trend, mean-reversion)
+and requires **two agreeing actionable signals**. Those three are
+regime-exclusive:
+
+| Regime | Who can vote | Typical Kraken 1h Spot OHLC |
+|---|---|---|
+| `trending_up` / `trending_down` | Trend (0.5% MA gap) **and** momentum (2% over 12 bars). Mean-reversion is silent. | Mild drift often clears the trend bar but not 2% / 12 hours → **one voter**. |
+| `range` | Mean-reversion only (`|z| ≥ 1.5`). Momentum *can* fire but usually opposes it. | Flat-to-choppy books → **zero or one voter**, or a 1–1 split. |
+| `high_volatility` | Momentum only (trend requires a trending regime). | Crash/spike hours → **one voter**. |
+
+A split vote (equal buy and sell counts) is also no consensus — fail closed,
+not a silent BUY.
+
+Optional intelligence does **not** vote in this ensemble. Empty intel, a
+missing Crucix (or any other unset edge provider), and absent edge fields
+(`onchain.*`, `narrative.*`, `market.external_signal_score`) only starve the
+deterministic specialists that feed the meta-agent as *evidence*. They cannot
+create a candle-side consensus, and their absence is expected on a paper
+laptop that left those keys blank.
+
+So: candles and the tick can be healthy, RiskEngine would have allowed a
+proposal, and the stack still emits no intentional paper trade because the
+vote structurally cannot reach two agreeing sides.
+
+### What paper research mode changes (and what it does not)
+
+`PAPER_RESEARCH_MODE=true` is the **documented paper default**. It applies
+**only** when `TRADING_MODE=paper` (`Settings.paper_research_active`).
+`traderstack-paper` / `build_service` already refuse non-paper modes; the
+ensemble helper also ignores the flag on live/shadow so a mis-set env cannot
+loosen those gates.
+
+When active:
+
+1. A fourth, candle-only voter (`paper_research_baseline_v1`) joins the
+   ensemble. It reads short-vs-long moving averages from the same Kraken OHLC
+   — no intel, no Crucix, no edge fields.
+2. If **no** optional intel provider has usable credentials, consensus may
+   form from **one** agreeing healthy signal (`min_agreeing=1`). If any of
+   Dune / LunarCrush / CryptoPanic / Perplexity / altFINS *is* configured,
+   the two-voter bar is kept.
+3. The pre-trade **backtest and walk-forward** still run on that same
+   ensemble. On paper they use `PAPER_PRETRADE_MIN_*` (see the next
+   section); they are not disabled. A consensus side that cannot show
+   positive total return, or that breaches drawdown / the paper excess and
+   Sharpe floors / trade-count / walk-forward, is still rejected.
+4. Every proposal that leaves the gate still goes through **RiskEngine**
+   (kill switch first), then the meta-agent withhold-only review. Paper
+   research mode cannot auto-approve, disable the kill switch, change a
+   side/size after risk, or raise notionals.
+
+`PAPER_RESEARCH_MODE=false` restores the strict two-voter candle ensemble
+(no baseline voter). Use that when you want paper to fail-closed the same
+way live/shadow do.
+
+### When consensus is expected vs fail-closed
+
+| Situation | Expected outcome |
+|---|---|
+| Healthy Kraken 1h history, `TRADING_MODE=paper`, `PAPER_RESEARCH_MODE=true` (default), intel keys blank, book has a measurable MA tilt or a single regime-valid signal | Consensus **can** form. If the paper pretrade floors also clear (positive total return, see below), the cycle should reach RiskEngine. Kill switch / limits / a losing lookback may still reject. |
+| Perfectly flat or no-signal book (zero momentum, zero MA gap, no z-score) | `no_strategy_consensus` — fail-closed. Features are not directional. |
+| Split vote (equal buy and sell counts) | `no_strategy_consensus` — fail-closed. |
+| `PAPER_RESEARCH_MODE=false`, or `TRADING_MODE` is shadow/live | Two agreeing candle strategies required. Typical mild Kraken drift **will** fail-closed; that is intentional. |
+| Optional intel configured on paper | Baseline voter is still present; `min_agreeing` stays 2. |
+| Missing/stale/short candle history | `missing_candle_history` / `insufficient_candle_history` / `stale_candle_history` — not a consensus question. |
+
+`traderstack-check-config` reports whether paper research mode is `active`,
+`off`, or `ignored` (flag set but `TRADING_MODE` is not paper), and the
+same for paper reference resilience and paper pretrade thresholds.
+
+## Paper pre-trade thresholds on Spot OHLC
+
+The live/shadow floors (`PRETRADE_MIN_EXCESS_RETURN=0.0`,
+`PRETRADE_MIN_SHARPE=0.0`, `PRETRADE_MIN_TRADES=3`) are a **promotion
+bar**: beat costless buy-and-hold, print a non-negative Sharpe, and show
+enough completed trades. They are not a bug.
+
+On ~400-bar Kraken 1h Spot (~16.7 days) a candle-only MA voter
+(`paper_research_baseline_v1`) is structurally behind that bar:
+
+- An always-long BUY on an uptrend pays entry/exit fees that buy-and-hold
+  does not, so `excess_return` is slightly negative even when the strategy
+  made money. `PRETRADE_MIN_EXCESS_RETURN=0.0` is then unreachable.
+- Typical Spot chop produces a handful of MA flips. Fees plus whipsaw push
+  excess vs buy-and-hold below 0. Independently, the shared backtester
+  records period returns only when the position is rebalanced, so a
+  one-trade hold prints a large negative Sharpe even when the strategy
+  made money. That pair — `backtest_excess_return_below_minimum` +
+  `backtest_sharpe_below_minimum` — is what the WSL paper retest showed
+  after PR #45 unblocked consensus: Risk never saw a proposal
+  (`risk_decision=None`). This is a threshold / metric-wiring mismatch,
+  not a reason to disable the gate.
+- A clean uptrend that stays in one position has **one** completed
+  round-trip, so `PRETRADE_MIN_TRADES=3` would reject the healthiest book.
+
+`TRADING_MODE=paper` therefore applies documented paper floors
+(`build_pretrade_gate` reads `Settings.effective_pretrade_*`). The gate
+stays on. Live/shadow keep the strict `PRETRADE_MIN_*` even if the paper
+env vars are set.
+
+| Paper setting | Default | What it still requires |
+|---|---|---|
+| `PAPER_PRETRADE_MIN_TOTAL_RETURN` | `0.0` | The strategy made money on the lookback (positive evidence). A losing MA book still fail-closes (`backtest_total_return_below_minimum`). |
+| `PAPER_PRETRADE_MIN_EXCESS_RETURN` | `-0.05` | Room for fee drag / short-window noise vs costless buy-and-hold. Not a free pass for a large underperformance. |
+| `PAPER_PRETRADE_MIN_SHARPE` | `-10.0` | The shared backtester records period returns only on a rebalance, so a one-trade MA hold prints a large negative Sharpe (~-5 on a clean 400-bar 1h uptrend) even when `total_return` is +28%. This floor is set so that artifact does not block a profitable lookback. Tighten toward `0` to rehearse the live bar. |
+| `PAPER_PRETRADE_MIN_TRADES` | `1` | At least one completed round-trip. Flat/no-trade books still fail. |
+| `PAPER_PRETRADE_MIN_WALKFORWARD_EXCESS_RETURN` | `-0.05` | Out-of-sample excess uses the same paper room. `PRETRADE_REQUIRE_WALKFORWARD` stays on. |
+| `PRETRADE_MAX_DRAWDOWN_PCT` | `0.15` (shared) | Unchanged on paper. |
+
+Do **not** set `PRETRADE_BACKTEST_ENABLED=false` to "see if it trades".
+That removes the gate; these floors exist so paper can reach Risk without
+doing that. Tighten the paper floors toward the live values when you want
+a promotion rehearsal.
+
+## Paper reference-price resilience
+
+Independent reference prices are CoinGecko and CoinMarketCap (already
+wired, including CMC's unauthenticated public path). Kraken is
+deliberately **not** accepted as an independent reference
+(`market.validation` drops `MarketSource.KRAKEN`) — a same-venue
+secondary pair would not catch a wrong venue tick.
+
+CoinGecko Demo / public free tiers 429 under multi-asset paper polling
+(WSL retest: ~14/22 cycles `no_independent_reference_price` from HTTP
+429). Live/shadow stay fail-closed: no last-good, short cache.
+
+On `TRADING_MODE=paper` only:
+
+1. `PAPER_REFERENCE_CACHE_SECONDS` (default 120) replaces
+   `REFERENCE_PRICE_CACHE_SECONDS` (20) for the reference-provider
+   registries. Cached payloads keep their original `observed_at`.
+2. `PAPER_REFERENCE_LAST_GOOD_SECONDS` (default 300) stores the last
+   successful payload. A later 429, timeout, open breaker, or quota
+   refusal serves that last-good mid instead of an empty list. After the
+   window expires with no new success, the cycle fail-closes again
+   (`no_independent_reference_price`).
+3. CoinGecko retries **one** HTTP 429 honouring `Retry-After`, capped at
+   2 seconds, in **every** trading mode. That is good-client behaviour so
+   we do not hammer the vendor; it does not authorise a trade.
+
+A last-good mid that has moved relative to the venue tick still trips
+`reference_price_divergence` (`MAX_REFERENCE_DIVERGENCE_BPS`). Last-good
+never changes RiskEngine limits, side, size, or the kill switch.
+
+Cold start (no successful fetch yet) still fail-closes — there is nothing
+to reuse. Set `PAPER_REFERENCE_LAST_GOOD_SECONDS=0` to restore
+fail-closed-on-any-error on paper (acceptance soaks do this so fault
+injection still observes `no_independent_reference_price`).
+
+`traderstack-check-config` reports paper reference resilience as `active`
+or `ignored`.
 
 **Deterministic risk engine** (`RiskEngine.evaluate`, checked in this order,
 tier by tier per `docs/RISK-PRINCIPLES.md`; always active, cannot be bypassed
@@ -581,11 +749,14 @@ CryptoPanic, Perplexity, altFINS) — is wrapped in a per-provider
 - **Quota** (`*_CALLS_PER_MINUTE`/`*_CALLS_PER_DAY`, per provider in
   `.env.example`; `None`/blank = unlimited) — a soft budget enforced
   client-side so the app self-limits before the vendor does.
-- **Caching** (`REFERENCE_PRICE_CACHE_SECONDS` for reference prices;
-  `INTELLIGENCE_CACHE_SECONDS` for intelligence providers, at the
-  orchestrator level) — reduces call volume; keep both well under
-  `MAX_MARKET_DATA_AGE_SECONDS` so a cached price is never stale enough to be
-  the effective cause of a `stale_primary_tick`-adjacent problem.
+- **Caching** (`REFERENCE_PRICE_CACHE_SECONDS` for reference prices on
+  live/shadow; `PAPER_REFERENCE_CACHE_SECONDS` plus
+  `PAPER_REFERENCE_LAST_GOOD_SECONDS` on paper — see "Paper
+  reference-price resilience"; `INTELLIGENCE_CACHE_SECONDS` for
+  intelligence providers, at the orchestrator level) — reduces call
+  volume. The short live/shadow TTL stays well under
+  `MAX_MARKET_DATA_AGE_SECONDS`. Paper last-good is a failure fallback,
+  not a freshness refresh: it keeps the original `observed_at`.
 
 Inspect current state via `health()` on each `ProviderRegistry` (surfaced
 through structured logs and the `traderstack_provider_*` Prometheus metrics —
