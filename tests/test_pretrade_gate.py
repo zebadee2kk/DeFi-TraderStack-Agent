@@ -205,6 +205,16 @@ def test_gate_requires_walkforward_when_configured() -> None:
     assert relaxed.evaluate(candles, Side.BUY, now=end_time(candles)).passed
 
 
+def test_required_candle_interval_rejects_before_scoring() -> None:
+    candles = uptrend()
+    gate = lenient_gate(required_candle_interval="1d")
+    check = gate.evaluate(candles, Side.BUY, now=end_time(candles))
+    assert not check.passed
+    assert check.reasons == ["candle_interval_mismatch"]
+    assert check.metrics is None
+    assert check.walkforward is None
+
+
 def test_gate_uses_shared_backtester_costs() -> None:
     candles = uptrend()
     free = lenient_gate(backtester=BaselineBacktester(fee_bps=0.0, slippage_bps=0.0))

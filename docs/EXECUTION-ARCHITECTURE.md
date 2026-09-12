@@ -177,7 +177,9 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
         i.   fetch venue tick (primary market data)
         ii.  fetch reference prices (CoinGecko/CoinMarketCap, concurrent, isolated failures;
              paper may reuse last-good on 429 / open breaker — live/shadow do not)
-        iii. fetch candle history (if the pre-trade gate is enabled)
+        iii. fetch candle history (if the pre-trade gate is enabled;
+             interval is Settings.effective_pretrade_candle_interval —
+             `1d` / Kraken 1440 when PAPER_PROMOTE_EMA_9_21 is active on paper)
         iv.  best-effort candle persistence (--persistent-events; failure never fails the cycle)
         v.   fetch external intelligence (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS,
              concurrent, isolated failures, cached)

@@ -8,9 +8,17 @@ import pytest
 
 from traderstack.candles import Candle
 from traderstack.cli import build_pretrade_gate
-from traderstack.config import Settings
+from traderstack.config import (
+    EMA_9_21_PAPER_CANDLE_INTERVAL,
+    EMA_9_21_PAPER_KRAKEN_INTERVAL_MINUTES,
+    EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS,
+    Settings,
+)
 from traderstack.indicators import average_directional_index
-from traderstack.models import Side
+from traderstack.market.kraken_candles import INTERVAL_MINUTES
+from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
+from traderstack.models import PortfolioSnapshot, Side
+from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.research.miles_candidates import (
     EMA_9_21_STRATEGY_ID,
     EmaCrossoverStrategy,
@@ -25,7 +33,8 @@ from traderstack.research.miles_search import (
     run_miles_search,
     split_holdout,
 )
-from traderstack.risk import derive_policy_version
+from traderstack.risk import RiskEngine, derive_policy_version
+from traderstack.runtime import PaperRuntime
 from traderstack.strategies import Regime
 
 
@@ -358,3 +367,163 @@ def test_build_pretrade_gate_ignores_ema_9_21_flag_outside_paper() -> None:
     gate = build_pretrade_gate(live)
     assert gate.backtester.ensemble.extra_voters == ()
     assert gate.backtester.ensemble.suppress_defaults is False
+    assert gate.required_candle_interval is None
+
+
+def test_promote_ema_forces_daily_interval_even_when_pretrade_is_hourly() -> None:
+    hourly = settings(
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+        pretrade_max_candle_age_seconds=7_200.0,
+    )
+    assert hourly.effective_pretrade_candle_interval == EMA_9_21_PAPER_CANDLE_INTERVAL
+    assert hourly.effective_pretrade_candle_interval == "1d"
+    assert hourly.effective_pretrade_max_candle_age_seconds == EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS
+    assert INTERVAL_MINUTES[hourly.effective_pretrade_candle_interval] == (
+        EMA_9_21_PAPER_KRAKEN_INTERVAL_MINUTES
+    )
+    off = settings(pretrade_candle_interval="1h")
+    assert off.effective_pretrade_candle_interval == "1h"
+    assert off.effective_pretrade_max_candle_age_seconds == pytest.approx(7_200.0)
+    live = settings(
+        trading_mode="live",
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+    )
+    assert live.effective_pretrade_candle_interval == "1h"
+    shadow = settings(
+        trading_mode="shadow",
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="4h",
+    )
+    assert shadow.effective_pretrade_candle_interval == "4h"
+
+
+def test_promote_pretrade_gate_cannot_silently_score_hourly_bars() -> None:
+    cfg = settings(
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+        pretrade_min_candles=20,
+        pretrade_backtest_enabled=True,
+    )
+    gate = build_pretrade_gate(cfg)
+    assert gate.required_candle_interval == "1d"
+    assert gate.max_candle_age_seconds == EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS
+    hourly = make_candles([100.0 + index for index in range(80)], interval="1h")
+    check = gate.evaluate(hourly, now=hourly[-1].opened_at + timedelta(minutes=30))
+    assert not check.passed
+    assert check.reasons == ["candle_interval_mismatch"]
+    assert check.metrics is None
+    assert check.walkforward is None
+
+
+def test_promote_pretrade_gate_accepts_daily_series_for_the_same_voter() -> None:
+    cfg = settings(
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+        pretrade_min_candles=20,
+        pretrade_backtest_enabled=True,
+    )
+    gate = build_pretrade_gate(cfg)
+    daily = make_candles([100.0 + index for index in range(80)], interval="1d")
+    check = gate.evaluate(daily, now=daily[-1].opened_at + timedelta(hours=12))
+    assert "candle_interval_mismatch" not in check.reasons
+    assert check.candles_evaluated == 80
+
+
+def test_promote_gate_off_does_not_require_daily_interval() -> None:
+    cfg = settings(paper_promote_ema_9_21=False, pretrade_candle_interval="1h")
+    gate = build_pretrade_gate(cfg)
+    assert gate.required_candle_interval is None
+    assert gate.max_candle_age_seconds == pytest.approx(cfg.pretrade_max_candle_age_seconds)
+
+
+class _PromoteVenue:
+    async def stream_ticks(self, symbols: tuple[str, ...]):
+        yield MarketTick(
+            source=MarketSource.KRAKEN,
+            symbol=symbols[0],
+            bid=99.95,
+            ask=100.05,
+            last=100.0,
+        )
+
+
+class _PromoteReference:
+    async def get_prices(self, assets: tuple[str, ...]) -> list[ReferencePrice]:
+        return [ReferencePrice(source=MarketSource.COINGECKO, asset=assets[0], price=100.0)]
+
+
+class _RecordingCandles:
+    def __init__(self, candles: tuple[Candle, ...]) -> None:
+        self.candles = candles
+        self.resolutions: list[str] = []
+
+    async def fetch(self, symbol: str, resolution: str = "1h", *, count: int = 400):
+        self.resolutions.append(resolution)
+        return self.candles
+
+
+@pytest.mark.asyncio
+async def test_promote_runtime_fetches_daily_even_if_pretrade_interval_is_hourly() -> None:
+    cfg = settings(
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+        pretrade_min_candles=20,
+        kill_switch=False,
+    )
+    daily = make_candles(
+        [100.0 + index for index in range(80)],
+        interval="1d",
+        start=datetime.now(UTC) - timedelta(days=80),
+    )
+    provider = _RecordingCandles(daily)
+    runtime = PaperRuntime(
+        venue=_PromoteVenue(),
+        references=(_PromoteReference(),),
+        pipeline=VerticalSlicePipeline(
+            risk_engine=RiskEngine(cfg),
+            pretrade_gate=build_pretrade_gate(cfg),
+        ),
+        candles=provider,
+        candle_interval=cfg.effective_pretrade_candle_interval,
+        candle_count=cfg.pretrade_candle_count,
+    )
+    result = await runtime.run_once(
+        "BTC/USD",
+        PortfolioSnapshot(nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000),
+    )
+    assert provider.resolutions == ["1d"]
+    assert result.candles_loaded == 80
+    assert result.pipeline.pretrade_check is not None
+    assert "candle_interval_mismatch" not in result.pipeline.pretrade_check.reasons
+
+
+@pytest.mark.asyncio
+async def test_promote_runtime_rejects_hourly_history_if_provider_returns_1h() -> None:
+    cfg = settings(
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+        pretrade_min_candles=20,
+        kill_switch=False,
+    )
+    hourly = make_candles([100.0 + index for index in range(80)], interval="1h")
+    provider = _RecordingCandles(hourly)
+    runtime = PaperRuntime(
+        venue=_PromoteVenue(),
+        references=(_PromoteReference(),),
+        pipeline=VerticalSlicePipeline(
+            risk_engine=RiskEngine(cfg),
+            pretrade_gate=build_pretrade_gate(cfg),
+        ),
+        candles=provider,
+        candle_interval=cfg.effective_pretrade_candle_interval,
+    )
+    result = await runtime.run_once(
+        "BTC/USD",
+        PortfolioSnapshot(nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000),
+    )
+    assert provider.resolutions == ["1d"]
+    assert result.pipeline.rejection_reasons == ["candle_interval_mismatch"]
+    assert result.pipeline.proposal is None
+    assert result.pipeline.paper_order is None

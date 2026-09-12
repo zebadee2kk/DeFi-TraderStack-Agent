@@ -25,7 +25,7 @@ without activating the venv.
 | `traderstack-trace` | Read-only: prints the full ordered runtime-event trace for one `decision_id` from Postgres (requires `--persistent-events` to have been running). `traderstack-trace <decision_id> [--limit N]`. |
 | `traderstack-research` | Runs the research harness end-to-end over a candle history (JSON file via `--candles`, or live from Kraken via `--symbol`): backtest with realistic costs, walk-forward, required baselines, and a performance attribution report. `--json` for machine-readable output. |
 | `traderstack-strategy-search` | Offline catalog search: scores the expanded pre-registered catalog (MA / momentum / mean-reversion + vol-regime filters; optional funding / OI / liquidation series) on Kraken charts-spot (~180d 1h) or public Spot OHLC (720-bar cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Promotion additionally requires WF **total** return > 0. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
-| `traderstack-miles-search` | Miles-inspired catalog search: EMA 9/21 and 12/26 (optional ADX gate) × optional GARCH vol-targeted sizing, scored on Kraken Spot OHLC (daily and 1h, 720-bar public cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout. Writes `docs/artifacts/strategy-search/miles-inspired-report.md`. Never flips `PAPER_GARCH_SIZE` or `PAPER_PROMOTE_EMA_9_21`. |
+| `traderstack-miles-search` | Miles-inspired catalog search: EMA 9/21 and 12/26 (optional ADX gate) × optional GARCH vol-targeted sizing, scored on Kraken Spot OHLC (daily and 1h, 720-bar public cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout. Writes `docs/artifacts/strategy-search/miles-inspired-report.md`. Never flips `PAPER_GARCH_SIZE` or `PAPER_PROMOTE_EMA_9_21`. Daily promotion is not a 1h-runtime claim — the paper promote flag forces `1d` / 1440m. |
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
@@ -179,9 +179,14 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
   GARCH-sized candidate cleared that bar on the committed daily window.
 - Leave `PAPER_PROMOTE_EMA_9_21=false` unless you intend to register
   **only** the pre-registered daily winner `ema_9_21` as the paper
-  pre-trade voter. Paper-only; ignored on live/shadow. Does not enable
-  live. Does not flip `PAPER_GARCH_SIZE`. Takes precedence over
-  `PAPER_PROMOTE_SEARCHED_STRATEGIES`.
+  pre-trade voter **and** run that voter on daily candles. Paper-only;
+  ignored on live/shadow. Does not enable live. Does not flip
+  `PAPER_GARCH_SIZE`. Takes precedence over
+  `PAPER_PROMOTE_SEARCHED_STRATEGIES`. When the flag is on, paper
+  ingestion / feature bars / the pre-trade backtest are forced to
+  `1d` (Kraken interval 1440) even if `PRETRADE_CANDLE_INTERVAL=1h`.
+  **Do not claim the daily Miles edge on a 1h runtime** — that is a
+  different strategy, and the same EMA lost money on the 1h window.
 - Prefer a secret manager or your platform's env-injection mechanism over a
   plaintext `.env` file for anything beyond a local paper-trading sandbox
   (`docs/INFRASTRUCTURE.md`, "Secrets"). If you must use a file, restrict its
@@ -420,10 +425,28 @@ bar (vol-targeted size increased turnover and fee drag). When on,
 
 `PAPER_PROMOTE_EMA_9_21` (default **false**) is the documented paper-only
 switch to register **only** `ema_9_21` as a pre-trade voter (`extra_voters`,
-`suppress_defaults=True`, `min_agreeing=1`). It does not enable live
-trading. Live/shadow ignore the flag. It does not flip `PAPER_GARCH_SIZE`.
-If both this and `PAPER_PROMOTE_SEARCHED_STRATEGIES` are true, `ema_9_21`
-wins and `traderstack-check-config` warns.
+`suppress_defaults=True`, `min_agreeing=1`) **on the same daily series the
+search promoted**. It does not enable live trading. Live/shadow ignore the
+flag. It does not flip `PAPER_GARCH_SIZE`. If both this and
+`PAPER_PROMOTE_SEARCHED_STRATEGIES` are true, `ema_9_21` wins and
+`traderstack-check-config` warns.
+
+**Alignment (do not skip this).** `ema_9_21` cleared the daily Kraken Spot
+OHLC window in #93. Paper historically fetched `PRETRADE_CANDLE_INTERVAL=1h`.
+Running that daily-validated EMA on 1h bars is **not** the same strategy
+(and 1h lost money). When the flag is on (`TRADING_MODE=paper` only):
+
+- `PaperRuntime.candle_interval` is forced to `1d` (Kraken `interval=1440`)
+- feature bars and the pre-trade backtest use that same daily series
+- the gate rejects `candle_interval_mismatch` if any bar is not `1d`
+- `PRETRADE_MAX_CANDLE_AGE_SECONDS` is raised to at least 48h so last
+  committed daily bars are not stale after mid-morning UTC
+- `PRETRADE_CANDLE_INTERVAL=1h` is ignored for ingestion and the gate
+- `EXIT_TIME_STOP_BARS` is still a *bar* count: 24 × 1d = 24 days. Set
+  `EXIT_TIME_STOP_BARS=1` if you want a one-day time-stop on daily bars.
+
+`traderstack-check-config` prints the forced interval. Do not narrate a
+daily holdout as evidence for an hourly paper run.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
 the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:
@@ -851,7 +874,7 @@ they are why a reducing SELL was proposed. They appear on
 | `exit_stop_loss` | `EXIT_STOP_LOSS_PCT` (paper default 2%) | Mark ≤ average cost × (1 − pct). |
 | `exit_trailing_stop` | `EXIT_TRAILING_STOP_PCT` (default 0, off) | Mark ≤ high-water × (1 − pct) after the position has made progress. |
 | `exit_take_profit` | `EXIT_TAKE_PROFIT_PCT` (paper default 4%) | Mark ≥ average cost × (1 + pct). |
-| `exit_time_stop` | `EXIT_TIME_STOP_BARS` (paper default 24) | Held at least N bars (`PRETRADE_CANDLE_INTERVAL`; 24 × 1h = 1 day). Legacy checkpoints without `opened_at` do not fire this rule. |
+| `exit_time_stop` | `EXIT_TIME_STOP_BARS` (paper default 24) | Held at least N bars (`effective_pretrade_candle_interval`; 24 × 1h = 1 day). With `PAPER_PROMOTE_EMA_9_21` the paper path uses daily bars, so 24 × 1d = 24 days unless you set the bar count down. Legacy checkpoints without `opened_at` do not fire this rule. |
 | `exit_thesis_invalidated` | `EXIT_ON_THESIS_INVALIDATION` (default false) | Ensemble confirms the opposite side of the held long, or regime is `trending_down` after a momentum entry. |
 
 Set a rule to `0` / `false` to disable it. `traderstack-check-config` prints

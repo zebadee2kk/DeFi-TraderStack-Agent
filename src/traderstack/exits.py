@@ -62,7 +62,7 @@ def reducing_side(exposure_usd: float) -> Side | None:
 
 
 def bar_seconds_for(settings: Settings, interval: str | None = None) -> float:
-    label = interval or settings.pretrade_candle_interval
+    label = interval or settings.effective_pretrade_candle_interval
     return interval_to_seconds(label)
 
 

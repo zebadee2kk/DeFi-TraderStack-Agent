@@ -163,3 +163,28 @@ async def test_load_persisted_state_halts_on_an_empty_checkpoint(tmp_path: Path)
 
     assert error is not None
     assert "portfolio checkpoint" in error
+
+
+def test_build_service_promote_ema_forces_daily_candle_interval(tmp_path: Path) -> None:
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+        pretrade_max_candle_age_seconds=7_200.0,
+        pretrade_backtest_enabled=True,
+        kill_switch=False,
+    )
+    service = build_service(
+        settings,
+        submit=False,
+        cycle_seconds=1.0,
+        portfolio=InMemoryPortfolioBook(starting_nav_usd=10_000),
+        on_result=_noop,
+        checkpoint_store=JsonPortfolioCheckpointStore(tmp_path / "portfolio.json"),
+    )
+    assert settings.pretrade_candle_interval == "1h"
+    assert service.runtime.candle_interval == "1d"
+    gate = service.runtime.pipeline.pretrade_gate
+    assert gate is not None
+    assert gate.required_candle_interval == "1d"
+    assert gate.max_candle_age_seconds == pytest.approx(172_800.0)

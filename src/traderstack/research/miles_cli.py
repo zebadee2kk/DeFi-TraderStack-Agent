@@ -3,7 +3,9 @@
 Loads Kraken Spot OHLC (JSON files or the public REST downloader), scores the
 pre-registered EMA 9/21 and 12/26 catalog with optional ADX gates and GARCH
 vol-targeted sizing, and writes JSON + Markdown. It never enables
-``PAPER_GARCH_SIZE`` or ``PAPER_PROMOTE_EMA_9_21``.
+``PAPER_GARCH_SIZE`` or ``PAPER_PROMOTE_EMA_9_21``. When that promote
+flag is on at paper runtime, candles are forced to daily (``1d`` / 1440);
+this CLI does not change that.
 """
 
 from __future__ import annotations

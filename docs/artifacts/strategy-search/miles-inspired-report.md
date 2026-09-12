@@ -182,5 +182,5 @@ K catalog members are scored on the same research window. We do not treat every 
 
 Promoted on the 1d window (research only): ema_9_21.
 **`PAPER_GARCH_SIZE` stays false.** No GARCH-sized candidate cleared the bar (vol-targeted size increased turnover and fee drag).
-Register `ema_9_21` as a paper voter only via `PAPER_PROMOTE_EMA_9_21=true` (default false; `TRADING_MODE=paper` only). This report does not flip that flag and does not enable live.
+Register `ema_9_21` as a paper voter only via `PAPER_PROMOTE_EMA_9_21=true` (default false; `TRADING_MODE=paper` only). That flag also forces paper candles to daily (`1d` / 1440m) — do not claim this daily edge on a 1h runtime. This report does not flip that flag and does not enable live.
 1h robustness (not in the promotion average) is in the per-series tables. A large daily holdout on one asset is one tail, not a live-capital claim. Do not copy YouTube return figures.

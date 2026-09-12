@@ -3,6 +3,18 @@ from typing import Literal
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# --- miles-inspired ema_9_21 paper voter ---
+# Search promoted ema_9_21 on daily Kraken Spot OHLC only (interval 1440).
+# 1h is a different strategy and lost money on that window. When the
+# paper-only promote flag is active, ingestion / features / the pre-trade
+# backtest MUST use this interval — PRETRADE_CANDLE_INTERVAL=1h is ignored.
+EMA_9_21_PAPER_CANDLE_INTERVAL = "1d"
+EMA_9_21_PAPER_KRAKEN_INTERVAL_MINUTES = 1440
+# Last committed daily bar can be almost two UTC days old (Kraken drops
+# the in-progress day). The 1h default PRETRADE_MAX_CANDLE_AGE_SECONDS=7200
+# would reject every promote-path cycle.
+EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS = 172_800.0
+
 
 class Settings(BaseSettings):
     # `frozen=True` is part of the Zone C guarantee in docs/RISK-PRINCIPLES.md:
@@ -217,6 +229,8 @@ class Settings(BaseSettings):
     # Pre-trade self-check: every proposal is re-validated by backtesting the
     # strategy ensemble over recent candle history before it reaches the risk
     # engine. Missing, stale or insufficient history rejects the trade.
+    # Paper runtime ingestion uses effective_pretrade_candle_interval (this
+    # field, unless PAPER_PROMOTE_EMA_9_21 forces daily — see that property).
     pretrade_backtest_enabled: bool = True
     pretrade_candle_interval: str = "1h"
     pretrade_candle_count: int = Field(default=400, gt=0)
@@ -299,11 +313,14 @@ class Settings(BaseSettings):
     # --- miles-inspired ema_9_21 paper voter ---
     # Documented paper-only switch. When TRADING_MODE=paper *and* this is
     # true, the pre-trade ensemble registers only the pre-registered daily
-    # winner `ema_9_21` (EMA 9/21, no ADX, no GARCH). Default false. Not
-    # RiskEngine policy -- flipping it must not move policy_version. Takes
-    # precedence over PAPER_PROMOTE_SEARCHED_STRATEGIES. Ignored on
-    # live/shadow. Does not enable live trading. Does not flip
-    # PAPER_GARCH_SIZE.
+    # winner `ema_9_21` (EMA 9/21, no ADX, no GARCH) and paper candle
+    # ingestion / feature bars / the pre-trade backtest are forced to daily
+    # (`1d` / Kraken interval 1440). Default false. Not RiskEngine policy --
+    # flipping it must not move policy_version. Takes precedence over
+    # PAPER_PROMOTE_SEARCHED_STRATEGIES. Ignored on live/shadow. Does not
+    # enable live trading. Does not flip PAPER_GARCH_SIZE. PRETRADE_CANDLE_INTERVAL
+    # =1h is overridden — a daily-validated EMA on 1h bars is a different
+    # strategy (and lost money on the #93 1h window).
     paper_promote_ema_9_21: bool = False
 
     # --- execution hardening (Epic 8) ---
@@ -484,6 +501,34 @@ class Settings(BaseSettings):
     def paper_promote_ema_9_21_active(self) -> bool:
         """Register ema_9_21 as the sole paper voter only on the paper path."""
         return self.trading_mode == "paper" and self.paper_promote_ema_9_21
+
+    @property
+    def effective_pretrade_candle_interval(self) -> str:
+        """Candle interval used for paper ingestion, features, and the gate.
+
+        When the paper-only ema_9_21 promote path is active this is always
+        daily (`1d` / 1440m). A daily-validated EMA on 1h bars is not the
+        same strategy. Live/shadow (and the flag-off paper path) keep
+        PRETRADE_CANDLE_INTERVAL.
+        """
+        if self.paper_promote_ema_9_21_active:
+            return EMA_9_21_PAPER_CANDLE_INTERVAL
+        return self.pretrade_candle_interval
+
+    @property
+    def effective_pretrade_max_candle_age_seconds(self) -> float:
+        """Stale-history window for the pre-trade gate.
+
+        Last committed daily bar can be almost two UTC days old (Kraken
+        drops the in-progress day). The 1h default (7200s) would reject
+        every promote-path cycle after mid-morning UTC.
+        """
+        if self.paper_promote_ema_9_21_active:
+            return max(
+                self.pretrade_max_candle_age_seconds,
+                EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS,
+            )
+        return self.pretrade_max_candle_age_seconds
 
     # --- paper-only Polymarket weather research ---
     @property

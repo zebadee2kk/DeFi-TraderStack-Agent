@@ -55,6 +55,10 @@ class PreTradeBacktestGate:
     # Paper-only positive-evidence floor (total return, not excess vs B&H).
     # None (live/shadow default) skips the check so PRETRADE_MIN_* stay the bar.
     min_total_return: float | None = None
+    # --- miles-inspired ema_9_21 paper voter ---
+    # When set (promote path), reject before scoring if any bar is not this
+    # interval. A daily-validated EMA on 1h history is a different strategy.
+    required_candle_interval: str | None = None
 
     def evaluate(
         self,
@@ -65,6 +69,19 @@ class PreTradeBacktestGate:
     ) -> PreTradeCheck:
         reasons: list[str] = []
         count = len(candles)
+
+        # --- miles-inspired ema_9_21 paper voter ---
+        # Interval mismatch is checked before any scoring so the promote path
+        # cannot silently evaluate a daily-validated voter on 1h bars.
+        if self.required_candle_interval is not None and (
+            count == 0
+            or any(candle.interval != self.required_candle_interval for candle in candles)
+        ):
+            return PreTradeCheck(
+                passed=False,
+                reasons=["candle_interval_mismatch"],
+                candles_evaluated=count,
+            )
 
         if count < self.min_candles:
             return PreTradeCheck(

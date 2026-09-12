@@ -165,11 +165,15 @@ def test_promote_ema_9_21_default_is_off_and_safe() -> None:
 
 
 def test_promote_ema_9_21_on_paper_is_safe() -> None:
-    report = build_report(settings(paper_promote_ema_9_21=True))
+    report = build_report(settings(paper_promote_ema_9_21=True, pretrade_candle_interval="1h"))
     assert report.safe
     item = next(i for i in report.items if i.label == "Promote ema_9_21 as paper voter")
     assert item.value == "active"
     assert "ema_9_21" in item.detail
+    assert "forced 1d" in item.detail
+    candles = next(i for i in report.items if i.label == "Paper candle interval (promote ema_9_21)")
+    assert candles.value == "1d"
+    assert "PRETRADE_CANDLE_INTERVAL=1h is not used" in candles.detail
 
 
 def test_promote_ema_9_21_ignored_outside_paper() -> None:

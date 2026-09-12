@@ -93,6 +93,8 @@ money for the same EMA.
 
 **Leave `PAPER_GARCH_SIZE=false`.** This is not a live-capital claim and not
 a YouTube PnL copy. Register `ema_9_21` as a paper voter only via the
-documented `PAPER_PROMOTE_EMA_9_21` flag (default false).
+documented `PAPER_PROMOTE_EMA_9_21` flag (default false). That flag forces
+paper candles to daily (`1d` / 1440m). Do not claim this daily edge on a
+1h runtime.
 
 See `miles-inspired-report.md`.

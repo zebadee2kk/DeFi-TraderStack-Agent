@@ -7,7 +7,10 @@ chooses a side.
 
 These are standalone voters. Search scores them under fees. The only
 runtime registration path is ``PAPER_PROMOTE_EMA_9_21`` (paper only),
-which wires ``ema_9_21`` and nothing else.
+which wires ``ema_9_21`` and nothing else, and forces paper candle
+ingestion / feature bars / the pre-trade backtest to daily (``1d`` /
+Kraken interval 1440). A daily-validated EMA on 1h bars is a different
+strategy.
 """
 
 from __future__ import annotations
