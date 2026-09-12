@@ -98,3 +98,11 @@ At minimum:
   scores that residual family. It is paper-executable on Kraken
   spot. Empty dual-print is success. Not an EMA reprint. See
   `docs/artifacts/strategy-search/btc-eth-relative-value.md`.
+- Does a fee-aware long-top-1 / short-bottom-1 among {BTC, ETH, SOL}
+  by frozen trailing N-day return (21/63/126; optional vol-scaled)
+  clear the same #96+A+B+C dual-print bar (Kraken 720 + Binance.US
+  older-720)? `traderstack-xs-momentum` scores that family. BTC and
+  ETH signs remain the gate; SOL is reported, not required.
+  Paper-executable on Kraken spot. Empty dual-print is success.
+  Not an EMA or residual reprint. See
+  `docs/artifacts/strategy-search/cross-sectional-momentum.md`.

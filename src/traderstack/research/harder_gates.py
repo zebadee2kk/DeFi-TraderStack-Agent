@@ -362,6 +362,9 @@ class CandidateHarderResult(BaseModel):
     baseline_eth_wf: float | None = None
     baseline_btc_holdout: float | None = None
     baseline_eth_holdout: float | None = None
+    # --- cross-sectional momentum (SOL reported; not a gate) ---
+    baseline_sol_wf: float | None = None
+    baseline_sol_holdout: float | None = None
     holdout_magnitude_ratio: float | None = None
     gate_a_pass: bool = False
     gate_a_reasons: list[str] = Field(default_factory=list)
@@ -561,8 +564,11 @@ def run_harder_gates(
         candidate = by_id[base.candidate_id]
         btc = series_for_asset(base.per_series, "BTC/USD", interval=promotion_interval)
         eth = series_for_asset(base.per_series, "ETH/USD", interval=promotion_interval)
+        # --- cross-sectional momentum (SOL reported; not a gate) ---
+        sol = series_for_asset(base.per_series, "SOL/USD", interval=promotion_interval)
         btc_ho = _holdout_excess(btc)
         eth_ho = _holdout_excess(eth)
+        sol_ho = _holdout_excess(sol)
         gate_a, ratio, reasons_a = evaluate_magnitude_gate(btc_ho, eth_ho)
         gate_b, windows, reasons_b = score_multiwindow(
             candidate,
@@ -615,6 +621,9 @@ def run_harder_gates(
                 baseline_eth_wf=(eth.walkforward_mean_total_return if eth is not None else None),
                 baseline_btc_holdout=btc_ho,
                 baseline_eth_holdout=eth_ho,
+                # --- cross-sectional momentum (SOL reported; not a gate) ---
+                baseline_sol_wf=(sol.walkforward_mean_total_return if sol is not None else None),
+                baseline_sol_holdout=sol_ho,
                 holdout_magnitude_ratio=ratio,
                 gate_a_pass=gate_a,
                 gate_a_reasons=reasons_a,

@@ -91,6 +91,12 @@ traderstack-funding-carry = "traderstack.research.funding_carry_cli:main"
 # spot executable. Never flips PAPER_PROMOTE_*. Empty dual-print is
 # success. Not an EMA reprint and not a carry/basis family.
 traderstack-relative-value = "traderstack.research.relative_value_cli:main"
+# BTC+ETH+SOL cross-sectional momentum (long top-1 / optional short
+# bottom-1) at frozen N in {21, 63, 126}. Same #96+A+B+C dual-print
+# bar as #104 (Kraken 720 + Binance.US older-720). SOL reported, not
+# a gate. Paper spot executable. Never flips PAPER_PROMOTE_*. Empty
+# dual-print is success. Not an EMA or residual reprint.
+traderstack-xs-momentum = "traderstack.research.cross_sectional_momentum_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
