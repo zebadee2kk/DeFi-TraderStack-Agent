@@ -12,10 +12,13 @@ Honesty rules (also written into every report):
   return (among those with enough trades). We do not then promote #2 if #1
   fails holdout. A Bonferroni note is recorded (K looks, one selection);
   we do not invent per-fold p-values we do not have.
-* Promotion requires walk-forward mean excess return **strictly greater
-  than** the configured floor (default 0) after fees, plus min trades, and
-  (by default) the same sign on holdout. No candidate is rewritten to look
-  like a winner.
+* Promotion requires walk-forward mean **total** return strictly greater
+  than the configured floor (default 0) after fees — beating buy-and-hold
+  while still losing money is not an edge — plus min trades, and (by
+  default) holdout mean excess return strictly above the floor. Ranking
+  stays pre-registered top-1 by walk-forward mean *excess*; a top-1 that
+  fails the total-return gate does **not** unlock #2. No candidate is
+  rewritten to look like a winner.
 """
 
 from __future__ import annotations
@@ -93,15 +96,20 @@ class StrategySearchReport(BaseModel):
     holdout_fraction: float
     min_trades: int
     min_wf_excess_return: float
+    min_wf_total_return: float = 0.0
+    require_wf_total_return: bool = True
     require_holdout_confirmation: bool
     selection_rule: str
     multiple_testing: dict[str, Any]
     skipped_feature_families: list[dict[str, str]]
+    history_notes: list[dict[str, str]] = Field(default_factory=list)
+    edge_notes: list[dict[str, str]] = Field(default_factory=list)
     candidates: list[CandidateSearchResult]
     selected_candidate_id: str | None = None
     promoted_candidate_ids: list[str] = Field(default_factory=list)
     any_promoted: bool = False
     honesty: str
+    allowed_promote_id: str | None = None
 
 
 def research_fee_bps(pretrade_fee_bps: float, paper_fee_bps: float) -> float:
@@ -161,6 +169,8 @@ def _gate_reasons(
     min_trades: int,
     min_wf_excess_return: float,
     require_holdout_confirmation: bool,
+    require_wf_total_return: bool = True,
+    min_wf_total_return: float = 0.0,
 ) -> list[str]:
     reasons: list[str] = []
     if row.skipped_reason:
@@ -170,6 +180,11 @@ def _gate_reasons(
         reasons.append("walkforward_missing")
     elif row.mean_wf_excess_return <= min_wf_excess_return:
         reasons.append("walkforward_excess_return_not_positive")
+    if require_wf_total_return:
+        if row.mean_wf_total_return is None:
+            reasons.append("walkforward_total_return_missing")
+        elif row.mean_wf_total_return <= min_wf_total_return:
+            reasons.append("walkforward_total_return_not_positive")
     if row.total_wf_trades < min_trades:
         reasons.append("walkforward_trade_count_below_minimum")
     if require_holdout_confirmation:
@@ -278,20 +293,41 @@ def run_search(
     holdout_fraction: float = DEFAULT_HOLDOUT_FRACTION,
     min_trades: int = DEFAULT_MIN_TRADES,
     min_wf_excess_return: float = DEFAULT_MIN_WF_EXCESS,
+    min_wf_total_return: float = 0.0,
+    require_wf_total_return: bool = True,
     require_holdout_confirmation: bool = True,
     candidates: tuple[SearchCandidate, ...] | None = None,
     liquidation: tuple[tuple[datetime, float], ...] | None = None,
+    liquidation_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
+    funding: tuple[tuple[datetime, float], ...] | None = None,
+    funding_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
+    open_interest: tuple[tuple[datetime, float], ...] | None = None,
+    open_interest_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
     cross_venue: tuple[tuple[datetime, float], ...] | None = None,
+    history_notes: list[dict[str, str]] | None = None,
+    edge_notes: list[dict[str, str]] | None = None,
     now: datetime | None = None,
 ) -> StrategySearchReport:
     if not histories:
         raise ValueError("no candle histories provided")
 
     catalog = list(candidates if candidates is not None else default_price_candidates())
-    catalog.extend(feature_candidates(liquidation=liquidation, cross_venue=cross_venue))
+    catalog.extend(
+        feature_candidates(
+            liquidation=liquidation,
+            liquidation_by_symbol=liquidation_by_symbol,
+            funding=funding,
+            funding_by_symbol=funding_by_symbol,
+            open_interest=open_interest,
+            open_interest_by_symbol=open_interest_by_symbol,
+            cross_venue=cross_venue,
+        )
+    )
 
     present_features = {
-        *(["liquidation_z"] if liquidation is not None else []),
+        *(["liquidation_z"] if liquidation is not None or liquidation_by_symbol else []),
+        *(["funding_z"] if funding is not None or funding_by_symbol else []),
+        *(["open_interest_z"] if open_interest is not None or open_interest_by_symbol else []),
         *(["cross_venue_divergence_z"] if cross_venue is not None else []),
     }
     skipped_feature_families = [
@@ -305,6 +341,8 @@ def run_search(
         }
         for family, candidate_id, label in FEATURE_CATALOG
         if (family == "liquidation_z" and "liquidation_z" not in present_features)
+        or (family == "funding_z" and "funding_z" not in present_features)
+        or (family == "open_interest_z" and "open_interest_z" not in present_features)
         or (family == "cross_venue" and "cross_venue_divergence_z" not in present_features)
     ]
 
@@ -362,6 +400,8 @@ def run_search(
             min_trades=min_trades,
             min_wf_excess_return=min_wf_excess_return,
             require_holdout_confirmation=require_holdout_confirmation,
+            require_wf_total_return=require_wf_total_return,
+            min_wf_total_return=min_wf_total_return,
         )
         result.eligible = not result.ineligible_reasons
         rows.append(result)
@@ -389,7 +429,8 @@ def run_search(
         f"Selection is pre-registered top-1 of {k} catalog members "
         "(Bonferroni analogue: one promotion decision, not K independent promotions). "
         "A selected candidate is promoted only if fee-aware walk-forward mean "
-        "excess return is strictly above the floor and min trades are met"
+        "total return is strictly above the floor (and excess is recorded), "
+        "min trades are met"
         + (
             ", and holdout mean excess return is also strictly above the floor."
             if require_holdout_confirmation
@@ -416,6 +457,8 @@ def run_search(
         holdout_fraction=holdout_fraction,
         min_trades=min_trades,
         min_wf_excess_return=min_wf_excess_return,
+        min_wf_total_return=min_wf_total_return,
+        require_wf_total_return=require_wf_total_return,
         require_holdout_confirmation=require_holdout_confirmation,
         selection_rule=SELECTION_RULE,
         multiple_testing={
@@ -433,6 +476,8 @@ def run_search(
             ),
         },
         skipped_feature_families=skipped_feature_families,
+        history_notes=list(history_notes or []),
+        edge_notes=list(edge_notes or []),
         candidates=rows,
         selected_candidate_id=selected.candidate_id if selected is not None else None,
         promoted_candidate_ids=(
@@ -440,6 +485,9 @@ def run_search(
         ),
         any_promoted=bool(selected is not None and selected.promoted),
         honesty=honesty,
+        allowed_promote_id=(
+            selected.candidate_id if selected is not None and selected.promoted else None
+        ),
     )
 
 
@@ -459,7 +507,9 @@ def render_search_markdown(report: StrategySearchReport) -> str:
             f"holdout_fraction={report.holdout_fraction:.0%}"
         ),
         (
-            f"Promotion floor: WF excess > {report.min_wf_excess_return:g}, "
+            f"Promotion floor: WF total > {report.min_wf_total_return:g} "
+            f"(require_wf_total={report.require_wf_total_return}), "
+            f"WF excess > {report.min_wf_excess_return:g}, "
             f"min trades={report.min_trades}, "
             f"holdout confirmation={'on' if report.require_holdout_confirmation else 'off'}"
         ),
@@ -504,6 +554,25 @@ def render_search_markdown(report: StrategySearchReport) -> str:
             f"{'yes' if row.eligible else 'no'} | {'yes' if row.promoted else 'no'} |"
         )
 
+    if report.history_notes:
+        lines.extend(["", "## History sources", ""])
+        for item in report.history_notes:
+            detail = item.get("note") or item.get("reason") or ""
+            lines.append(
+                f"- `{item.get('symbol', '?')}` {item.get('interval', '')} "
+                f"source={item.get('source', '?')} n={item.get('candles', item.get('candle_count', '?'))}"
+                + (f" — {detail}" if detail else "")
+            )
+
+    if report.edge_notes:
+        lines.extend(["", "## Edge series", ""])
+        for item in report.edge_notes:
+            lines.append(
+                f"- `{item.get('name', '?')}` {item.get('status', '?')}: "
+                f"{item.get('reason', '')} (source={item.get('source', '')}, "
+                f"points={item.get('points', '0')})"
+            )
+
     if report.skipped_feature_families:
         lines.extend(["", "## Skipped optional families", ""])
         for item in report.skipped_feature_families:
@@ -513,7 +582,9 @@ def render_search_markdown(report: StrategySearchReport) -> str:
     if report.any_promoted:
         lines.append(
             "Promoted (may register as paper voters if "
-            f"`PAPER_PROMOTE_SEARCHED_STRATEGIES=true`): {', '.join(report.promoted_candidate_ids)}"
+            f"`PAPER_PROMOTE_SEARCHED_STRATEGIES=true` **and** "
+            f"`PAPER_PROMOTE_SEARCHED_STRATEGY_ID` is exactly "
+            f"`{report.allowed_promote_id}`): {', '.join(report.promoted_candidate_ids)}"
         )
     else:
         lines.append(

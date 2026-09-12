@@ -121,6 +121,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="ISO8601 timestamp or unix seconds to page forward from; default: Kraken's most recent window",
     )
     parser.add_argument("--max-candles", type=int, default=5_000)
+    parser.add_argument(
+        "--source",
+        choices=("ohlc", "charts"),
+        default="ohlc",
+        help="ohlc = public Spot OHLC (720-bar cap). charts = futures charts spot PI_* (~180d 1h).",
+    )
     parser.add_argument("--out", type=Path, required=True, help="output JSON file path")
     return parser
 
@@ -140,9 +146,14 @@ def _parse_since(value: str | None) -> int | None:
 
 async def _run_cli(args: argparse.Namespace) -> None:
     since = _parse_since(args.since)
-    candles = await download_candles(
-        args.symbol, args.resolution, since=since, max_candles=args.max_candles
-    )
+    if args.source == "charts":
+        from traderstack.research.kraken_charts import download_kraken_charts
+
+        candles = await download_kraken_charts(args.symbol, args.resolution, count=args.max_candles)
+    else:
+        candles = await download_candles(
+            args.symbol, args.resolution, since=since, max_candles=args.max_candles
+        )
     payload = [json.loads(candle.model_dump_json()) for candle in candles]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=2))
