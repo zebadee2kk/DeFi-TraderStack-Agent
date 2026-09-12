@@ -692,7 +692,9 @@ def render_miles_markdown(report: MilesSearchReport) -> str:
             lines.append(
                 "Register `ema_9_21` as a paper voter only via "
                 "`PAPER_PROMOTE_EMA_9_21=true` (default false; `TRADING_MODE=paper` "
-                "only). This report does not flip that flag and does not enable live."
+                "only). That flag also forces paper candles to daily (`1d` / 1440m) "
+                "— do not claim this daily edge on a 1h runtime. This report does "
+                "not flip that flag and does not enable live."
             )
         lines.append(
             "1h robustness (not in the promotion average) is in the per-series "

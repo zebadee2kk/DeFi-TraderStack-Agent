@@ -186,7 +186,8 @@ overlay under fees. Promotion requires walk-forward **total return > 0**
 and holdout **excess return > 0**. Default `PAPER_GARCH_SIZE=false` stays
 off (no GARCH-sized candidate cleared). `PAPER_PROMOTE_EMA_9_21=false` is
 the documented paper-only switch to register `ema_9_21` as the sole paper
-voter; it does not enable live.
+voter on daily candles (`1d` / Kraken 1440); it does not enable live and
+must not be read as a 1h-runtime edge.
 
 ## Roadmap
 

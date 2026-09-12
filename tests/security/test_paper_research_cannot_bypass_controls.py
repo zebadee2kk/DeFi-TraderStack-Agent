@@ -179,3 +179,36 @@ def test_build_pretrade_gate_does_not_rewrite_risk_policy_fields() -> None:
     assert engine.settings.max_position_pct == 0.10
     assert gate.backtester.starting_equity == 10_000
     assert isinstance(gate.backtester.ensemble.paper_research_strategy, PaperResearchStrategy)
+
+
+def test_promote_ema_cannot_silently_score_hourly_bars() -> None:
+    settings = _settings(
+        trading_mode="paper",
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+        kill_switch=True,
+        max_position_pct=0.10,
+    )
+    assert settings.effective_pretrade_candle_interval == "1d"
+    gate = build_pretrade_gate(settings)
+    assert gate.required_candle_interval == "1d"
+    hourly = mild_uptrend()
+    check = gate.evaluate(hourly, now=datetime.now(UTC))
+    assert not check.passed
+    assert check.reasons == ["candle_interval_mismatch"]
+    assert check.metrics is None
+    engine = RiskEngine(settings)
+    assert engine.settings.kill_switch is True
+    assert engine.settings.max_position_pct == 0.10
+
+
+def test_promote_ema_is_ignored_on_live_and_does_not_force_daily() -> None:
+    settings = _settings(
+        trading_mode="live",
+        paper_promote_ema_9_21=True,
+        pretrade_candle_interval="1h",
+    )
+    assert settings.paper_promote_ema_9_21_active is False
+    assert settings.effective_pretrade_candle_interval == "1h"
+    gate = build_pretrade_gate(settings)
+    assert gate.required_candle_interval is None

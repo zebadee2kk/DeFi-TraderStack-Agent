@@ -210,7 +210,9 @@ def build_report(settings: Settings) -> ConfigReport:
                 else "no"
             ),
             (
-                "sole voter ema_9_21; defaults suppressed"
+                "sole voter ema_9_21; defaults suppressed; "
+                f"candles forced {settings.effective_pretrade_candle_interval} "
+                "(Kraken 1440); do not claim daily edge on 1h bars"
                 if settings.paper_promote_ema_9_21_active
                 else (
                     f"PAPER_PROMOTE_EMA_9_21 is paper-only; TRADING_MODE={settings.trading_mode}"
@@ -220,6 +222,24 @@ def build_report(settings: Settings) -> ConfigReport:
             ),
         )
     )
+    if settings.paper_promote_ema_9_21_active:
+        configured = settings.pretrade_candle_interval
+        items.append(
+            CheckItem(
+                "Paper candle interval (promote ema_9_21)",
+                settings.effective_pretrade_candle_interval,
+                (
+                    f"forced {settings.effective_pretrade_candle_interval} / 1440m "
+                    f"for the daily-validated voter; PRETRADE_CANDLE_INTERVAL="
+                    f"{configured} is not used for ingestion or the pre-trade gate"
+                    if configured != settings.effective_pretrade_candle_interval
+                    else (
+                        "aligned with the daily Miles winner; paper ingestion, "
+                        "feature bars, and the pre-trade backtest share this series"
+                    )
+                ),
+            )
+        )
     if settings.paper_promote_ema_9_21 and settings.trading_mode != "paper":
         warnings.append(
             "PAPER_PROMOTE_EMA_9_21=true is ignored unless TRADING_MODE=paper. "

@@ -190,7 +190,8 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
 
     # Promotion off (default): keep the paper-research ensemble from main.
     # PAPER_PROMOTE_EMA_9_21 (paper only) registers the documented Miles
-    # daily winner and takes precedence over the #89 search-report gate.
+    # daily winner, forces daily candles (1d / 1440), and takes precedence
+    # over the #89 search-report gate.
     # PAPER_PROMOTE_SEARCHED_STRATEGIES: only gate-clearing searched voters;
     # never a silent fallback to the unpromoted MA baseline.
     if settings.paper_promote_ema_9_21_active:
@@ -210,7 +211,13 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
     return PreTradeBacktestGate(
         backtester=backtester,
         min_candles=settings.pretrade_min_candles,
-        max_candle_age_seconds=settings.pretrade_max_candle_age_seconds,
+        max_candle_age_seconds=settings.effective_pretrade_max_candle_age_seconds,
+        # --- miles-inspired ema_9_21 paper voter ---
+        required_candle_interval=(
+            settings.effective_pretrade_candle_interval
+            if settings.paper_promote_ema_9_21_active
+            else None
+        ),
         min_excess_return=settings.effective_pretrade_min_excess_return,
         max_drawdown=settings.pretrade_max_drawdown_pct,
         min_sharpe=settings.effective_pretrade_min_sharpe,
@@ -716,7 +723,10 @@ def build_service(
         pipeline=pipeline,
         executor=executor,
         candles=candle_provider,
-        candle_interval=settings.pretrade_candle_interval,
+        # --- miles-inspired ema_9_21 paper voter ---
+        # Promote path forces 1d (Kraken 1440). PRETRADE_CANDLE_INTERVAL=1h
+        # must not silently feed the daily-validated EMA.
+        candle_interval=settings.effective_pretrade_candle_interval,
         candle_count=settings.pretrade_candle_count,
         intelligence=intelligence,
         # --- meta-agent (Epic 6) ---
