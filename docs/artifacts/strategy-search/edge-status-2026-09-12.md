@@ -35,6 +35,7 @@ a missing series is a skip, not a zero-filled z.
 | #106 | Polymarket weather PIT (`traderstack-polymarket-weather-eval`) | no PIT tape | No public point-in-time CLOB mid + official station high. Using settlement as the decision mid is look-ahead. Committed run was `--empty-live`: 0 eligible rows. |
 | #107 | Crucix fail-closed | safety only | Opted-in Crucix outage now rejects new risk with `intelligence_provider_unavailable`. Not a trading edge. Crucix stays off by default. |
 | #108 | 4h non-EMA dual-print (`traderstack-intraday-dual-print`) | **0** passers | Kraken 4h combined-passers: **0** (every Kraken mean HO negative). Binance.US 4h combined-passers: **0**. OKX funding/OI were aligned and still did not produce a dual-print passer. |
+| #116 | BTC−ETH residual (`traderstack-relative-value`) | **0** dual-print passers | Fade/follow daily `r_BTC − r_ETH` at frozen \|z\| ≥ 1.0 / 1.5 / 2.0. Kraken combined-passers: **0** (every RV mean HO negative, −5.49% to −15.64%). Binance.US combined-passers: **0**. Paper path ready; still cannot promote. |
 
 Earlier daily work (#93–#103) documented `ema_9_21` / `ema_9_21_adx15`
 as paper-only pins. Those flags remain default **false**. The #102
@@ -485,7 +486,8 @@ paper path. After this session: dual-print **true**, hard gates
 Do not rerun #104 / #105 / #106 / #108 / the 4h #110 funding print
 on the same windows. Do not rerun the #111 daily print with only
 OKX as the second tape. Do not re-score carry on HL `premium` or
-BitMEX `.XBTUSDPI`.
+BitMEX `.XBTUSDPI`. Do not rerun this BTC−ETH residual catalog on
+the same Kraken 720 + Binance.US older-720 windows.
 
 1. **Second independent funding tape.** Done in #110: Hyperliquid +
    OKX dual-print. Spot-signal passers: **0**. Modeled
@@ -505,17 +507,78 @@ BitMEX `.XBTUSDPI`.
 5. **Paper-executable path (still `TRADING_MODE=paper`).** Done in
    #114. `PAPER_CARRY_PATH_READY` is true for the soak. Promote
    still blocked on historical PIT basis. Do not add a Settings pin.
-6. **Next non-carry experiment: BTC−ETH relative-value residual.**
-   Fade/follow daily BTC minus ETH excess return at frozen |z|
-   thresholds (not EMA crossovers). Same #96+A+B+C dual-print bar
-   (Kraken 720 + Binance.US older-720). Paper-executable on Kraken
-   spot. Empty dual-print is success. See `pit-basis-archives.md`.
+6. **BTC−ETH relative-value residual.** Done this session. See
+   below and `btc-eth-relative-value.md`. Dual-print passers: **0**.
 7. **Not** another daily-EMA catalog expansion on the same Kraken 720
    + Binance.US older-720 pair.
-8. **Not** liquidation-conditioned promotion until a public historical
+8. **Not** a residual lookback / |z| retune on the same windows
+   after seeing this print.
+9. **Not** liquidation-conditioned promotion until a public historical
    liquidation aggregate exists (it does not today).
-9. **Not** Polymarket weather promotion until a PIT CLOB mid +
-   official station-high tape exists (it does not today).
+10. **Not** Polymarket weather promotion until a PIT CLOB mid +
+    official station-high tape exists (it does not today).
+
+## This session — BTC−ETH relative-value residual
+
+Highest-leverage next experiment from #115: a **non-carry** family
+that is paper-executable on Kraken spot. Catalog and dual-print bar
+were frozen **before** the live pull. Not an EMA reprint. PIT basis
+was not invented.
+
+### Catalog (frozen before the live pull)
+
+| family | ids |
+| --- | --- |
+| Residual fade | `rv_fade_1_0`, `rv_fade_1_5`, `rv_fade_2_0` |
+| Residual follow | `rv_follow_1_0`, `rv_follow_1_5`, `rv_follow_2_0` |
+| Control (cannot promote) | `ma_cross_10_30` |
+
+Treatment: daily close-to-close excess `r_BTC − r_ETH`, z-scored
+over lookback 20. ETH sees the negated residual. Unpaired days
+skipped, not zero-filled. Decision at bar t; fill at t+1 open.
+
+### Print policy (frozen)
+
+| print | rule | can promote? |
+| --- | --- | --- |
+| Kraken primary 720 | #96+A+B+C; rank dual-print passers by Kraken mean HO | only if also Binance combined-PASS |
+| Binance.US older-720 | same #102 slice; must combined-PASS | no (gate only) |
+
+### Live print (2026-09-12)
+
+`traderstack-relative-value --live` (Kraken public Spot 1d BTC+ETH,
+720-bar cap 2024-09-22 → 2026-09-11 UTC; Binance.US older-720
+2022-10-03 → 2024-09-21, no overlap; costs 10+5 bps). Residual
+719 aligned pair-days on each venue.
+
+| series | status |
+| --- | --- |
+| Kraken BTC/USD + ETH/USD daily | **ok** — 720 / 720 |
+| Binance.US BTCUSDT + ETHUSDT older-720 | **ok** — 720 / 720 (`api.binance.com` HTTP 451; labeled Binance.US) |
+| Print kind | **dual_print** (two non-overlapping venue/era tapes) |
+| Hard gates (#96+A+B+C) | **available** on both prints |
+| Paper path | **true** (Kraken spot BTC/ETH) |
+| Dual-print passers | **0** |
+| Kraken combined-passers (ex-control) | **0** |
+| Binance.US combined-passers (ex-control) | **0** |
+
+Informational (every name **ineligible**; Kraken mean HO all
+negative; rank is Kraken walk-forward among RV names):
+
+| rank | id | Kraken mean HO | Binance mean HO |
+| ---: | --- | ---: | ---: |
+| 1 | `rv_follow_2_0` | −7.11% | +6.12% |
+| 2 | `rv_follow_1_5` | −5.49% | +2.81% |
+| 3 | `rv_fade_2_0` | −6.50% | −1.02% |
+| 7 | `ma_cross_10_30` (control) | −2.08% | −37.11% |
+
+A positive Binance holdout with a losing Kraken holdout is not an
+edge. A Kraken-only combined-passer did not appear either.
+
+**Cannot promote. No new `PAPER_PROMOTE_*` pin.** Empty dual-print
+set is success.
+
+See `btc-eth-relative-value.md`.
 
 ## Pins
 
@@ -526,6 +589,7 @@ BitMEX `.XBTUSDPI`.
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
 | new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; paper soak path ready; PIT basis archives UNAVAILABLE — do not add a pin |
+| new relative-value pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; do not add a pin |
 | `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
 
 `TRADING_MODE=paper`. No live.

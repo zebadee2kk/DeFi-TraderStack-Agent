@@ -522,5 +522,17 @@ executable on Kraken spot BTC/ETH. Empty dual-print set is
 success. `PAPER_PROMOTE_*` stays false. No new pin unless a
 committed report names a passer (default false if added).
 
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720). Residual
+  719 pair-days.
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Residual 719 pair-days. Labeled Binance.US.
+- Kraken combined-passers: **0**. Every RV mean HO negative
+  (−5.49% to −15.64%).
+- Binance.US combined-passers: **0**. Informational `rv_follow_2_0`
+  Binance mean HO +6.12% with Kraken mean HO −7.11% — not an edge.
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
 See `btc-eth-relative-value.md`.
 
