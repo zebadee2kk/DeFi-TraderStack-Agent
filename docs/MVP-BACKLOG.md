@@ -94,7 +94,7 @@ and reason string behind each control.
 - [x] decision-to-fill trace view
 
 ## Epic 10 — Paper-Trading Acceptance
-- [ ] 24/7 soak test — **the runner exists, a short CI soak archives a machine-readable report, and the 24-hour window itself has not been run.** `traderstack-soak --preset ci` (also `make soak-ci`, and a `soak-ci` GitHub Actions job) is the CI-friendly path. `traderstack-soak --preset full --cycle-seconds 5 --workdir var/soak` (also `make soak-24h`) is the 86400s window. Every run writes `<workdir>/report.json` with `passed` / `failures[]` / `full_24h_window_executed`. See docs/RUNBOOK.md, "24/7 acceptance soak".
+- [ ] 24/7 soak test — **the runner exists, a short CI soak archives a machine-readable report, and the 24-hour window itself has not been run.** `traderstack-soak --preset ci` (also `make soak-ci`) is the CI-friendly path; it is not a GitHub Actions job. `traderstack-soak --preset full --cycle-seconds 5 --workdir var/soak` (also `make soak-24h`) is the 86400s window. Every run writes `<workdir>/report.json` with `passed` / `failures[]` / `full_24h_window_executed`. See docs/RUNBOOK.md, "24/7 acceptance soak".
 - [x] forced provider outages (`tests/acceptance/test_provider_outages.py`)
 - [x] forced database restart (`tests/acceptance/test_database_restart.py`)
 - [x] stale-data test (`tests/acceptance/test_stale_data.py`)

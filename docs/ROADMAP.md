@@ -175,7 +175,7 @@ state machine (`OrderLifecycleState`, including `SUBMISSION_UNCERTAIN`),
 idempotent submission, reconciliation (order/fill and NAV-drift) and retry/
 timeout handling are all implemented and covered by
 `tests/acceptance/`. The `traderstack-soak` runner exists, a short `--preset ci`
-path is exercised in CI and archives `report.json`, but the 24-hour window
+path (`make soak-ci`) archives `report.json`, but the 24-hour window
 itself has not yet been run and archived — see `docs/MVP-BACKLOG.md` Epic 10
 and `docs/RUNBOOK.md`, "24/7 acceptance soak" (`--preset full` / `make soak-24h`).
 
