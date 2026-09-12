@@ -138,9 +138,9 @@ async def test_fail_closed_news_outage_still_merges_optional_news(
             source_id="cryptopanic:test",
         )
 
-    bundle = await IntelligenceOrchestrator(
-        news=(optional,), fail_closed_news=(broken,)
-    ).gather("ETH")
+    bundle = await IntelligenceOrchestrator(news=(optional,), fail_closed_news=(broken,)).gather(
+        "ETH"
+    )
     assert bundle.provider_unavailable is True
     assert bundle.news is not None
     assert bundle.news.source_id == "cryptopanic:test"
@@ -161,9 +161,9 @@ async def test_optional_news_outage_does_not_mark_fail_closed() -> None:
             source_id="crucix:alerts",
         )
 
-    bundle = await IntelligenceOrchestrator(
-        news=(broken,), fail_closed_news=(crucix,)
-    ).gather("BTC")
+    bundle = await IntelligenceOrchestrator(news=(broken,), fail_closed_news=(crucix,)).gather(
+        "BTC"
+    )
     assert bundle.provider_unavailable is False
     assert bundle.news is not None
     assert bundle.news.source_id == "crucix:alerts"
