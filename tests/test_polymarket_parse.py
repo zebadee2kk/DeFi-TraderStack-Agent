@@ -11,9 +11,9 @@ def _allowlist():
 
 def test_resolve_allowlist_rejects_unknown_slug() -> None:
     try:
-        resolve_allowlist("miami,chicago")
+        resolve_allowlist("miami,anchorage")
     except ValueError as exc:
-        assert "chicago" in str(exc)
+        assert "anchorage" in str(exc)
     else:
         raise AssertionError("expected unknown slug to fail closed")
 
