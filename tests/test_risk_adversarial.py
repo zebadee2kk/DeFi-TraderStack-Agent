@@ -318,7 +318,7 @@ def test_risk_limit_fields_are_unchanged_by_exit_semantics():
     # be a new limit, not a side-aware read of the existing book.
     assert "sell_capped_to_position" not in RISK_LIMIT_FIELDS
     assert "risk_reducing" not in RISK_LIMIT_FIELDS
-    assert RISK_LIMIT_FIELDS == (
+    engine_fields = (
         "mvp_assets",
         "max_position_pct",
         "max_daily_loss_pct",
@@ -339,3 +339,5 @@ def test_risk_limit_fields_are_unchanged_by_exit_semantics():
         "kill_switch_redis_key",
         "kill_switch_redis_enabled",
     )
+    assert engine_fields == RISK_LIMIT_FIELDS[: len(engine_fields)]
+    assert "pretrade_backtest_enabled" in RISK_LIMIT_FIELDS

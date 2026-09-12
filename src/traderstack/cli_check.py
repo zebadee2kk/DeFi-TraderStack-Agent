@@ -165,11 +165,15 @@ def build_report(settings: Settings) -> ConfigReport:
                 f"PAPER_RESEARCH_MODE is paper-only; TRADING_MODE={settings.trading_mode}",
             )
         )
-        warnings.append(
-            "PAPER_RESEARCH_MODE=true is ignored unless TRADING_MODE=paper. "
-            "Live/shadow keep the two-voter candle ensemble (see docs/RUNBOOK.md, "
-            "'Paper research mode and strategy consensus')."
-        )
+        # Shadow ignoring the flag is the intended fail-closed posture (no paper
+        # looseness). Live is a misconfiguration: the operator may think the
+        # paper ensemble applies, so check-config fails closed.
+        if settings.trading_mode == "live":
+            warnings.append(
+                "PAPER_RESEARCH_MODE=true is ignored unless TRADING_MODE=paper. "
+                "Live/shadow keep the two-voter candle ensemble (see docs/RUNBOOK.md, "
+                "'Paper research mode and strategy consensus')."
+            )
     else:
         items.append(
             CheckItem(

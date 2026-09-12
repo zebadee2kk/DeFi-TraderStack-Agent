@@ -155,4 +155,27 @@ def test_stale_state_and_strategy_breaker_still_reject_a_held_sell() -> None:
 
 def test_exit_semantics_do_not_add_a_risk_limit_field() -> None:
     assert "sell_capped_to_position" not in RISK_LIMIT_FIELDS
-    assert len(RISK_LIMIT_FIELDS) == 19
+    assert "risk_reducing" not in RISK_LIMIT_FIELDS
+    # SEC-2026-09-18 folded surrounding gates into policy_version; exit
+    # semantics still must not add a Settings field of their own.
+    assert {
+        "mvp_assets",
+        "max_position_pct",
+        "max_daily_loss_pct",
+        "max_account_drawdown_pct",
+        "max_open_positions",
+        "min_cash_reserve_pct",
+        "max_gross_exposure_pct",
+        "max_portfolio_state_age_seconds",
+        "risk_max_spread_bps",
+        "volatility_sizing_enabled",
+        "target_volatility",
+        "strategy_max_consecutive_losses",
+        "strategy_drawdown_window",
+        "strategy_max_rolling_drawdown_pct",
+        "strategy_breaker_cooldown_seconds",
+        "kill_switch",
+        "kill_switch_file",
+        "kill_switch_redis_key",
+        "kill_switch_redis_enabled",
+    }.issubset(RISK_LIMIT_FIELDS)

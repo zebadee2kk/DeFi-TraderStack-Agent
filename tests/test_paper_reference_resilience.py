@@ -124,7 +124,7 @@ def test_build_service_wires_last_good_on_paper(tmp_path: Path) -> None:
 
 
 def test_build_service_refuses_non_paper_so_last_good_cannot_be_wired() -> None:
-    with pytest.raises(RuntimeError, match="TRADING_MODE=paper"):
+    with pytest.raises(RuntimeError, match="TRADING_MODE=live is rejected"):
         build_service(
             _settings(trading_mode="live"),
             submit=False,
@@ -133,6 +133,20 @@ def test_build_service_refuses_non_paper_so_last_good_cannot_be_wired() -> None:
             on_result=_noop,
             checkpoint_store=JsonPortfolioCheckpointStore(Path("unused.json")),
         )
+
+
+def test_shadow_service_wires_no_last_good_window(tmp_path: Path) -> None:
+    shadow = build_service(
+        _settings(trading_mode="shadow", paper_reference_last_good_seconds=300),
+        submit=False,
+        cycle_seconds=5.0,
+        portfolio=InMemoryPortfolioBook(10_000),
+        on_result=_noop,
+        checkpoint_store=JsonPortfolioCheckpointStore(tmp_path / "shadow.json"),
+    )
+    for reference in shadow.runtime.references:
+        assert isinstance(reference, RegisteredReferencePriceProvider)
+        assert reference.registry.last_good_ttl_seconds == 0.0
 
 
 def test_build_provider_registry_forwards_last_good() -> None:
