@@ -40,10 +40,10 @@ from traderstack.research.volume_breakout import (
     series_has_usable_volume,
     skipped_volume_breakout_families,
     volbrk_position_series,
+    volsurge_position_series,
     volume_breakout_candidates,
     volume_breakout_signals,
     volume_confirmed,
-    volsurge_position_series,
 )
 from traderstack.research.volume_breakout_cli import build_parser, run
 from traderstack.strategies import Regime
@@ -74,6 +74,8 @@ def make_candles(
         previous = prices[index - 1] if index else price
         high = highs[index] if highs is not None else max(previous, price) * 1.002
         low = lows[index] if lows is not None else min(previous, price) * 0.998
+        high = max(high, previous, price)
+        low = min(low, previous, price)
         volume = volumes[index] if volumes is not None else 1_000 + index
         candles.append(
             Candle(
@@ -257,19 +259,15 @@ def test_all_zero_volume_fails_closed() -> None:
     start = datetime(2024, 1, 1, tzinfo=UTC)
     prices = [100.0 + index for index in range(80)]
     histories = {
-        "BTC/USD@1d": make_candles(
-            prices, symbol="BTC/USD", start=start, volumes=[0.0] * 80
-        ),
-        "ETH/USD@1d": make_candles(
-            prices, symbol="ETH/USD", start=start, volumes=[0.0] * 80
-        ),
+        "BTC/USD@1d": make_candles(prices, symbol="BTC/USD", start=start, volumes=[0.0] * 80),
+        "ETH/USD@1d": make_candles(prices, symbol="ETH/USD", start=start, volumes=[0.0] * 80),
     }
     assert series_has_usable_volume(histories["BTC/USD@1d"]) is False
     catalog = volume_breakout_candidates(histories)
     assert [item.candidate_id for item in catalog] == [CONTROL_ID]
     skipped = skipped_volume_breakout_families(histories)
     assert {item["candidate_id"] for item in skipped} == set(VOLUME_BREAKOUT_IDS)
-    assert all("quote volume" in item["reason"] for item in skipped)
+    assert all("quote volume" in item["reason"].lower() for item in skipped)
 
 
 def test_volume_sma_excludes_bar_t() -> None:
@@ -575,7 +573,7 @@ def test_binance_older_slice_is_scored_and_cannot_promote() -> None:
     assert "Do not re-run dead EMA dual-prints" in rendered
     assert "#122" in rendered
     assert "equal-weight" in rendered.lower()
-    assert "not a Donchian" in rendered.lower()
+    assert "not a donchian" in rendered.lower()
 
 
 def test_signals_alias_binance_symbols() -> None:

@@ -476,7 +476,14 @@ def volume_breakout_candidates(
     """Instantiate the frozen catalog. Missing OHLC/volume → that name omitted."""
     out: list[SearchCandidate] = []
     source = histories or {}
-    for candidate_id, kind, channel_n, vol_lookback, vol_mult, long_short in VOLUME_BREAKOUT_CATALOG:
+    for (
+        candidate_id,
+        kind,
+        channel_n,
+        vol_lookback,
+        vol_mult,
+        long_short,
+    ) in VOLUME_BREAKOUT_CATALOG:
         mapping = volume_breakout_signals(
             source,
             kind=kind,
@@ -526,7 +533,14 @@ def skipped_volume_breakout_families(
     histories: dict[str, tuple[Candle, ...]],
 ) -> list[dict[str, str]]:
     skipped: list[dict[str, str]] = []
-    for candidate_id, kind, channel_n, vol_lookback, vol_mult, long_short in VOLUME_BREAKOUT_CATALOG:
+    for (
+        candidate_id,
+        kind,
+        channel_n,
+        vol_lookback,
+        vol_mult,
+        long_short,
+    ) in VOLUME_BREAKOUT_CATALOG:
         mapping = volume_breakout_signals(
             histories,
             kind=kind,
@@ -537,13 +551,10 @@ def skipped_volume_breakout_families(
         )
         if mapping:
             continue
-        need = (
-            f"usable base volume (V={vol_lookback}) and "
-            + (
-                f"at least {max(channel_n, vol_lookback) + 1} OHLC bars"
-                if kind == "breakout"
-                else f"at least {vol_lookback + 1} OHLC bars"
-            )
+        need = f"usable base volume (V={vol_lookback}) and " + (
+            f"at least {max(channel_n, vol_lookback) + 1} OHLC bars"
+            if kind == "breakout"
+            else f"at least {vol_lookback + 1} OHLC bars"
         )
         skipped.append(
             {
