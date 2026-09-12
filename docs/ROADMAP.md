@@ -70,7 +70,12 @@ cannot unlock a second 720.
 `traderstack-dual-print-search` expands the daily catalog and
 pre-registers the dual-print bar (Kraken primary combined **and**
 Binance.US older-720 combined); ranking is among dual-print passers.
-An empty set is success. **Freqtrade
+An empty set is success.
+`traderstack-liq-regime-search` is the post-#104 pivot: a frozen
+catalog conditioned on liquidation / funding / OI / cross-venue
+series when those series exist (skipped, not invented, when public
+REST cannot build a historical liquidation print). Kraken-only is
+labeled single-print and cannot promote. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.

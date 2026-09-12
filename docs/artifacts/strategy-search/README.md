@@ -296,3 +296,31 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `dual-print-search.md`.
 
+## Liquidation / regime-conditioned search (`traderstack-liq-regime-search`)
+
+#104's dual-print EMA catalog had zero passers. This command pivots to
+features already scaffolded in-repo: liquidation-z, funding-z, OI-z,
+cross-venue, and candle-only vol-regime wrappers.
+
+| print | when | can promote? |
+| --- | --- | --- |
+| single-print | no usable historical liquidation series on BTC+ETH | **no** |
+| dual-print | historical liq on BTC+ETH **and** a second venue print | still no Settings flip |
+
+Public USDT-M liquidation REST is typically unusable and is skipped,
+not zero-filled. Live paper `!forceOrder@arr` / bookTicker snapshots
+are not a historical series. Crucix → `adverse_event` was already
+wired as a news veto and is unchanged.
+
+`PAPER_PROMOTE_*` stays false. Empty search is success.
+
+On the 2026-09-12 live Kraken daily 720 (2024-09-22 → 2026-09-11):
+
+- Historical liquidation: **unavailable** (Binance HTTP 451 / no public
+  REST; OKX liquidation-orders span hours). Single-print.
+- OKX funding (~90d) and 1h OI (~60d) scored; no #89-eligible row.
+- Informational WF-excess top-1 `ma_always_on_10_30_vol` is not
+  eligible (WF excess −4.40%). No promotee.
+
+See `liq-regime-search.md`.
+

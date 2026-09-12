@@ -70,6 +70,11 @@ traderstack-second-print = "traderstack.research.second_print_cli:main"
 # Kraken mean HO among dual-print passers. Never flips PAPER_PROMOTE_*.
 # An empty dual-print set is success.
 traderstack-dual-print-search = "traderstack.research.dual_print_search_cli:main"
+# Liquidation / regime-conditioned search after the empty #104 dual-print
+# EMA catalog. Dual-print only if a historical liquidation series exists;
+# otherwise Kraken-only single-print and cannot promote. Never flips
+# PAPER_PROMOTE_*. Empty search is success. No live.
+traderstack-liq-regime-search = "traderstack.research.liq_regime_search_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
