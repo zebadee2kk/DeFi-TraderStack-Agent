@@ -223,7 +223,11 @@ On the 2026-09-12 reprint (same 720-bar Kraken daily window as #99):
   BTC +17.93% and ETH +28.77% stay under.
 - Gate B 2/3 (W2 ETH WF −16.88%).
 
-Leave `PAPER_PROMOTE_EMA_9_21_ADX15=false`.
+Leave `PAPER_PROMOTE_EMA_9_21_ADX15=false`. When an operator does
+flip a daily paper pin, `PAPER_PROMOTE_UNIVERSE` (default
+`BTC/USD,ETH/USD`) keeps SOL off that cycle list
+(`promote_universe_excluded`) so the 0.30 ceiling is not applied to
+a name outside the envelope. Universe alignment, not a claim of edge.
 
 See `ema-9-21-adx15-honesty.md`.
 

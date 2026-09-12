@@ -615,7 +615,17 @@ def build_service(
             for pool in swap_feed.pools
             if pool.symbol.split("/", 1)[0].upper() in settings.assets
         )
+        # --- paper daily promote universe (#100 honesty) ---
+        if settings.paper_daily_promote_active:
+            allowed = set(settings.effective_promote_universe_symbols)
+            symbols = tuple(symbol for symbol in symbols if symbol in allowed)
         if not symbols:
+            if settings.paper_daily_promote_active:
+                raise RuntimeError(
+                    "no ROBINHOOD_CHAIN_POOLS match the paper promote universe "
+                    f"({', '.join(settings.effective_promote_universe_symbols) or 'empty'}); "
+                    "the #100 envelope is Kraken Spot BTC/USD + ETH/USD"
+                )
             raise RuntimeError("no ROBINHOOD_CHAIN_POOLS match MVP_ASSETS")
     elif settings.venue_feed == "kraken_rest":
         # --- venue feed (kraken_rest) ---
@@ -623,7 +633,8 @@ def build_service(
         venue = KrakenRestTickerProvider(
             poll_interval_seconds=settings.kraken_rest_poll_seconds,
         )
-        symbols = tuple(f"{asset}/USD" for asset in settings.assets)
+        # --- paper daily promote universe (#100 honesty) ---
+        symbols = settings.effective_cycle_symbols
     else:
         venue = KrakenTickerProvider(
             max_reconnect_attempts=settings.kraken_max_reconnect_attempts,
@@ -631,7 +642,8 @@ def build_service(
             backoff_max_seconds=settings.kraken_backoff_max_seconds,
             stale_after_seconds=settings.kraken_stale_after_seconds,
         )
-        symbols = tuple(f"{asset}/USD" for asset in settings.assets)
+        # --- paper daily promote universe (#100 honesty) ---
+        symbols = settings.effective_cycle_symbols
         # --- providers (Epic 2): order-book snapshot handling -------------------
         if settings.kraken_book_enabled:
             book = KrakenBookProvider(
@@ -641,6 +653,14 @@ def build_service(
                 backoff_max_seconds=settings.kraken_backoff_max_seconds,
                 stale_after_seconds=settings.kraken_stale_after_seconds,
             )
+
+    # --- paper daily promote universe (#100 honesty) ---
+    if settings.paper_daily_promote_active and not symbols:
+        raise RuntimeError(
+            "PAPER_PROMOTE_UNIVERSE / MVP_ASSETS / {BTC/USD, ETH/USD} intersection "
+            "is empty; the daily promote path refuses to cycle a name outside "
+            "the #100 envelope"
+        )
 
     # --- paper-research edge data plane ---
     # Streaming collectors, same reconnect loop as Kraken. Not ProviderRegistry

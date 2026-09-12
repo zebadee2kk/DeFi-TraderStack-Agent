@@ -213,6 +213,8 @@ def test_promote_ema_is_ignored_on_live_and_does_not_force_daily() -> None:
     assert settings.paper_promote_ema_9_21_active is False
     assert settings.effective_pretrade_candle_interval == "1h"
     assert settings.effective_pretrade_max_drawdown_pct == 0.15
+    assert settings.effective_cycle_symbols == ("BTC/USD", "ETH/USD", "SOL/USD")
+    assert settings.promote_universe_allows("SOL/USD") is True
     gate = build_pretrade_gate(settings)
     assert gate.required_candle_interval is None
     assert gate.max_drawdown == 0.15
@@ -228,6 +230,8 @@ def test_promote_ema_9_21_adx15_cannot_relax_risk_or_run_live() -> None:
     assert live.paper_promote_ema_9_21_adx15_active is False
     assert live.effective_pretrade_candle_interval == "1h"
     assert live.effective_pretrade_max_drawdown_pct == 0.15
+    assert live.effective_cycle_symbols == ("BTC/USD", "ETH/USD", "SOL/USD")
+    assert live.promote_universe_allows("SOL/USD") is True
     paper = _settings(
         trading_mode="paper",
         paper_promote_ema_9_21_adx15=True,

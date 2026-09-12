@@ -184,6 +184,7 @@ def test_build_service_promote_ema_forces_daily_candle_interval(tmp_path: Path) 
     )
     assert settings.pretrade_candle_interval == "1h"
     assert service.runtime.candle_interval == "1d"
+    assert service.symbols == ("BTC/USD", "ETH/USD")
     gate = service.runtime.pipeline.pretrade_gate
     assert gate is not None
     assert gate.required_candle_interval == "1d"

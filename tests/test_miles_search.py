@@ -326,6 +326,8 @@ def test_promote_ema_9_21_default_is_off_and_paper_only() -> None:
     off = settings()
     assert off.paper_promote_ema_9_21 is False
     assert off.paper_promote_ema_9_21_active is False
+    assert off.paper_promote_universe == "BTC/USD,ETH/USD"
+    assert off.effective_cycle_symbols == ("BTC/USD", "ETH/USD", "SOL/USD")
     live = settings(trading_mode="live", paper_promote_ema_9_21=True)
     shadow = settings(trading_mode="shadow", paper_promote_ema_9_21=True)
     paper = settings(trading_mode="paper", paper_promote_ema_9_21=True)

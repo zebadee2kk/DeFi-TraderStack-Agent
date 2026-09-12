@@ -18,6 +18,7 @@ from pydantic import SecretStr
 
 from traderstack.config import (
     EMA_9_21_PAPER_RESEARCH_WF_MAX_DRAWDOWN_PCT,
+    PAPER_PROMOTE_UNIVERSE_SYMBOLS,
     Settings,
 )
 from traderstack.market.crucix import crucix_effective_base_url, crucix_should_register
@@ -328,6 +329,53 @@ def build_report(settings: Settings) -> ConfigReport:
         warnings.append(
             "PAPER_PROMOTE_EMA_9_21_ADX15=true takes precedence over "
             "PAPER_PROMOTE_SEARCHED_STRATEGIES; only ema_9_21_adx15 is registered."
+        )
+
+    # --- paper daily promote universe (#100 honesty) ---
+    envelope = ", ".join(PAPER_PROMOTE_UNIVERSE_SYMBOLS)
+    configured_universe = ", ".join(settings.configured_promote_universe_symbols) or "(empty)"
+    active_universe = ", ".join(settings.effective_promote_universe_symbols) or "(empty)"
+    items.append(
+        CheckItem(
+            "Paper promote universe",
+            (
+                active_universe
+                if settings.paper_daily_promote_active
+                else "ignored"
+                if settings.paper_promote_ema_9_21 or settings.paper_promote_ema_9_21_adx15
+                else configured_universe
+            ),
+            (
+                f"PAPER_PROMOTE_UNIVERSE; #100 honesty pack (BTC+ETH envelope). "
+                f"MVP_ASSETS names outside {envelope} are skipped with "
+                "promote_universe_excluded; not a claim of edge"
+                if settings.paper_daily_promote_active
+                else (
+                    "daily pin is ignored unless TRADING_MODE=paper; "
+                    f"full MVP_ASSETS still cycles ({', '.join(settings.assets) or 'none'})"
+                    if settings.paper_promote_ema_9_21 or settings.paper_promote_ema_9_21_adx15
+                    else (f"used only when a daily paper pin is on; hard envelope {envelope}")
+                )
+            ),
+        )
+    )
+    extras = [
+        symbol
+        for symbol in settings.configured_promote_universe_symbols
+        if symbol not in PAPER_PROMOTE_UNIVERSE_SYMBOLS
+    ]
+    if extras and (settings.paper_promote_ema_9_21 or settings.paper_promote_ema_9_21_adx15):
+        warnings.append(
+            "PAPER_PROMOTE_UNIVERSE includes "
+            f"{', '.join(extras)} which is outside the #100 BTC/USD + ETH/USD "
+            "research envelope and is ignored. SOL's ~50% WF maxDD is why "
+            "that name is not on the promote path."
+        )
+    if settings.paper_daily_promote_active and not settings.effective_promote_universe_symbols:
+        warnings.append(
+            "PAPER_PROMOTE_UNIVERSE / MVP_ASSETS / {BTC/USD, ETH/USD} "
+            "intersection is empty. The daily promote path will refuse to "
+            "start rather than cycle a name outside the #100 envelope."
         )
 
     # --- Pre-trade self-check (backtest gate) -----------------------------------------

@@ -163,6 +163,18 @@ class VerticalSlicePipeline:
         if price_exit is not None:
             return price_exit
 
+        # --- paper daily promote universe (#100 honesty) ---
+        # After exits so a leftover SOL position can still de-risk.
+        # New risk on a name outside the BTC/USD + ETH/USD envelope is
+        # skipped with an explicit reason, not scored under the daily pin.
+        if not self.risk_engine.settings.promote_universe_allows(tick.symbol):
+            return PipelineResult(
+                accepted_market_data=True,
+                rejection_reasons=["promote_universe_excluded"],
+                feature_vector=feature_vector,
+                divergences=divergences,
+            )
+
         if self.require_external_intelligence and (intelligence is None or intelligence.is_empty):
             return PipelineResult(
                 accepted_market_data=True,
