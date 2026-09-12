@@ -407,8 +407,7 @@ def run_daily_robustness(
                 "filter) may be promoted, and only if BTC and ETH both have "
                 "WF total > 0"
                 + (
-                    ", BTC holdout excess > 0, ETH holdout excess > 0, "
-                    "and holdout mean excess > 0"
+                    ", BTC holdout excess > 0, ETH holdout excess > 0, and holdout mean excess > 0"
                     if require_balanced_holdout
                     else " and holdout mean excess > 0"
                 )
@@ -580,9 +579,7 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
             and btc.holdout is not None
             and eth.holdout is not None
         ):
-            balanced_verdict = (
-                "PASS" if report.ema_9_21_clears_balanced_holdout else "FAIL"
-            )
+            balanced_verdict = "PASS" if report.ema_9_21_clears_balanced_holdout else "FAIL"
             legacy_verdict = "PASS" if report.ema_9_21_clears_multi_asset else "FAIL"
             lines.extend(
                 [
@@ -652,7 +649,9 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
         else:
             garch_note = ""
             promoted = next(
-                row for row in report.candidates if row.candidate_id == report.recommended_promote_id
+                row
+                for row in report.candidates
+                if row.candidate_id == report.recommended_promote_id
             )
             if promoted.family == "ema_cross_garch":
                 garch_note = (
@@ -692,9 +691,7 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
                 f"blocked by: {reasons})."
             )
         if not report.ema_9_21_clears_balanced_holdout:
-            lines.append(
-                "`ema_9_21` does **not** clear the balanced-holdout bar on this window."
-            )
+            lines.append("`ema_9_21` does **not** clear the balanced-holdout bar on this window.")
     lines.append("")
     lines.append(
         "Yahoo rows above are a longer non-Kraken A/B. Do not average them "

@@ -132,5 +132,13 @@ two GARCH size overlays. `PAPER_GARCH_SIZE` and
 `PAPER_PROMOTE_EMA_9_21` stay false unless a committed report names a
 paper-only pin and an operator flips the flag.
 
+On the 2026-09-12 Kraken 720-bar daily window (2024-09-22 → 2026-09-11),
+`ema_9_21` **PASS**ed both bars: BTC WF +4.57% / ETH WF +14.61%, BTC
+holdout excess +5.55% / ETH +58.37%. The ETH tail is still large; the
+new bar only requires both **signs** > 0. Slower EMAs, dual-mom, dip,
+and both GARCH overlays failed. Yahoo BTC-USD holdout excess stayed
+negative and did not enter the average. Leave
+`PAPER_PROMOTE_EMA_9_21=false` (documented paper-only pin only).
+
 See `balanced-holdout-report.md`.
 

@@ -15,7 +15,6 @@ report (research-only pin; never live).
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 from datetime import datetime
 
 from traderstack.candles import Candle
@@ -198,9 +197,7 @@ class ReferenceMaRiskOffStrategy:
             return _flat_signal(self.strategy_id, candles, regime, "no candles")
         asof = candles[-1].opened_at
         closes: list[float] = []
-        for opened_at, close in zip(
-            self.reference_opened_at, self.reference_close, strict=True
-        ):
+        for opened_at, close in zip(self.reference_opened_at, self.reference_close, strict=True):
             if opened_at > asof:
                 break
             closes.append(close)
@@ -209,10 +206,7 @@ class ReferenceMaRiskOffStrategy:
                 self.strategy_id,
                 candles,
                 regime,
-                (
-                    f"insufficient {self.reference_symbol} history for "
-                    f"SMA{self.ma_span} risk-off"
-                ),
+                (f"insufficient {self.reference_symbol} history for SMA{self.ma_span} risk-off"),
             )
         ma = sum(closes[-self.ma_span :]) / self.ma_span
         if closes[-1] < ma:

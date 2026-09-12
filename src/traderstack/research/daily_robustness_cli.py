@@ -95,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-json",
         type=Path,
-        default=Path("docs/artifacts/strategy-search/balanced-holdout-report.json"),
+        default=Path("var/ops/balanced_holdout_search.json"),
     )
     parser.add_argument(
         "--output-md",
