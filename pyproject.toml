@@ -51,6 +51,9 @@ traderstack-check-config = "traderstack.cli_check:main"
 # performance-versus-baselines report. Both are offline by construction.
 traderstack-soak = "traderstack.acceptance.soak:main"
 traderstack-paper-report = "traderstack.acceptance.report:main"
+# Paper-only Polymarket weather research. Isolated from traderstack-paper;
+# never signs or submits CLOB orders.
+traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

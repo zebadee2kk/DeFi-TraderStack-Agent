@@ -23,6 +23,10 @@ This matrix defines intended roles rather than marketing claims. Pricing, rate l
 | Direct venue WS/REST | venue-native market data and reconciliation | **Yes** | execution delegated to Hummingbot | **Yes** | authoritative venue state for execution checks; `VENUE_FEED=kraken_rest` is a paper-only public Spot `/0/public/Ticker` poll when WS hangs |
 | Crucix (local HTTP) | operator-hosted alert intel | No | No | Optional | `CrucixIntelProvider`; registered only when `CRUCIX_ENABLED` or URL/key set; high-tier alerts → `adverse_event` (rejection only) |
 | Claude API | reasoning, proposal synthesis, meta-agent | No for safety | No direct execution | **Yes** | failure must degrade to no-new-risk state |
+| Polymarket Gamma API | weather-market discovery (public) | No | No | Research / paper | `traderstack.polymarket.gamma`; GET `/events` only; no auth |
+| Polymarket CLOB (public) | Yes-token midpoint | No | **Forbidden** | Research / paper | `traderstack.polymarket.clob`; GET `/midpoint` only; order/auth paths raise; no signing |
+| Open-Meteo | daily high NWP (°F) | No | No | Research / paper | default forecast for weather paper CLI; wrapped in `ProviderRegistry` |
+| NOAA weather.gov | optional daily high | No | No | Research / paper | User-Agent required; follow-up forecast URL must stay on `api.weather.gov` |
 
 ## Selection policy
 
@@ -87,6 +91,16 @@ Rewritten to target Perplexity's **Agent API** (`POST /v1/agent`) instead of the
 
 New adapter against altFINS' public REST API — base URL `https://altfins.com`, `X-API-KEY` header auth, `POST /api/v2/public/signals-feed/search-requests` (a page of discrete BULLISH/BEARISH signal rows per symbol/time-window). Endpoint paths, auth, and the request/response field names (`symbols`, `direction`, `PaginatedResponse.content`, `SignalDataItem{symbol, signalKey, signalName, direction, timestamp}`) are **verified** against altFINS' own published TypeScript client and type definitions at https://github.com/altfins-com/altfins-api-examples (cloned and read directly) on 2026-09-04, cross-checked against https://altfins.com/crypto-market-and-analytical-data-api/documentation/api/public-api/. altFINS does **not** publish a single normalised numeric "signal score" — mapping a page of signals to `AssetFeatureVector.market.external_signal_score` (net bullish/bearish share of signals fired in a configurable lookback window, clipped to [-1, 1]) is this implementation's **own documented design assumption**, flagged in the adapter's docstring, not a field altFINS returns directly. Wired through `IntelligenceOrchestrator.altfins` / `ExternalIntelligence.altfins` and merged additively via `merge_external_intelligence(..., altfins=...)`.
 
+### Polymarket weather paper adapters (`traderstack.polymarket`)
+
+Opt-in research process (`traderstack-polymarket-weather-paper`), not wired
+through `cli.build_service`. Gamma and CLOB clients are GET-only and wrapped
+in `ProviderRegistry` (timeout, breaker, quota, TTL cache) the same way as
+intelligence providers. CLOB order/auth paths raise before a request is
+built. Forecast fetch is Open-Meteo by default, NOAA optional. Intents land
+on a dedicated JSONL paper ledger; crypto `RiskEngine` limits and the
+Hummingbot submitter are unused.
+
 ### Settings introduced
 
-`ALTFINS_API_KEY` (SecretStr; was already in `.env.example`, now backed by a `Settings` field), plus the `PROVIDER_*`, `*_CALLS_PER_MINUTE`/`_DAY`, `REFERENCE_PRICE_CACHE_SECONDS`, `KRAKEN_*` settings documented in `.env.example`.
+`ALTFINS_API_KEY` (SecretStr; was already in `.env.example`, now backed by a `Settings` field), plus the `PROVIDER_*`, `*_CALLS_PER_MINUTE`/`_DAY`, `REFERENCE_PRICE_CACHE_SECONDS`, `KRAKEN_*` settings documented in `.env.example`. Polymarket weather research adds the namespaced `POLYMARKET_WEATHER_*` / `POLYMARKET_GAMMA_*` / `POLYMARKET_CLOB_*` block (default disabled; no secret fields).

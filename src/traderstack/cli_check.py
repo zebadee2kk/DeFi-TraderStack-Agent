@@ -445,6 +445,42 @@ def build_report(settings: Settings) -> ConfigReport:
     items.append(CheckItem("Max daily loss % of NAV", f"{settings.max_daily_loss_pct:.2%}"))
     items.append(CheckItem("Max account drawdown %", f"{settings.max_account_drawdown_pct:.2%}"))
 
+    # --- polymarket weather research (paper-only, opt-in) ------------------------------
+    items.append(
+        CheckItem(
+            "Polymarket weather research",
+            "enabled" if settings.polymarket_weather_enabled else "disabled (opt-in)",
+            "dedicated CLI; crypto paper loop does not read this",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  paper intents only (no CLOB orders)",
+            "yes",
+            "no private key / signing settings exist",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  MIN_EDGE / cities / forecast",
+            f"{settings.polymarket_weather_min_edge:.2f} / "
+            f"{settings.polymarket_weather_cities or '(none)'} / "
+            f"{settings.polymarket_weather_forecast_provider}",
+        )
+    )
+    items.append(CheckItem("  paper ledger", settings.polymarket_weather_ledger_path))
+    if settings.polymarket_weather_enabled and settings.trading_mode != "paper":
+        warnings.append(
+            "POLYMARKET_WEATHER_ENABLED=true but TRADING_MODE="
+            f"{settings.trading_mode!r}: the weather CLI refuses to run unless "
+            "TRADING_MODE=paper. Live Polymarket CLOB trading is not implemented."
+        )
+    if settings.polymarket_weather_enabled and not settings.polymarket_weather_city_slugs:
+        warnings.append(
+            "POLYMARKET_WEATHER_ENABLED=true but POLYMARKET_WEATHER_CITIES is empty: "
+            "the weather CLI fails closed (no cities to research)."
+        )
+
     return ConfigReport(items=items, warnings=warnings)
 
 

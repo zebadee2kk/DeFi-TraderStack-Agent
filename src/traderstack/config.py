@@ -280,6 +280,36 @@ class Settings(BaseSettings):
     robinhood_chain_max_gas_limit: int = Field(default=500_000, gt=0)
     robinhood_chain_max_gas_price_gwei: float = Field(default=5.0, gt=0)
 
+    # --- polymarket weather research (paper-only, opt-in) ---
+    # Isolated from the crypto paper loop: ContinuousPaperService never reads
+    # these. Enabling them only documents intent for traderstack-check-config
+    # and traderstack-polymarket-weather-paper. There is no private-key field
+    # on purpose — CLOB writes are not implemented.
+    polymarket_weather_enabled: bool = False
+    polymarket_gamma_base_url: str = "https://gamma-api.polymarket.com"
+    polymarket_clob_base_url: str = "https://clob.polymarket.com"
+    # MIN_EDGE: model-implied probability minus CLOB mid, after fee haircut.
+    polymarket_weather_min_edge: float = Field(default=0.08, ge=0, lt=1)
+    # Prefer warm/stable climates as the research default. Unknown slugs fail closed.
+    polymarket_weather_cities: str = "honolulu,san_diego,miami,phoenix,singapore,lisbon"
+    polymarket_weather_forecast_provider: Literal["open_meteo", "noaa"] = "open_meteo"
+    polymarket_weather_open_meteo_base_url: str = "https://api.open-meteo.com"
+    polymarket_weather_noaa_base_url: str = "https://api.weather.gov"
+    polymarket_weather_noaa_user_agent: str = (
+        "DeFi-TraderStack-Agent/0.1 (paper research; no live orders)"
+    )
+    # Assumed 1-day high-temp error (°F). A research prior, not a skill score.
+    polymarket_weather_sigma_f: float = Field(default=2.5, gt=0)
+    polymarket_weather_paper_notional_usd: float = Field(default=10.0, gt=0)
+    polymarket_weather_ledger_path: str = "var/audit/polymarket_weather_paper.jsonl"
+    polymarket_weather_tag_slug: str = "weather"
+    polymarket_weather_max_markets: int = Field(default=40, gt=0)
+    polymarket_weather_cache_seconds: float = Field(default=60.0, ge=0)
+    polymarket_weather_calls_per_minute: int | None = Field(default=20, gt=0)
+    polymarket_weather_min_mid: float = Field(default=0.02, ge=0, lt=1)
+    polymarket_weather_max_mid: float = Field(default=0.98, gt=0, le=1)
+    polymarket_weather_fee_haircut: float = Field(default=0.02, ge=0, lt=1)
+
     @property
     def assets(self) -> tuple[str, ...]:
         return tuple(x.strip().upper() for x in self.mvp_assets.split(",") if x.strip())
@@ -357,6 +387,15 @@ class Settings(BaseSettings):
         if self.trading_mode == "paper":
             return self.paper_pretrade_min_walkforward_excess_return
         return 0.0
+
+    # --- paper-only Polymarket weather research ---
+    @property
+    def polymarket_weather_city_slugs(self) -> tuple[str, ...]:
+        return tuple(
+            x.strip().lower().replace(" ", "_")
+            for x in self.polymarket_weather_cities.split(",")
+            if x.strip()
+        )
 
 
 # Modes the continuous service may actually run. `live` is accepted by Settings

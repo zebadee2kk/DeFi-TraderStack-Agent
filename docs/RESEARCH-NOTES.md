@@ -65,3 +65,7 @@ At minimum:
 - Is a Claude meta-agent better than deterministic signal weighting?
 - Which market-regime classifier is stable enough for production use?
 - What is the minimum realistic paper-trading period before a tiny-capital live pilot?
+- Does an NWP-vs-Polymarket-temperature divergence survive fees, station
+  mismatch and a pre-registered A/B (see `docs/EVALUATION-FRAMEWORK.md`)?
+  Social claims of high win rates are treated as unproven. The paper weather
+  CLI records intents only; it is not evidence of alpha.

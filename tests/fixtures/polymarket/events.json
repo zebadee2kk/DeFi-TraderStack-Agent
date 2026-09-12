@@ -1,0 +1,66 @@
+[
+  {
+    "id": "evt-miami-2026-09-12",
+    "title": "Highest temperature in Miami on September 12?",
+    "closed": false,
+    "markets": [
+      {
+        "id": "mkt-miami-90",
+        "question": "Will the highest temperature in Miami be 90°F or higher on September 12, 2026?",
+        "outcomes": "[\"Yes\", \"No\"]",
+        "clobTokenIds": "[\"token-yes-miami-90\", \"token-no-miami-90\"]",
+        "outcomePrices": "[\"0.55\", \"0.45\"]",
+        "active": true,
+        "closed": false,
+        "endDate": "2026-09-13T10:00:00Z"
+      }
+    ]
+  },
+  {
+    "id": "evt-honolulu-2026-09-12",
+    "title": "Highest temperature in Honolulu on September 12?",
+    "closed": false,
+    "markets": [
+      {
+        "id": "mkt-honolulu-86-87",
+        "question": "Highest temperature in Honolulu on September 12, 2026: 86-87°F",
+        "outcomes": "[\"Yes\", \"No\"]",
+        "clobTokenIds": "[\"token-yes-hnl-86\", \"token-no-hnl-86\"]",
+        "active": true,
+        "closed": false,
+        "endDate": "2026-09-13T10:00:00Z"
+      }
+    ]
+  },
+  {
+    "id": "evt-phoenix-2026-09-12",
+    "title": "Highest temperature in Phoenix on September 12?",
+    "closed": false,
+    "markets": [
+      {
+        "id": "mkt-phoenix-100",
+        "question": "Will the highest temperature in Phoenix be 100°F or higher on September 12, 2026?",
+        "outcomes": "[\"Yes\", \"No\"]",
+        "clobTokenIds": "[\"token-yes-phx-100\", \"token-no-phx-100\"]",
+        "active": true,
+        "closed": false,
+        "endDate": "2026-09-13T10:00:00Z"
+      }
+    ]
+  },
+  {
+    "id": "evt-nyc-2026-09-12",
+    "title": "Highest temperature in New York City on September 12?",
+    "closed": false,
+    "markets": [
+      {
+        "id": "mkt-nyc-75",
+        "question": "Will the highest temperature in New York City be 75°F or higher on September 12, 2026?",
+        "outcomes": "[\"Yes\", \"No\"]",
+        "clobTokenIds": "[\"token-yes-nyc\", \"token-no-nyc\"]",
+        "active": true,
+        "closed": false
+      }
+    ]
+  }
+]
