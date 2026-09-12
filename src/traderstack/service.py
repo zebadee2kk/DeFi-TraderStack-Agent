@@ -2,14 +2,16 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Protocol
 
 import structlog
 
 from traderstack.config import Settings
-from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
+from traderstack.execution.ledger import ExecutionFill, ExecutionLedger, ExecutionOrder
 from traderstack.execution.paper_fill import PaperFillSimulator, PaperFillStatus
 from traderstack.execution.paper_perp import PaperPerpBook
+from traderstack.execution.paper_perp_feed import PaperPerpFeed, PaperPerpVenueName
 from traderstack.execution.reconcile import ExecutionReconciliationResult
 from traderstack.health import RuntimeHealth
 
@@ -76,11 +78,15 @@ class ContinuousPaperService:
     # Books ALLOW'd paper_order intents into the local book without Hummingbot.
     # Compose `app.command` has no --submit; this is the paper PnL path.
     paper_fill_simulator: PaperFillSimulator | None = None
-    # --- paper perp / hedge stub ---
-    # Opt-in. After a spot paper fill, attempt a hedge. The book skips
-    # unless an explicit perp mid is supplied — Kraken spot mid is not
-    # invented. Does not make PAPER_CARRY_PATH_READY true.
+    # --- paper perp / hedge path ---
+    # Opt-in. After a spot paper fill, hedge only with an explicit venue
+    # perp mid from paper_perp_feed (Hyperliquid midPx / BitMEX midPrice).
+    # Kraken spot mid is never substituted. Same-venue funding prints
+    # are applied on a schedule. Snapshot mids are not PIT basis.
     paper_perp_book: PaperPerpBook | None = None
+    paper_perp_feed: PaperPerpFeed | None = None
+    _paper_perp_venue: dict[str, PaperPerpVenueName] = field(default_factory=dict, init=False)
+    _paper_perp_last_funding_at: dict[str, datetime] = field(default_factory=dict, init=False)
     # --- paper-research edge data plane ---
     # Background WS collectors (Binance liquidations / optional bookTicker).
     # Failure here is informational: missing features, not a halt.
@@ -194,6 +200,7 @@ class ContinuousPaperService:
             # before mark-to-market / audit / checkpoint so NAV, daily PnL and
             # the risk trail see the fill on the same cycle.
             result = await self._maybe_apply_paper_fill(result)
+            await self._maybe_apply_paper_perp_funding(symbol)
             asset = (
                 result.pipeline.feature_vector.asset
                 if result.pipeline.feature_vector is not None
@@ -345,22 +352,107 @@ class ContinuousPaperService:
             outcome.status.value,
             fee_usd=outcome.fee_usd,
         )
-        # --- paper perp / hedge stub ---
-        # Do not pass result.tick.mid: that is the Kraken spot mid, not a
-        # PIT perp mid. The book skips when perp_mid_usd is None.
+        # --- paper perp / hedge path ---
+        # Do not pass result.tick.mid: that is the Kraken spot mid.
+        # A missing venue mid is a skip, not an invented number.
         if outcome.applied and outcome.fill is not None and self.paper_perp_book is not None:
-            self.paper_perp_book.maybe_hedge_spot_fill(
-                outcome.fill,
-                perp_mid_usd=None,
-                decision_id=intent.decision_id,
-                ledger=self.execution_ledger,
-            )
+            await self._maybe_hedge_paper_perp(result, outcome.fill, intent.decision_id)
         return result.model_copy(
             update={
                 "execution_status": outcome.status.value,
                 "execution_reason": outcome.reason,
             }
         )
+
+    async def _maybe_hedge_paper_perp(
+        self, result: RuntimeResult, fill: ExecutionFill, decision_id: str
+    ) -> None:
+        """Hedge a spot paper fill only with an explicit venue perp mid."""
+
+        if self.paper_perp_book is None:
+            return
+        quote = None
+        if self.paper_perp_feed is not None:
+            try:
+                quote = await self.paper_perp_feed.fetch_mid(result.tick.symbol)
+            except Exception as exc:  # noqa: BLE001 - skip, never invent a mid.
+                _log.warning(
+                    "paper_perp_mid_fetch_failed",
+                    symbol=result.tick.symbol,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                quote = None
+        # Never fall back to result.tick.mid (Kraken spot).
+        perp_mid = quote.mid_usd if quote is not None else None
+        hedge = self.paper_perp_book.maybe_hedge_spot_fill(
+            fill,
+            perp_mid_usd=perp_mid,
+            decision_id=decision_id,
+            ledger=self.execution_ledger,
+        )
+        if hedge.applied and quote is not None:
+            self._paper_perp_venue[fill.asset.upper()] = quote.venue
+            self._paper_perp_last_funding_at[fill.asset.upper()] = quote.observed_at
+            _log.info(
+                "paper_perp_hedged",
+                asset=fill.asset,
+                venue=quote.venue,
+                source=quote.source,
+                mid_usd=quote.mid_usd,
+            )
+        elif hedge.reason:
+            _log.info(
+                "paper_perp_hedge_skipped",
+                asset=fill.asset,
+                status=hedge.status.value,
+                reason=hedge.reason,
+            )
+
+    async def _maybe_apply_paper_perp_funding(self, symbol: str) -> None:
+        """Apply new same-venue funding prints to an open paper perp."""
+
+        if self.paper_perp_book is None or self.paper_perp_feed is None:
+            return
+        asset = symbol.split("/", 1)[0].upper()
+        if asset not in self.paper_perp_book.positions:
+            return
+        venue = self._paper_perp_venue.get(asset)
+        since = self._paper_perp_last_funding_at.get(asset)
+        if venue is None or since is None:
+            return
+        try:
+            tape = await self.paper_perp_feed.fetch_funding_since(symbol, venue=venue, since=since)
+        except Exception as exc:  # noqa: BLE001 - skip, never invent a rate.
+            _log.warning(
+                "paper_perp_funding_fetch_failed",
+                symbol=symbol,
+                venue=venue,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return
+        if not tape.settlements:
+            return
+        mark = None
+        try:
+            quote = await self.paper_perp_feed.fetch_mid(symbol)
+        except Exception:  # noqa: BLE001 - missing mark uses entry price.
+            quote = None
+        if quote is not None and quote.venue == venue:
+            mark = quote.mid_usd
+        outcome = self.paper_perp_book.apply_funding(
+            tape.settlements,
+            asset=asset,
+            mark_usd=mark,
+        )
+        if outcome.applied and tape.settlements:
+            self._paper_perp_last_funding_at[asset] = max(ts for ts, _rate in tape.settlements)
+            _log.info(
+                "paper_perp_funding_applied",
+                asset=asset,
+                venue=venue,
+                prints=len(tape.settlements),
+                funding_pnl_usd=outcome.funding_pnl_usd,
+            )
 
     async def _maybe_reconcile(self) -> None:
         if self.execution_reconciler is None and self.portfolio_reconciler is None:

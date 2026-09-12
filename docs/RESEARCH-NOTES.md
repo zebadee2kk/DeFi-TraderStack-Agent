@@ -82,6 +82,9 @@ At minimum:
   settlements can fill that bar; OKX public history is still ~90d
   after a UTC-day resample. PIT basis is UNAVAILABLE on Hyperliquid
   and BitMEX (current mark/index only; premium is not basis). A
-  paper perp/hedge stub exists but `PAPER_CARRY_PATH_READY` stays
-  false, so a pin stays off. Empty / cannot-promote is success. See
+  paper hedge+funding soak path is cycle-wired
+  (`PAPER_CARRY_PATH_READY=true` when `PAPER_PERP_HEDGE` fetches an
+  explicit HL/BitMEX mid + same-venue funding). Snapshot mids are not
+  historical PIT basis, so a pin stays off. Empty / cannot-promote is
+  success. See
   `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.

@@ -280,6 +280,13 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
         (fee_source=modelled), set execution_status=paper_filled. Does not call
         a venue. Compose app.command has no --submit; this is how NAV moves.
         A kill switch, reconciliation block, or torn ledger withholds.
+        If PAPER_PERP_HEDGE=true (paper only; default false): fetch an
+        explicit current perp mid from Hyperliquid `midPx` and/or BitMEX
+        `midPrice` and hedge the opposite perp on `PaperPerpBook`. The
+        Kraken spot mid (`result.tick.mid`) is never substituted. A
+        missing venue mid skips. Same-venue public funding settlements
+        are applied on a schedule (caller-supplied prints only). Snapshot
+        mids are not a historical PIT basis series. Live is refused.
     2e. mark the portfolio at the tick's last price; compute + publish the NAV/cash gauges
     2f. register the execution receipt in the ledger (bare-executor path only -- the
         submitter already registered it under the client order id before the venue call)

@@ -425,10 +425,12 @@ def build_report(settings: Settings) -> ConfigReport:
             "skip-not-invent); "
             "1d resamples funding to UTC daily sums; PIT basis probed on "
             "Hyperliquid+BitMEX and recorded UNAVAILABLE (skip-not-invent); "
-            "paper perp/hedge stub exists but PAPER_CARRY_PATH_READY stays "
-            "false; single-print cannot promote; no new "
-            "PAPER_PROMOTE_* unless dual-print + hard gates + PIT basis + "
-            "paper path all clear (default false)",
+            "paper hedge+funding soak path is cycle-wired "
+            "(PAPER_CARRY_PATH_READY=true when PAPER_PERP_HEDGE fetches "
+            "an explicit HL/BitMEX mid + same-venue funding); snapshot "
+            "mids are not historical PIT basis; single-print cannot "
+            "promote; no new PAPER_PROMOTE_* unless dual-print + hard "
+            "gates + PIT basis + paper path all clear (default false)",
         )
     )
 
@@ -846,7 +848,7 @@ def build_report(settings: Settings) -> ConfigReport:
             "the execution slippage cap."
         )
 
-    # --- paper perp / hedge stub ---
+    # --- paper perp / hedge path ---
     items.append(
         CheckItem(
             "Paper perp / hedge stub",
@@ -857,9 +859,10 @@ def build_report(settings: Settings) -> ConfigReport:
             ),
             (
                 "TRADING_MODE=paper only; kill switch withholds new hedges; "
-                "refuses to invent a perp mid from Kraken spot; "
-                "PAPER_CARRY_PATH_READY stays false until PIT basis on both "
-                "venues and a cycle-wired perp mid; no PAPER_PROMOTE_* flip"
+                "fetches explicit HL midPx / BitMEX midPrice (never Kraken "
+                "spot); same-venue public funding tape; "
+                "PAPER_CARRY_PATH_READY is the soak path only; PIT basis "
+                "UNAVAILABLE so cannot promote; no PAPER_PROMOTE_* flip"
                 if settings.trading_mode == "paper"
                 else f"ignored unless TRADING_MODE=paper (got {settings.trading_mode!r})"
             ),
@@ -868,14 +871,15 @@ def build_report(settings: Settings) -> ConfigReport:
     if settings.paper_perp_hedge and settings.trading_mode != "paper":
         warnings.append(
             "PAPER_PERP_HEDGE is paper-only; "
-            f"TRADING_MODE={settings.trading_mode} ignores the stub and "
+            f"TRADING_MODE={settings.trading_mode} ignores the path and "
             "cannot enable live."
         )
     if settings.paper_perp_hedge and settings.trading_mode == "paper":
         warnings.append(
-            "PAPER_PERP_HEDGE=true is a scaffold, not a promote path. "
-            "PIT basis is UNAVAILABLE on Hyperliquid+BitMEX; the book will "
-            "not invent a perp mid. Leave every PAPER_PROMOTE_* false."
+            "PAPER_PERP_HEDGE=true exercises the paper hedge+funding soak "
+            "(explicit HL/BitMEX mid + same-venue funding). PIT basis is "
+            "UNAVAILABLE on Hyperliquid+BitMEX; snapshot mids are not a "
+            "historical series. Leave every PAPER_PROMOTE_* false."
         )
 
     # --- polymarket weather research (paper-only, opt-in) ------------------------------

@@ -12,10 +12,10 @@ Minimal cash-and-carry execution plane for research. Invariants:
 * perp PnL stays on this book and is **not** booked into the spot
   portfolio (that would invent NAV / net the spot leg).
 
-``PAPER_PERP_PATH_READY`` stays **false** until a PIT mark−index or
-perp-mid−spot-mid series exists on **both** dual-print venues **and**
-this book is cycle-wired with a real perp mid. The stub existing is
-not a promote path. No live. Does not flip ``PAPER_PROMOTE_*``.
+``PAPER_PERP_PATH_READY`` is **true** only for the cycle-wired paper
+hedge+funding soak (explicit venue mid + caller-supplied settlements).
+That is not a promote path: historical PIT basis is still UNAVAILABLE
+and ``can_promote`` stays false. No live. Does not flip ``PAPER_PROMOTE_*``.
 """
 
 from __future__ import annotations
@@ -36,9 +36,9 @@ from traderstack.execution.paper_fill import adverse_fill_price_usd
 from traderstack.killswitch import KillSwitch
 from traderstack.models import Side
 
-# Promote-ready only when PIT basis exists on both dual-print venues
-# and a cycle-wired perp mid is available. The stub is not that path.
-PAPER_PERP_PATH_READY = False
+# Paper hedge+funding path is cycle-wired (venue mid + same-venue
+# funding tape). Not a promote unlock — PIT basis is still missing.
+PAPER_PERP_PATH_READY = True
 
 _PAPER_PERP_ID_PREFIX = "paper-perp:"
 
