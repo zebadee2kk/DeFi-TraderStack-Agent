@@ -154,5 +154,7 @@ def test_stale_state_and_strategy_breaker_still_reject_a_held_sell() -> None:
 
 
 def test_exit_semantics_do_not_add_a_risk_limit_field() -> None:
+    # Exit classification is not a new Settings limit. Later workstreams may
+    # grow RISK_LIMIT_FIELDS (e.g. policy-version coverage); that is unrelated.
     assert "sell_capped_to_position" not in RISK_LIMIT_FIELDS
-    assert len(RISK_LIMIT_FIELDS) == 19
+    assert "risk_reducing" not in RISK_LIMIT_FIELDS

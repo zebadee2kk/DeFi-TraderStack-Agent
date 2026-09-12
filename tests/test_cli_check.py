@@ -26,7 +26,9 @@ def test_live_trading_mode_is_unsafe() -> None:
 
 
 def test_shadow_trading_mode_is_reported_as_record_only() -> None:
-    report = build_report(settings(trading_mode="shadow"))
+    # Isolate the shadow-live axis: default PAPER_RESEARCH_MODE=true is
+    # paper-only and would otherwise warn that the flag is ignored.
+    report = build_report(settings(trading_mode="shadow", paper_research_mode=False))
     assert report.safe
     effect = next(item for item in report.items if "shadow-live" in item.label)
     assert effect.value == "record only"

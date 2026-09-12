@@ -124,7 +124,7 @@ def test_build_service_wires_last_good_on_paper(tmp_path: Path) -> None:
 
 
 def test_build_service_refuses_non_paper_so_last_good_cannot_be_wired() -> None:
-    with pytest.raises(RuntimeError, match="TRADING_MODE=paper"):
+    with pytest.raises(RuntimeError, match="TRADING_MODE=live is rejected"):
         build_service(
             _settings(trading_mode="live"),
             submit=False,
