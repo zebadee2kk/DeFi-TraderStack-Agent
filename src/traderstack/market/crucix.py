@@ -17,6 +17,12 @@ Numeric tier >= ``high_tier_min`` (default 4 on a 1–5 scale) also counts.
 
 Register only when ``CRUCIX_ENABLED=true`` or a URL / API key is set — a
 copied ``.env.example`` with blanks must not open a connection every cycle.
+
+When registered, a provider timeout / HTTP error / unexpected payload is
+fail-closed: the orchestrator marks ``provider_unavailable`` and the
+pipeline rejects new risk with ``intelligence_provider_unavailable``.
+High-tier alerts still map to ``adverse_event``. Opting in does not
+enable Crucix by default.
 """
 
 from __future__ import annotations

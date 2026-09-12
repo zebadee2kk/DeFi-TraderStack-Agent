@@ -266,6 +266,31 @@ def test_pipeline_emits_stop_loss_before_discretionary_and_ignores_adverse_news(
     assert "adverse_news_event" not in result.rejection_reasons
 
 
+def test_pipeline_emits_stop_loss_before_provider_unavailable() -> None:
+    engine = RiskEngine(settings(kill_switch=False))
+    pipe = VerticalSlicePipeline(risk_engine=engine, block_on_adverse_news=True)
+    tick = MarketTick(
+        source=MarketSource.KRAKEN,
+        symbol="BTC/USD",
+        observed_at=NOW,
+        bid=19_490,
+        ask=19_510,
+        last=19_500,
+    )
+    refs = [ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=19_500)]
+    intel = ExternalIntelligence(asset="BTC", provider_unavailable=True)
+    result = pipe.process(
+        tick,
+        refs,
+        _pipeline_snapshot(held(mark=19_500), mark=19_500),
+        intelligence=intel,
+        now=NOW,
+    )
+    assert result.exit_reason == "exit_stop_loss"
+    assert result.paper_order is not None
+    assert "intelligence_provider_unavailable" not in result.rejection_reasons
+
+
 def test_tripped_entry_breaker_does_not_block_an_exit_proposal() -> None:
     breaker = StrategyCircuitBreaker.from_settings(settings())
     breaker.record_closed_trade("momentum_v1", pnl_usd=-50.0, nav_usd=10_000, at=NOW)

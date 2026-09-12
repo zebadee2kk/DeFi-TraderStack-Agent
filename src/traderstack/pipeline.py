@@ -148,8 +148,9 @@ class VerticalSlicePipeline:
 
         # --- position management (#58) ---
         # Price/time exits run after market-data validation and BEFORE the
-        # intelligence / pre-trade gates so an adverse-news or missing-candle
-        # reject cannot freeze a stop-loss. Kill switch still withholds.
+        # intelligence / pre-trade gates so an adverse-news, Crucix-outage, or
+        # missing-candle reject cannot freeze a stop-loss. Kill switch still
+        # withholds.
         price_exit = self._exit_result(
             asset=asset,
             tick=tick,
@@ -175,6 +176,17 @@ class VerticalSlicePipeline:
                 divergences=divergences,
             )
 
+        # --- crucix fail-closed ---
+        # An opted-in fail-closed news provider (Crucix) that errored or
+        # timed out blocks new risk. Distinct from adverse_news_event.
+        # Existing positions/exits already ran above.
+        if intelligence is not None and intelligence.provider_unavailable:
+            return PipelineResult(
+                accepted_market_data=True,
+                rejection_reasons=["intelligence_provider_unavailable"],
+                feature_vector=feature_vector,
+                divergences=divergences,
+            )
         if self.require_external_intelligence and (intelligence is None or intelligence.is_empty):
             return PipelineResult(
                 accepted_market_data=True,

@@ -40,6 +40,12 @@ class IntelligenceCache:
         self._values[key] = value
 
 
+# Pipeline / runtime reject reason when an opted-in fail-closed news
+# provider (Crucix) errors or times out. Distinct from adverse_news_event
+# (we saw news) and no_external_intelligence (nothing returned).
+PROVIDER_UNAVAILABLE_REASON = "intelligence_provider_unavailable"
+
+
 @dataclass(frozen=True)
 class ExternalIntelligence:
     """The external snapshots gathered for one asset in one cycle (any may be missing)."""
@@ -50,6 +56,10 @@ class ExternalIntelligence:
     news: NewsSnapshot | None = None
     # --- providers (Epic 3): altFINS technical-signal slot ---------------------
     altfins: AltFinsSignalSnapshot | None = None
+    # --- crucix fail-closed ---
+    # True when an opted-in fail-closed news provider (Crucix) errored or
+    # timed out. The pipeline rejects new risk; exits already ran upstream.
+    provider_unavailable: bool = False
 
     @property
     def source_ids(self) -> list[str]:
@@ -78,19 +88,29 @@ class IntelligenceOrchestrator:
     require_any_external: bool = False
     # --- providers (Epic 3): altFINS technical-signal slot ---------------------
     altfins: AltFinsFetcher | None = None
+    # --- crucix fail-closed ---
+    # News fetchers that must succeed for new risk. Empty unless Crucix is
+    # opted in. Optional `news` fetchers still isolate failures.
+    fail_closed_news: tuple[NewsFetcher, ...] = ()
 
     async def gather(self, asset: str) -> ExternalIntelligence:
         symbol = asset.upper()
-        onchain, social, news, altfins = await asyncio.gather(
+        news_task = asyncio.create_task(self._fetch_news(symbol))
+        onchain, social, altfins = await asyncio.gather(
             self._fetch_one("onchain", symbol, self.onchain, OnChainSnapshot),
             self._fetch_one("social", symbol, self.social, SocialSnapshot),
-            self._fetch_news(symbol),
             self._fetch_one("altfins", symbol, self.altfins, AltFinsSignalSnapshot),
         )
+        news, provider_unavailable = await news_task
         bundle = ExternalIntelligence(
-            asset=symbol, onchain=onchain, social=social, news=news, altfins=altfins
+            asset=symbol,
+            onchain=onchain,
+            social=social,
+            news=news,
+            altfins=altfins,
+            provider_unavailable=provider_unavailable,
         )
-        if self.require_any_external and bundle.is_empty:
+        if self.require_any_external and bundle.is_empty and not provider_unavailable:
             raise RuntimeError("all external intelligence providers unavailable")
         return bundle
 
@@ -127,18 +147,28 @@ class IntelligenceOrchestrator:
         self.cache.put(key, value)
         return value
 
-    async def _fetch_news(self, asset: str) -> NewsSnapshot | None:
+    async def _fetch_news(self, asset: str) -> tuple[NewsSnapshot | None, bool]:
         cached = self.cache.get(f"news:{asset}", NewsSnapshot)
         if cached is not None:
-            return cached
-        if not self.news:
-            return None
-        results = await asyncio.gather(
-            *(fetcher(asset) for fetcher in self.news), return_exceptions=True
+            return cached, False
+        if not self.news and not self.fail_closed_news:
+            return None, False
+        optional_results, fail_closed_results = await asyncio.gather(
+            asyncio.gather(*(fetcher(asset) for fetcher in self.news), return_exceptions=True),
+            asyncio.gather(
+                *(fetcher(asset) for fetcher in self.fail_closed_news),
+                return_exceptions=True,
+            ),
         )
-        snapshots = [result for result in results if isinstance(result, NewsSnapshot)]
+        snapshots = [result for result in optional_results if isinstance(result, NewsSnapshot)]
+        provider_unavailable = False
+        for result in fail_closed_results:
+            if isinstance(result, NewsSnapshot):
+                snapshots.append(result)
+            else:
+                provider_unavailable = True
         if not snapshots:
-            return None
+            return None, provider_unavailable
         combined = NewsSnapshot(
             asset=asset,
             observed_at=max(snapshot.observed_at for snapshot in snapshots),
@@ -147,5 +177,7 @@ class IntelligenceOrchestrator:
             item_count=sum(snapshot.item_count for snapshot in snapshots),
             source_id="+".join(snapshot.source_id for snapshot in snapshots),
         )
-        self.cache.put(f"news:{asset}", combined)
-        return combined
+        # A fail-closed outage must not be cached as "no news" / partial news.
+        if not provider_unavailable:
+            self.cache.put(f"news:{asset}", combined)
+        return combined, provider_unavailable

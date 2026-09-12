@@ -21,7 +21,7 @@ This matrix defines intended roles rather than marketing claims. Pricing, rate l
 | Binance/Bybit bookTicker | paper-research cross-venue mid divergence | No | No | Paper research | `BookTickerProvider`; second-venue mid only; never an order-routing destination |
 | Freqtrade | research/backtest/dry-run harness | No | Can trade but disabled in architecture | **Yes** | independent research harness, not production executor |
 | Direct venue WS/REST | venue-native market data and reconciliation | **Yes** | execution delegated to Hummingbot | **Yes** | authoritative venue state for execution checks; `VENUE_FEED=kraken_rest` is a paper-only public Spot `/0/public/Ticker` poll when WS hangs |
-| Crucix (local HTTP) | operator-hosted alert intel | No | No | Optional | `CrucixIntelProvider`; registered only when `CRUCIX_ENABLED` or URL/key set; high-tier alerts → `adverse_event` (rejection only) |
+| Crucix (local HTTP) | operator-hosted alert intel | No | No | Optional (fail-closed when opted in) | `CrucixIntelProvider`; registered only when `CRUCIX_ENABLED` or URL/key set; high-tier alerts → `adverse_event`; timeout/error → `intelligence_provider_unavailable` (rejection only) |
 | Claude API | reasoning, proposal synthesis, meta-agent | No for safety | No direct execution | **Yes** | failure must degrade to no-new-risk state |
 | Polymarket Gamma API | weather-market discovery (public) | No | No | Research / paper | `traderstack.polymarket.gamma`; GET `/events` only; no auth |
 | Polymarket CLOB (public) | Yes-token midpoint | No | **Forbidden** | Research / paper | `traderstack.polymarket.clob`; GET `/midpoint` only; order/auth paths raise; no signing |
@@ -60,7 +60,7 @@ Paper-only fallback when WS v2 is hung. `GET https://api.kraken.com/0/public/Tic
 
 ### Crucix intel (`traderstack.market.crucix`)
 
-Optional operator-hosted alert source. Registered only when `CRUCIX_ENABLED=true` or `CRUCIX_BASE_URL` / `CRUCIX_API_KEY` is set; a blank copied `.env.example` does not register it. High-tier alerts map to `NewsSnapshot.adverse_event` / `event_score`. The pipeline's `adverse_news_event` rejection is the only effect — Crucix cannot raise notional, change side, or disable the kill switch. HTTP contract is this adapter's documented assumption (`GET /alerts?asset=`), not a vendor-verified schema.
+Optional operator-hosted alert source. Registered only when `CRUCIX_ENABLED=true` or `CRUCIX_BASE_URL` / `CRUCIX_API_KEY` is set; a blank copied `.env.example` does not register it. High-tier alerts map to `NewsSnapshot.adverse_event` / `event_score`. A provider timeout, HTTP error, or unexpected payload marks `ExternalIntelligence.provider_unavailable` and the pipeline rejects new risk with `intelligence_provider_unavailable` (existing positions/exits untouched). Both effects are withhold-only — Crucix cannot raise notional, change side, or disable the kill switch. Paper, shadow, and live share `build_intelligence`; live does not ignore Crucix. HTTP contract is this adapter's documented assumption (`GET /alerts?asset=`), not a vendor-verified schema.
 
 ### Kraken WS v2 resilience (`traderstack.market.adapters`)
 

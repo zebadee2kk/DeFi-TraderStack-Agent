@@ -24,21 +24,34 @@ Validated market data (tick + independent references + candle history)
 
 `PaperRuntime` gathers on-chain, social and news snapshots for the asset each
 cycle through `IntelligenceOrchestrator.gather` (concurrent, cached for
-`INTELLIGENCE_CACHE_SECONDS`, each provider failure isolated). The pipeline
-merges them into the `AssetFeatureVector` alongside market features, then
-applies two deterministic rules before any proposal exists:
+`INTELLIGENCE_CACHE_SECONDS`, each *optional* provider failure isolated). The
+pipeline merges them into the `AssetFeatureVector` alongside market features,
+then applies three deterministic rules before any proposal exists:
 
+- Crucix opted in and that fetch errors/times out: reject with
+  `intelligence_provider_unavailable`. Crucix lives in
+  `IntelligenceOrchestrator.fail_closed_news` (not the optional `news`
+  tuple). A cached successful Crucix snapshot is still used until
+  `INTELLIGENCE_CACHE_SECONDS` expires; a fail-closed outage is **not**
+  cached as "no news".
 - `INTELLIGENCE_BLOCK_ON_ADVERSE_NEWS=true` (default): an `adverse_event` from
   the news providers rejects the cycle with `adverse_news_event`.
 - `INTELLIGENCE_REQUIRED=true`: a cycle with no external intelligence at all
   is rejected with `no_external_intelligence` rather than trading on market
   data alone.
 
+These gates run **after** deterministic position exits, so a Crucix outage
+or adverse-news flag cannot freeze a stop-loss.
+
 Providers are assembled from whichever credentials are present
 (`DUNE_API_KEY` + `DUNE_QUERY_IDS`, `LUNARCRUSH_API_KEY`, `CRYPTOPANIC_API_KEY`,
-`PERPLEXITY_API_KEY`, `ALTFINS_API_KEY`). Retrieved text never reaches the
-pipeline: each adapter reduces its source to bounded numeric features, which
-is the prompt-injection boundary from the threat model.
+`PERPLEXITY_API_KEY`, `ALTFINS_API_KEY`, plus Crucix when opted in). Crucix
+is off unless `CRUCIX_ENABLED=true` or `CRUCIX_BASE_URL` / `CRUCIX_API_KEY`
+is set. `build_intelligence` is shared by paper, shadow, and live — live
+does not ignore Crucix; only venue submit is paper-only. Retrieved text
+never reaches the pipeline: each adapter reduces its source to bounded
+numeric features, which is the prompt-injection boundary from the threat
+model.
 
 ### Two spread limits, deliberately (not a duplicate to consolidate)
 

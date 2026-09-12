@@ -116,6 +116,29 @@ def test_pipeline_adverse_news_block_can_be_disabled_by_config() -> None:
     assert result.paper_order is not None
 
 
+def test_pipeline_blocks_new_risk_when_provider_unavailable() -> None:
+    result = pipeline().process(
+        tick(),
+        references(),
+        portfolio(),
+        intelligence=ExternalIntelligence(asset="BTC", provider_unavailable=True),
+    )
+    assert result.accepted_market_data is True
+    assert result.rejection_reasons == ["intelligence_provider_unavailable"]
+    assert result.proposal is None and result.paper_order is None
+
+
+def test_pipeline_provider_unavailable_blocks_even_if_adverse_news_gate_is_off() -> None:
+    result = pipeline(block_on_adverse_news=False).process(
+        tick(),
+        references(),
+        portfolio(),
+        intelligence=ExternalIntelligence(asset="BTC", provider_unavailable=True),
+    )
+    assert result.rejection_reasons == ["intelligence_provider_unavailable"]
+    assert result.paper_order is None
+
+
 def test_pipeline_can_require_external_intelligence() -> None:
     strict = pipeline(require_external_intelligence=True)
     assert strict.process(tick(), references(), portfolio()).rejection_reasons == [
@@ -180,6 +203,40 @@ async def test_runtime_gathers_intelligence_each_cycle() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runtime_fail_closed_news_outage_blocks_new_risk() -> None:
+    async def broken(asset: str) -> NewsSnapshot:
+        raise TimeoutError("down")
+
+    runtime = PaperRuntime(
+        venue=FakeVenue(),
+        references=(GoodReference(),),
+        pipeline=pipeline(),
+        intelligence=IntelligenceOrchestrator(fail_closed_news=(broken,)),
+    )
+    result = await runtime.run_once("BTC/USD", portfolio())
+    assert result.intelligence_error == "intelligence_provider_unavailable"
+    assert result.pipeline.rejection_reasons == ["intelligence_provider_unavailable"]
+    assert result.pipeline.paper_order is None
+
+
+@pytest.mark.asyncio
+async def test_runtime_optional_news_outage_still_proceeds() -> None:
+    async def broken(asset: str) -> NewsSnapshot:
+        raise RuntimeError("down")
+
+    runtime = PaperRuntime(
+        venue=FakeVenue(),
+        references=(GoodReference(),),
+        pipeline=pipeline(),
+        intelligence=IntelligenceOrchestrator(news=(broken,)),
+    )
+    result = await runtime.run_once("BTC/USD", portfolio())
+    assert result.intelligence_error is None
+    assert result.pipeline.rejection_reasons == []
+    assert result.pipeline.paper_order is not None
+
+
+@pytest.mark.asyncio
 async def test_runtime_records_intelligence_failure_and_fails_closed_when_required() -> None:
     async def broken(asset: str) -> NewsSnapshot:
         raise RuntimeError("down")
@@ -228,6 +285,7 @@ def test_build_intelligence_assembles_configured_providers() -> None:
     assert len(orchestrator.news) == 2
     assert orchestrator.cache.max_age_seconds == 42
     assert orchestrator.require_any_external is True
+    assert orchestrator.fail_closed_news == ()
 
 
 def test_build_intelligence_skips_dune_without_query_ids() -> None:
@@ -278,3 +336,13 @@ def test_build_intelligence_registers_only_providers_with_non_blank_keys() -> No
     assert orchestrator.social is None
     assert orchestrator.altfins is None
     assert len(orchestrator.news) == 1
+    assert orchestrator.fail_closed_news == ()
+
+
+def test_build_intelligence_splits_optional_news_from_fail_closed_crucix() -> None:
+    orchestrator = build_intelligence(
+        Settings(cryptopanic_api_key="usable-token", crucix_enabled=True)
+    )
+    assert orchestrator is not None
+    assert len(orchestrator.news) == 1
+    assert len(orchestrator.fail_closed_news) == 1
