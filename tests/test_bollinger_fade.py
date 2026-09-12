@@ -531,14 +531,17 @@ def test_own_asset_bands_are_not_cross_sectional() -> None:
     assert mapping["ETH/USD"][-1][1] == 1.0
 
 
-def test_committed_report_freeze_or_empty_success() -> None:
+def test_committed_live_report_is_empty_success() -> None:
     text = Path("docs/artifacts/strategy-search/bollinger-fade.md").read_text()
-    assert "bb_fade_20x2" in text
-    assert "bb_squeeze_break_40" in text
-    assert "ma_cross_10_30" in text
+    assert "Dual-print passers: 0" in text
+    assert "`keep_flag_false=true`" in text
+    assert "Do not add a new promote flag" in text
     assert "PAPER_PROMOTE_*" in text
-    assert "keep_flag_false=true" in text or "`keep_flag_false=true`" in text
-    assert "Not yet run" in text or "Dual-print passers: 0" in text
+    assert "bb_fade_20x2" in text
+    assert "bb_fade_20x2_5" in text
+    assert "bb_squeeze_break_20" in text
+    assert "bb_squeeze_break_40" in text
+    assert "mean_reversion_*" in text
     assert settings().paper_promote_ema_9_21 is False
     assert not hasattr(settings(), "paper_promote_bb_fade_20x2")
 

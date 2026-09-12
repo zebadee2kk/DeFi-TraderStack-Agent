@@ -678,7 +678,22 @@ Empty dual-print set is success. `PAPER_PROMOTE_*` stays
 false. No new pin unless a committed report names a passer
 (default false if added).
 
-Live print: **not yet run** (catalog committed first).
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720).
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Labeled Binance.US (`api.binance.com` HTTP 451).
+- Kraken combined-passers: **0**.
+- Binance.US combined-passers: **0**.
+- #96 FAIL ETH-carried: **none**.
+- Informational BTC WF-fail: **none**.
+- Informational `bb_squeeze_break_40` clears Kraken #96+A+B
+  (mean HO +3.72%; BTC HO +4.69%) but **fails gate C**. Binance
+  #96 FAIL (BTC HO −4.69%).
+- Informational `bb_squeeze_break_20` mean HO +1.33% with
+  positive BTC/ETH holdout still fails #96 on ETH walk-forward
+  (−1.87%).
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
 
 See `bollinger-fade.md`.
 
