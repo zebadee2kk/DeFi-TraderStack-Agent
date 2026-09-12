@@ -635,5 +635,19 @@ Empty dual-print set is success. `PAPER_PROMOTE_*` stays false.
 No new pin unless a committed report names a passer (default
 false if added).
 
-Live print is a later commit. See `tsmom.md`.
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720).
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Labeled Binance.US (`api.binance.com` HTTP 451).
+- Kraken combined-passers: **0**.
+- Binance.US combined-passers: **0**.
+- Informational #96 FAIL ETH-carried: `tsmom_lo_63` / `tsmom_ls_63`
+  (mean HO +2.61% / +6.29%; BTC HO −7.12% / −13.74%).
+- Informational BTC WF-fail: `tsmom_lo_21` / `tsmom_ls_21`
+  (mean HO +7.32% / +6.64%; BTC HO +9.15% / +16.79%; BTC WF
+  −1.71% / −3.75%).
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
+See `tsmom.md`.
 

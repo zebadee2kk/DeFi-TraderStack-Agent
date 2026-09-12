@@ -474,6 +474,20 @@ def test_own_asset_return_is_not_cross_sectional() -> None:
     assert mapping["ETH/USD"][-1][1] == -1.0
 
 
+def test_committed_live_report_is_empty_success() -> None:
+    text = Path("docs/artifacts/strategy-search/tsmom.md").read_text()
+    assert "Dual-print passers: 0" in text
+    assert "`keep_flag_false=true`" in text
+    assert "Do not add a new promote flag" in text
+    assert "PAPER_PROMOTE_*" in text
+    assert "tsmom_lo_21" in text
+    assert "tsmom_ls_252" in text
+    assert "tsmom_lo_63" in text
+    assert "tsmom_ls_63" in text
+    assert settings().paper_promote_ema_9_21 is False
+    assert not hasattr(settings(), "paper_promote_tsmom_lo_21")
+
+
 def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     args = build_parser().parse_args(["--candles", "unused.json", "--no-binance"])
     assert args.output_md.name == "tsmom.md"
