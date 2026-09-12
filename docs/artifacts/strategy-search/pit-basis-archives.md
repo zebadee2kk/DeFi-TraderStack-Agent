@@ -115,10 +115,10 @@ New sources and re-checks. Do not treat a 403 / empty prefix / first-of-month sa
   (aligns ~617d). Do not retune that window after seeing the archive
   end date.
 - `carry_hedged_sign` daily numbers in `funding-carry-daily.md`
-  (HL WF +1.72% / BitMEX WF +2.55% from #112) stay the
-  **basis-unaware** BitMEX-era model until a new HL+HTX daily print
-  is committed. They are not a reason to keep BitMEX as a promote
-  venue.
+  are now the **basis-unaware** Hyperliquid+HTX print (HL WF
+  +1.72% / HTX WF +1.50%). The #112 HL+BitMEX pair (BitMEX WF
+  +2.55%) is sunset-venue documentation only and is not a reason
+  to keep BitMEX as a promote venue.
 - `PAPER_CARRY_PATH_READY` is true only for the forward soak
   (`PAPER_PERP_HEDGE=true`, HL midPx / HTX bid/ask mid). Snapshot
   mids are not this archive. BitMEX is not required.
@@ -158,9 +158,11 @@ enable live. No `PAPER_PROMOTE_*` flip.
 ## Operator recommendation
 
 - **Funding dual-print without BitMEX:** use **Hyperliquid + HTX**.
-  HTX is the wired replacement long settlement tape. Binance Vision
-  monthly zips are a reachable full dump (funding + mark + index from
-  2020-01) if a later session wants to stitch them; REST stays 451.
+  Live `--interval 1d` (2026-09-12): dual_print, aligned **720/720**,
+  hard gates **true** on both, modeled `carry_hedged_sign` HL WF
+  +1.72% / HTX +1.50%. Still not basis-aware. Binance Vision monthly
+  zips are a reachable full dump (funding + mark + index from 2020-01)
+  if a later session wants to stitch them; REST stays 451.
 - **PIT basis:** still blocked for a basis-aware `carry_hedged_sign`
   score on the current window. BitMEX still has no free ≥720d
   mark−index tape and is closing — do not wait on it. Next

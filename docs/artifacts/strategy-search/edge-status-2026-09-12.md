@@ -1347,6 +1347,40 @@ with HL **and** public mark−index or liquid perp-mid−spot-mid ≥720d.
 - `PAPER_PERP_HEDGE` auto path is Hyperliquid then HTX. BitMEX
   remains opt-in (`venue_preference="bitmex"`) only.
 
+### Live daily print (2026-09-12, after HTX)
+
+`traderstack-funding-carry --live --interval 1d` (Kraken public Spot
+1d BTC+ETH, 720-bar cap 2024-09-22 → 2026-09-11 UTC; costs 10+5 bps).
+
+| series | status |
+| --- | --- |
+| Binance USDT-M funding | **skipped** — HTTP 451 |
+| Bybit linear funding | **skipped** — HTTP 403 CloudFront |
+| OKX funding | **ok** — 290 8h → 97 UTC daily (not selected; shorter than HTX) |
+| Hyperliquid funding | **ok** — 19199 hourly → **801** UTC daily sums |
+| HTX funding | **ok** — 2401 8h → **800** UTC daily sums |
+| BitMEX funding | **ok** — 2400 8h (sunset; **not selected**) |
+| Print kind | **dual_print** (Hyperliquid primary, HTX second) |
+| Aligned daily bars | primary **720** / second **720** |
+| Hard gates (#96+A+B+C) | **available** (both venues ≥720) |
+| Basis | **skipped** (HL window ~617d; HTX 2000d not applied alone) |
+| Paper path | **true** (HL/HTX soak; BitMEX not required) |
+| Spot-signal dual-print passers | **0** |
+| Modeled dual-print passers | `carry_hedged_sign` only |
+
+Modeled hedged carry (basis skipped; **not** paper-spot executable):
+
+| id | HL WF / HO / full | HTX WF / HO / full | both? |
+| --- | ---: | ---: | :---: |
+| `carry_hedged_sign` | +1.72% / +3.32% / +27.71% | +1.50% / +3.31% / +21.26% | yes* |
+| `carry_hedged_abs_1bp` | −1.36% / −8.17% / −18.98% | −1.66% / −12.15% / −32.13% | no |
+| `carry_hedged_abs_3bp` | −2.42% / −4.82% / −21.50% | −3.65% / −9.95% / −35.76% | no |
+| `carry_hedged_z_1_5` | −2.88% / −8.72% / −32.95% | −2.99% / −9.64% / −34.12% | no |
+
+\*Fee-aware signs > 0 on **both** independent daily tapes. Hard-gate
+analog combined **true** on both (HL ratio 0.87; HTX ratio 0.81).
+That is still **not** basis-aware. `can_promote` stays false.
+
 ### What was not done (on purpose)
 
 - No Binance Vision zip stitch (HTX REST already fills funding).
@@ -1359,7 +1393,7 @@ with HL **and** public mark−index or liquid perp-mid−spot-mid ≥720d.
 **Cannot promote.** Funding dual-print without BitMEX is now
 HL+HTX. Basis-aware carry is still UNAVAILABLE.
 
-See `pit-basis-archives.md`.
+See `funding-carry-daily.md` and `pit-basis-archives.md`.
 
 ## Pins
 
@@ -1369,7 +1403,7 @@ See `pit-basis-archives.md`.
 | `PAPER_PROMOTE_EMA_9_21` | false | stay false |
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
-| new funding/carry pin | *(not added)* | `carry_hedged_sign` was a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX (#112, sunset venue); replacement pair is Hyperliquid+HTX; paper soak path ready (HL/HTX); HL PIT mark−index now readable (`asiletto81/hyperliquid`, 883d) but BitMEX still UNAVAILABLE and the scored 720 aligns only ~617d — do not add a pin |
+| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+HTX (HL WF +1.72% / HTX +1.50%); paper soak path ready (HL/HTX); HL PIT mark−index now readable (`asiletto81/hyperliquid`, 883d) but BitMEX still UNAVAILABLE and the scored 720 aligns only ~617d — do not add a pin |
 | new relative-value pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; do not add a pin |
 | new cross-sectional momentum pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `xs_mom_lo_vol_63` mean HO is ETH-carried (#96 FAIL); do not add a pin |
 | new Donchian pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational positive Kraken mean HO still fails #96 on BTC walk-forward; do not add a pin |
