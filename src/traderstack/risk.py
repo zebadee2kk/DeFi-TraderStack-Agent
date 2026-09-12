@@ -18,10 +18,14 @@ allowed:
 3. strategy limits                     -> strategy_circuit_breaker
 4. asset / venue limits                -> asset_not_allowlisted, spread_too_wide
 5. trade-level validation              -> position_limit_reached,
-                                          position_size_reduced, volatility_scaled
+                                          position_size_reduced, volatility_scaled,
+                                          sell_capped_to_position
 
-The default response to uncertainty is no new risk. Existing positions are never
-touched by this module.
+The default response to uncertainty is no new risk. A SELL against observed
+positive exposure is risk-reducing: additive limits are skipped so the book
+can de-risk, while kill-switch, stale-state, allowlist, spread and strategy
+breaker checks still reject. Classification is derived from the signed
+proposal and ``PortfolioSnapshot`` only -- never from thesis text.
 """
 
 from __future__ import annotations

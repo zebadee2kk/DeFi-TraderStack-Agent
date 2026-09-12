@@ -90,6 +90,7 @@ string can be argued away.
 | 4 Asset/venue | Symbol allowlist | `MVP_ASSETS` | `asset_not_allowlisted` | `risk.py` |
 | 4 Asset/venue | Maximum spread | `RISK_MAX_SPREAD_BPS` | `spread_too_wide` | `risk.py` |
 | 5 Trade | Maximum position notional | `MAX_POSITION_PCT` | `position_limit_reached`, `position_size_reduced` | `risk.py` |
+| 5 Trade | Cap a reducing SELL to held exposure | (existing exposure; not a new Settings field) | `sell_capped_to_position` | `risk.py` |
 | 5 Trade | Volatility-targeted sizing | `VOLATILITY_SIZING_ENABLED`, `TARGET_VOLATILITY` | `volatility_scaled` | `risk.py` |
 | Evidence | Immutable risk-decision audit trail | `RISK_AUDIT_PATH` | — | `risk_audit.py` |
 | Evidence | Policy versioning | `RISK_POLICY_LABEL` + digest of all limits | — | `risk.py` |
@@ -120,12 +121,28 @@ Notes on the implemented semantics:
   notionals, non-allowlisted assets and proposals arriving while the kill switch
   file exists are rejected regardless of confidence, signal ids or thesis text,
   including thesis text that instructs the system to raise its own limits.
+  Thesis or signal ids claiming "this is a reduce" cannot reclassify an
+  uncovered SELL as risk-reducing; classification is derived from
+  `PortfolioSnapshot` only.
+- **Risk-reducing exits.** A SELL is risk-reducing only when the observed
+  book already has positive exposure in that asset. Additive limits
+  (`gross_exposure_limit`, `cash_reserve_breached`, `max_positions_reached`,
+  `position_limit_reached`) and volatility scaling do not block or resize
+  those exits; daily-loss and drawdown are recorded as informational
+  reasons. The kill switch, stale-state shutdown, strategy breaker,
+  allowlist and spread gates still reject. Approved notional is never
+  larger than the exposure held. `RISK_LIMIT_FIELDS` is unchanged — this
+  is a semantic change to existing limits, not a new one.
 
 ## Failure behaviour
 
 The default response to uncertainty, inconsistent state, expired market data, failed reconciliation, unavailable risk service, or signing-service anomalies is **no new risk**.
 
-Existing positions may still require predefined emergency close/reduce logic; this must be deterministic and separately tested.
+A strategy-driven SELL against observed long exposure is the implemented
+deterministic reduce path: it may pass additive limits so the book can
+de-risk, and is separately tested (`tests/test_risk.py`,
+`tests/test_risk_reducing_exits.py`, `tests/security/`). Operator flatten
+and stop-loss position management remain separate work.
 
 ## Key custody
 
