@@ -141,11 +141,15 @@ class PaperResearchStrategy:
     """Candle-only baseline voter used in paper research mode.
 
     Optional intel (on-chain, narrative, altFINS / other edge fields, Crucix)
-    is intentionally unread. The strategy takes the short-vs-long moving-average
-    side when candles are healthy (enough history, positive prices) and the
-    averages are not identical. It is regime-agnostic so it can pair with the
-    trend/momentum voters that the default ensemble otherwise mutually excludes
-    by regime, or stand alone when ``min_agreeing`` is 1.
+    is intentionally unread. The strategy is regime-agnostic and
+    symbol-agnostic: the same voter participates for every allowlisted
+    asset (BTC, ETH, SOL, …) whenever candles are healthy.
+
+    Primary tilt is short-vs-long moving average. On a RANGE book those
+    two averages converge (typical ETH 1h Spot: a few bps) while last
+    close vs the long MA still has a measurable gap — that fallback is
+    how the baseline keeps participating instead of going silent on one
+    asset. Perfectly flat or non-positive prices stay flat.
 
     Live/shadow ensembles must leave this unset. See
     ``docs/RUNBOOK.md`` ("Paper research mode and strategy consensus").
@@ -154,7 +158,7 @@ class PaperResearchStrategy:
     strategy_id: str = "paper_research_baseline_v1"
     short_window: int = 10
     long_window: int = 30
-    # 10 bps of MA separation is enough to refuse a perfectly flat book while
+    # 10 bps of tilt is enough to refuse a perfectly flat book while
     # still firing on typical Kraken 1h crypto drift that misses the 2%
     # 12-bar momentum bar.
     minimum_separation: float = 0.001
@@ -165,7 +169,8 @@ class PaperResearchStrategy:
             raise ValueError("insufficient candles for paper research baseline")
         short = moving_average(candles, self.short_window)
         long = moving_average(candles, self.long_window)
-        if short <= 0 or long <= 0:
+        close = candles[-1].close
+        if short <= 0 or long <= 0 or close <= 0:
             return StrategySignal(
                 strategy_id=self.strategy_id,
                 symbol=candles[-1].symbol,
@@ -175,12 +180,26 @@ class PaperResearchStrategy:
                 regime=regime,
                 rationale="unhealthy candle prices (non-positive moving average)",
             )
-        separation = short / long - 1.0
-        side: Side | None = None
-        if separation >= self.minimum_separation:
-            side = Side.BUY
-        elif separation <= -self.minimum_separation:
-            side = Side.SELL
+        ma_separation = short / long - 1.0
+        price_separation = close / long - 1.0
+        if abs(ma_separation) >= self.minimum_separation:
+            separation = ma_separation
+            rationale = f"paper-research MA separation={ma_separation:.4f}"
+        elif abs(price_separation) >= self.minimum_separation:
+            # RANGE / compressed-MA fallback so ETH-like Spot books still vote.
+            separation = price_separation
+            rationale = f"paper-research price vs long MA={price_separation:.4f}"
+        else:
+            return StrategySignal(
+                strategy_id=self.strategy_id,
+                symbol=candles[-1].symbol,
+                side=None,
+                score=0.0,
+                confidence=0.0,
+                regime=regime,
+                rationale=f"paper-research MA separation={ma_separation:.4f}",
+            )
+        side = Side.BUY if separation > 0 else Side.SELL
         confidence = min(abs(separation) / max(self.minimum_separation * 2, 1e-9), 1.0)
         score = max(-1.0, min(1.0, separation / max(self.minimum_separation * 2, 1e-9)))
         return StrategySignal(
@@ -188,9 +207,9 @@ class PaperResearchStrategy:
             symbol=candles[-1].symbol,
             side=side,
             score=score,
-            confidence=confidence if side is not None else 0.0,
+            confidence=confidence,
             regime=regime,
-            rationale=f"paper-research MA separation={separation:.4f}",
+            rationale=rationale,
         )
 
 
@@ -220,7 +239,46 @@ class StrategyEnsemble:
             signals.append(self.paper_research_strategy.evaluate(candles, regime))
         return regime, tuple(signals)
 
+    def paper_research_position(
+        self, candles: tuple[Candle, ...]
+    ) -> tuple[float, Regime, list[str]] | None:
+        """Isolated baseline position for the paper-research lookback.
+
+        ``None`` when no baseline is wired (live/shadow). The current-side
+        consensus still uses :meth:`evaluate` + :meth:`consensus`; this path
+        exists so the backtester measures the MA voter rather than the
+        regime-exclusive ensemble, which flattens on 1–1 splits and bleeds
+        fees on a lookback the MA path itself would survive.
+        """
+        if self.paper_research_strategy is None:
+            return None
+        regime = self.classifier.classify(candles)
+        signal = self.paper_research_strategy.evaluate(candles, regime)
+        if signal.side is None:
+            return 0.0, regime, []
+        weight = 1.0 if signal.side is Side.BUY else -1.0
+        return weight, regime, [signal.strategy_id]
+
     def consensus(self, signals: tuple[StrategySignal, ...]) -> StrategySignal | None:
+        # --- paper research path ---
+        # When intel is off (min_agreeing=1) the baseline is the paper voter.
+        # An opposing regime-exclusive minority (typical RANGE mean-reversion)
+        # must not cancel it with a 1–1 split — that is how ETH stayed silent
+        # after the price-vs-long-MA fallback started participating.
+        if self.paper_research_strategy is not None and self.min_agreeing == 1:
+            baseline_id = self.paper_research_strategy.strategy_id
+            baseline = next(
+                (signal for signal in signals if signal.strategy_id == baseline_id),
+                None,
+            )
+            if baseline is not None and baseline.side is not None:
+                agreeing = tuple(signal for signal in signals if signal.side is baseline.side)
+                return combine_signals(
+                    agreeing,
+                    strategy_id="baseline_ensemble_v1",
+                    signal_version=version_of(self),
+                    min_agreeing=1,
+                )
         return combine_signals(
             signals,
             strategy_id="baseline_ensemble_v1",

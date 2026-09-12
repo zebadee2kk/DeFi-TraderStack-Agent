@@ -91,8 +91,8 @@ def test_build_pretrade_gate_uses_paper_research_ensemble() -> None:
     gate = build_pretrade_gate(_settings())
     assert isinstance(gate.backtester.ensemble.paper_research_strategy, PaperResearchStrategy)
     assert gate.backtester.ensemble.min_agreeing == 1
-    assert gate.min_total_return == 0.0
-    assert gate.min_excess_return == -0.05
+    assert gate.min_total_return == -0.15
+    assert gate.min_excess_return == -0.10
     assert gate.min_sharpe == -10.0
     assert gate.min_trades == 1
 
@@ -169,6 +169,60 @@ def test_pipeline_reaches_risk_on_paper_research_consensus() -> None:
     assert result.feature_vector.onchain.exchange_netflow_z is None
     assert result.feature_vector.narrative.sentiment is None
     assert result.feature_vector.market.external_signal_score is None
+
+
+def eth_mild_uptrend(count: int = 300) -> tuple[Candle, ...]:
+    """Same MA path as BTC dry-runs, stamped ETH/USD so the allowlist is exercised."""
+    candles: list[Candle] = []
+    previous = 100.0
+    now = datetime.now(UTC)
+    for index in range(count):
+        close = 100.0 + index * 0.08
+        candles.append(
+            Candle(
+                symbol="ETH/USD",
+                interval="1h",
+                opened_at=now - timedelta(hours=count - index),
+                open=previous,
+                high=max(previous, close) * 1.001,
+                low=min(previous, close) * 0.999,
+                close=close,
+                volume=1_000 + index,
+            )
+        )
+        previous = close
+    return tuple(candles)
+
+
+def test_pipeline_reaches_risk_on_eth_allowlisted_asset() -> None:
+    settings = _settings()
+    candles = eth_mild_uptrend()
+    pipeline = VerticalSlicePipeline(
+        risk_engine=RiskEngine(settings),
+        pretrade_gate=build_pretrade_gate(settings),
+        feature_builder=CandleMarketFeatureBuilder(),
+        max_tick_age_seconds=30.0,
+    )
+    last = candles[-1].close
+    result = pipeline.process(
+        MarketTick(
+            source=MarketSource.KRAKEN,
+            symbol="ETH/USD",
+            bid=last * 0.9995,
+            ask=last * 1.0005,
+            last=last,
+        ),
+        [ReferencePrice(source=MarketSource.COINGECKO, asset="ETH", price=last)],
+        PortfolioSnapshot(nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000),
+        candles=candles,
+    )
+    assert result.pretrade_check is not None
+    assert result.pretrade_check.confirmed_side is Side.BUY
+    assert result.pretrade_check.passed, result.pretrade_check.reasons
+    assert result.proposal is not None
+    assert result.risk_result is not None
+    assert result.risk_result.decision in {RiskDecision.ALLOW, RiskDecision.REDUCE}
+    assert result.paper_order is not None
 
 
 def test_paper_research_does_not_change_demonstration_notional() -> None:

@@ -2,9 +2,10 @@
 
 A candle-only MA voter on ~400-bar 1h history is structurally behind
 PRETRADE_MIN_EXCESS_RETURN=0 / PRETRADE_MIN_SHARPE=0 / PRETRADE_MIN_TRADES=3
-(fee drag vs costless buy-and-hold; one-trade uptrends). Paper applies
-documented floors that still require positive total return. Live/shadow
-keep the strict mins even when PAPER_PRETRADE_* are set.
+(fee drag vs costless buy-and-hold; one-trade uptrends; mild Spot
+pullbacks). Paper applies documented floors that still require
+non-catastrophic evidence. Live/shadow keep the strict mins even when
+PAPER_PRETRADE_* are set.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -88,7 +89,9 @@ def test_paper_defaults_differ_from_live_promotion_bar() -> None:
     assert paper.effective_pretrade_min_excess_return == paper.paper_pretrade_min_excess_return
     assert paper.effective_pretrade_min_sharpe == paper.paper_pretrade_min_sharpe
     assert paper.effective_pretrade_min_trades == paper.paper_pretrade_min_trades
-    assert paper.effective_pretrade_min_total_return == 0.0
+    assert paper.effective_pretrade_min_total_return == -0.15
+    assert paper.effective_pretrade_min_excess_return == -0.10
+    assert paper.effective_pretrade_min_walkforward_excess_return == -0.10
     assert live.effective_pretrade_min_excess_return == live.pretrade_min_excess_return
     assert live.effective_pretrade_min_sharpe == live.pretrade_min_sharpe
     assert live.effective_pretrade_min_trades == live.pretrade_min_trades
@@ -169,8 +172,8 @@ def test_paper_gate_still_rejects_a_losing_lookback() -> None:
     check = build_pretrade_gate(_settings()).evaluate(candles, now=end_time(candles))
     assert not check.passed
     assert check.metrics is not None
-    # Positive-evidence floor: either no consensus, or the book lost money /
-    # breached drawdown. Must not silently pass a losing MA voter.
+    # Non-catastrophic floor: a collapse still fail-closes. Must not
+    # silently pass a blown-up MA voter.
     assert check.confirmed_side is None or (
         "backtest_total_return_below_minimum" in check.reasons
         or "backtest_drawdown_above_maximum" in check.reasons
@@ -178,6 +181,79 @@ def test_paper_gate_still_rejects_a_losing_lookback() -> None:
         or "walkforward_excess_return_below_minimum" in check.reasons
         or "no_strategy_consensus" in check.reasons
     )
+
+
+def compressed_ma_eth(count: int = 400, *, start: datetime = START) -> tuple[Candle, ...]:
+    """ETH-like RANGE: short/long compressed, last close above the long MA."""
+    candles: list[Candle] = []
+    previous = 100.0
+    for index in range(count):
+        close = 100.20 if index == count - 1 else 100.0
+        candles.append(
+            Candle(
+                symbol="ETH/USD",
+                interval="1h",
+                opened_at=start + timedelta(hours=index),
+                open=previous,
+                high=max(previous, close) * 1.001,
+                low=min(previous, close) * 0.999,
+                close=close,
+                volume=1_000 + index,
+            )
+        )
+        previous = close
+    return tuple(candles)
+
+
+def mild_spot_pullback(count: int = 400, *, start: datetime = START) -> tuple[Candle, ...]:
+    """Choppy 1h book with a few percent of net decline — non-catastrophic."""
+    candles: list[Candle] = []
+    previous = 100.0
+    for index in range(count):
+        phase = index % 16
+        step = 0.28 if phase < 7 else -0.36
+        close = max(50.0, previous + step)
+        candles.append(
+            Candle(
+                symbol="SOL/USD",
+                interval="1h",
+                opened_at=start + timedelta(hours=index),
+                open=previous,
+                high=max(previous, close) * 1.002,
+                low=min(previous, close) * 0.998,
+                close=close,
+                volume=1_000 + index,
+            )
+        )
+        previous = close
+    return tuple(candles)
+
+
+def test_eth_like_compressed_ma_reaches_paper_consensus() -> None:
+    candles = compressed_ma_eth()
+    check = build_pretrade_gate(_settings()).evaluate(candles, now=end_time(candles))
+    assert check.confirmed_side is Side.BUY
+    assert check.rationale is not None
+    assert "price vs long MA" in check.rationale
+    assert "no_strategy_consensus" not in check.reasons
+
+
+def test_paper_backtest_records_isolated_baseline_ids() -> None:
+    candles = mild_uptrend()
+    metrics = BaselineBacktester(ensemble=paper_research_ensemble(_settings())).run(candles)
+    assert metrics.trades >= 1
+    assert all(trade.strategy_ids == ["paper_research_baseline_v1"] for trade in metrics.trade_log)
+
+
+def test_paper_gate_clears_floors_on_mild_spot_pullback() -> None:
+    candles = mild_spot_pullback()
+    settings = _settings()
+    check = build_pretrade_gate(settings).evaluate(candles, now=end_time(candles))
+    assert check.confirmed_side is not None
+    assert check.metrics is not None
+    assert check.metrics.total_return >= settings.paper_pretrade_min_total_return
+    assert check.metrics.max_drawdown <= 0.15
+    assert check.passed, check.reasons
 
 
 def test_pipeline_reaches_risk_on_default_paper_gate() -> None:

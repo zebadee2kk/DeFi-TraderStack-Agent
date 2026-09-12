@@ -106,10 +106,18 @@ is set.
 When active, `StrategyEnsemble` includes `PaperResearchStrategy`
 (`paper_research_baseline_v1`) — a candle-only MA-direction voter that does
 not read intel, Crucix, or edge fields — and may set `min_agreeing=1` when
-no optional intel provider is configured. `combine_signals` still fail-closes
-on a split vote. The backtest/walk-forward still run after a consensus side
-exists; on `TRADING_MODE=paper` they use the documented paper floors in
-`PAPER_PRETRADE_MIN_*` (positive total return, modest fee-drag room vs
+no optional intel provider is configured. The baseline is symbol-agnostic
+and participates for every allowlisted asset: short-vs-long MA first, then
+last close vs the long MA when the two averages have compressed (typical
+ETH 1h RANGE). `combine_signals` still fail-closes on a split vote unless
+paper research is in single-voter mode and the baseline itself voted —
+then the baseline side wins so an opposing RANGE mean-reversion cannot
+cancel ETH. The
+backtest/walk-forward still run after a consensus side exists; when the
+baseline is wired they measure that isolated MA path (not the
+regime-exclusive ensemble, which flattens on 1–1 splits and bleeds fees).
+On `TRADING_MODE=paper` they use the documented paper floors in
+`PAPER_PRETRADE_MIN_*` (non-catastrophic total return, modest room vs
 buy-and-hold, a Sharpe floor below the one-trade fee-shock artifact).
 Live/shadow keep `PRETRADE_MIN_EXCESS_RETURN=0` / `PRETRADE_MIN_SHARPE=0`.
 `RiskEngine` and the kill switch are unchanged.

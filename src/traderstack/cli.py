@@ -125,7 +125,8 @@ def paper_research_ensemble(settings: Settings) -> StrategyEnsemble:
     # Optional intel (and unset edge slots such as Crucix) cannot vote in the
     # candle ensemble. When they are intentionally off, a single healthy
     # candle-side signal is enough to form consensus; when they are
-    # configured, keep the two-voter bar.
+    # configured, keep the two-voter bar. The baseline is symbol-agnostic
+    # and is attached once for every allowlisted asset the service cycles.
     min_agreeing = 1 if not settings.optional_intelligence_configured else 2
     return StrategyEnsemble(
         paper_research_strategy=PaperResearchStrategy(),

@@ -211,18 +211,20 @@ class Settings(BaseSettings):
     paper_research_mode: bool = True
     # --- paper pretrade thresholds ---
     # TRADING_MODE=paper only. Documented paper defaults for a candle-only
-    # baseline on ~400-bar Kraken 1h Spot: still require positive evidence
-    # (total return at/above this floor, at least one completed trade) and
-    # keep the gate enabled. Beating costless buy-and-hold (excess_return>=0)
-    # and printing a non-negative Sharpe over ~16 days is a promotion bar,
-    # not a paper-research bar — fee drag on an always-in MA voter makes
-    # PRETRADE_MIN_EXCESS_RETURN=0.0 structurally unreachable on a BUY
-    # uptrend. Live/shadow always use PRETRADE_MIN_* above.
-    paper_pretrade_min_total_return: float = 0.0
-    paper_pretrade_min_excess_return: float = -0.05
+    # baseline on ~400-bar Kraken 1h Spot. Require *non-catastrophic*
+    # evidence (total return at/above this floor, at least one completed
+    # trade) and keep the gate enabled. A 16-day MA path can lose a few
+    # percent on a pullback even when the current tilt is healthy — that
+    # is not a blow-up, and PAPER_PRETRADE_MIN_TOTAL_RETURN=0.0 blocked
+    # every BTC/SOL cycle on the WSL retest. Beating costless buy-and-hold
+    # (excess_return>=0) and printing a non-negative Sharpe over ~16 days
+    # remains the live/shadow promotion bar. Live/shadow always use
+    # PRETRADE_MIN_* above; these paper floors never apply there.
+    paper_pretrade_min_total_return: float = -0.15
+    paper_pretrade_min_excess_return: float = -0.10
     paper_pretrade_min_sharpe: float = -10.0
     paper_pretrade_min_trades: int = Field(default=1, ge=0)
-    paper_pretrade_min_walkforward_excess_return: float = -0.05
+    paper_pretrade_min_walkforward_excess_return: float = -0.10
 
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue

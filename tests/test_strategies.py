@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from traderstack.candles import Candle, CandleHistory
+from traderstack.indicators import moving_average
 from traderstack.models import Side
 from traderstack.strategies import (
     PaperResearchStrategy,
@@ -96,6 +97,90 @@ def test_paper_research_baseline_is_flat_on_identical_prices() -> None:
     candles = make_candles([100.0] * 60)
     signal = PaperResearchStrategy().evaluate(candles, Regime.RANGE)
     assert signal.side is None
+
+
+def compressed_ma_eth_prices(count: int = 80) -> list[float]:
+    """RANGE book: short/long MA compressed, last close above the long MA.
+
+    Matches the WSL ETH Spot shape: ~4 bps of short-vs-long, but price vs
+    the 30-bar MA still clears 10 bps.
+    """
+    prices = [100.0] * (count - 1)
+    prices.append(100.20)
+    return prices
+
+
+def test_paper_research_baseline_votes_on_eth_compressed_ma() -> None:
+    candles = make_candles(compressed_ma_eth_prices(), symbol="ETH/USD")
+    short = moving_average(candles, 10)
+    long = moving_average(candles, 30)
+    assert abs(short / long - 1.0) < 0.001
+    assert candles[-1].close / long - 1.0 >= 0.001
+    signal = PaperResearchStrategy().evaluate(candles, Regime.RANGE)
+    assert signal.symbol == "ETH/USD"
+    assert signal.side is Side.BUY
+    assert "price vs long MA" in signal.rationale
+
+
+def test_paper_research_baseline_participates_for_all_allowlisted_assets() -> None:
+    strategy = PaperResearchStrategy()
+    for symbol in ("BTC/USD", "ETH/USD", "SOL/USD"):
+        candles = make_candles(compressed_ma_eth_prices(), symbol=symbol)
+        signal = strategy.evaluate(candles, Regime.RANGE)
+        assert signal.side is Side.BUY
+        assert signal.symbol == symbol
+
+
+def test_paper_research_single_voter_baseline_wins_a_split() -> None:
+    """RANGE mean-reversion must not cancel the paper baseline when intel is off."""
+    buy = StrategySignal(
+        strategy_id="paper_research_baseline_v1",
+        symbol="ETH/USD",
+        side=Side.BUY,
+        score=0.4,
+        confidence=0.4,
+        regime=Regime.RANGE,
+        rationale="paper-research price vs long MA=0.0015",
+    )
+    sell = StrategySignal(
+        strategy_id="mean_reversion_v1",
+        symbol="ETH/USD",
+        side=Side.SELL,
+        score=-0.5,
+        confidence=0.5,
+        regime=Regime.RANGE,
+        rationale="price z-score=1.800",
+    )
+    research = StrategyEnsemble(
+        paper_research_strategy=PaperResearchStrategy(),
+        min_agreeing=1,
+    )
+    consensus = research.consensus((buy, sell))
+    assert consensus is not None
+    assert consensus.side is Side.BUY
+
+    two_voter = StrategyEnsemble(
+        paper_research_strategy=PaperResearchStrategy(),
+        min_agreeing=2,
+    )
+    assert two_voter.consensus((buy, sell)) is None
+    assert StrategyEnsemble().consensus((buy, sell)) is None
+
+
+def test_paper_research_position_follows_baseline_not_ensemble() -> None:
+    candles = make_candles(compressed_ma_eth_prices(), symbol="ETH/USD")
+    default = StrategyEnsemble()
+    assert default.paper_research_position(candles) is None
+
+    research = StrategyEnsemble(
+        paper_research_strategy=PaperResearchStrategy(),
+        min_agreeing=1,
+    )
+    isolated = research.paper_research_position(candles)
+    assert isolated is not None
+    weight, _regime, ids = isolated
+    assert weight == 1.0
+    assert ids == ["paper_research_baseline_v1"]
 
 
 def test_paper_research_ensemble_reaches_consensus_on_mild_uptrend() -> None:
