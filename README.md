@@ -242,8 +242,8 @@ live tape is empty (no PIT mid + official station high). Default
 `PAPER_PROMOTE_*` stays false. Report:
 `docs/artifacts/strategy-search/polymarket-weather-eval.md`.
 `traderstack-funding-carry` scores a frozen funding-z / carry catalog
-on BTC+ETH aligned to public funding-rate history (OKX + Hyperliquid
-when reachable; Binance/Bybit skipped if geo-blocked). `--interval 1d`
+on BTC+ETH aligned to public funding-rate history (OKX + Hyperliquid +
+BitMEX when reachable; Binance/Bybit skipped if geo-blocked). `--interval 1d`
 resamples funding to UTC daily sums so #96+A+B+C can be evaluated or
 recorded UNAVAILABLE. Basis is skipped without a PIT series. One venue
 is **single-print** and **cannot promote**. Empty / cannot-promote is

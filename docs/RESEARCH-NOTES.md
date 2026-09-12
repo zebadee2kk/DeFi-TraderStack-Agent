@@ -75,11 +75,12 @@ At minimum:
   paper A/B) are still open. That is not evidence of alpha.
 - Does a fee-aware funding-z threshold or hedged cash-and-carry clear
   dual independent prints on BTC+ETH? `traderstack-funding-carry`
-  scores a frozen catalog against OKX and Hyperliquid when reachable
-  (Binance/Bybit probed and skipped if geo-blocked). A single-venue
-  tape cannot promote; hard gates stay UNAVAILABLE until 720 aligned
-  daily bars exist on two venues (OKX public history is still ~90d
-  after a UTC-day resample). Basis is skipped without a PIT series;
+  scores a frozen catalog against OKX, Hyperliquid, and BitMEX when
+  reachable (Binance/Bybit probed and skipped if geo-blocked). A
+  single-venue tape cannot promote; hard gates stay UNAVAILABLE until
+  720 aligned daily bars exist on two venues. BitMEX public
+  settlements can fill that bar; OKX public history is still ~90d
+  after a UTC-day resample. Basis is skipped without a PIT series;
   there is no paper perp / hedge path, so a pin stays off. Empty /
   cannot-promote is success. See
   `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.

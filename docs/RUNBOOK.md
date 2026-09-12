@@ -33,7 +33,7 @@ without activating the venv.
 | `traderstack-dual-print-search` | Expanded daily catalog (frozen K before pull) scored under the **pre-registered dual-print bar**: Kraken primary 720 must clear #96+A+B+C **and** the #102 Binance.US older-720 must also clear those combined gates. Ranking key: Kraken mean holdout excess among dual-print passers. Venues are not averaged. Writes `docs/artifacts/strategy-search/dual-print-search.md`. Never flips `PAPER_PROMOTE_*`. An empty dual-print set is success. |
 | `traderstack-liq-regime-search` | Paper-only next slice after the empty #104 EMA dual-print: scores a frozen catalog **conditioned on** liquidation-z / funding-z / OI-z / cross-venue series when an aligned historical series exists, plus candle-only vol-regime wrappers. Public USDT-M liquidation REST is typically unusable and is skipped, not zero-filled. Dual-print only if historical liq exists on BTC+ETH **and** a second venue print is supplied; otherwise **single-print** and **cannot promote**. Writes `docs/artifacts/strategy-search/liq-regime-search.md`. Never flips `PAPER_PROMOTE_*`. Empty search is success. |
 | `traderstack-intraday-dual-print` | Paper-only 4h (default) or 1h hunt after empty daily EMA (#104), empty liq (#105), and empty Polymarket PIT (#106). Frozen **non-EMA** catalog (MA / momentum / mean-reversion / vol-regime; funding/OI only if aligned series exist). Same #96+A+B+C combined gates on Kraken public Spot **and** the #102-style Binance.US older-720 of the same interval. Ranking is Kraken mean holdout among dual-print passers. Writes `docs/artifacts/strategy-search/intraday-dual-print.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
-| `traderstack-funding-carry` | Paper-only funding-z threshold + hedged cash-and-carry catalog on BTC+ETH. Aligns Kraken public Spot (default 4h) to public funding-rate history (OKX + Hyperliquid when reachable; Binance/Bybit probed and skipped if geo-blocked). Dual-print only if two **independent funding venues** cover BTC and ETH; one venue is **single-print** and **cannot promote**. Hard gates (#96+A+B+C) stay UNAVAILABLE on a short tape. Writes `docs/artifacts/strategy-search/funding-carry.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
+| `traderstack-funding-carry` | Paper-only funding-z threshold + hedged cash-and-carry catalog on BTC+ETH. Aligns Kraken public Spot (default 4h) to public funding-rate history (OKX + Hyperliquid + BitMEX when reachable; Binance/Bybit probed and skipped if geo-blocked). Dual-print only if two **independent funding venues** cover BTC and ETH; one venue is **single-print** and **cannot promote**. Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars exist on **each** venue. Writes `docs/artifacts/strategy-search/funding-carry.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
@@ -717,19 +717,22 @@ Polymarket PIT tape, and #108 4h non-EMA dual-print were all empty.
 funding-z thresholds, funding-agree spot overlays, and a modeled
 hedged cash-and-carry on BTC+ETH.
 
-- Dual-print only if two independent **funding** venues (e.g. OKX and
-  Hyperliquid) each cover BTC and ETH. A second candle venue without a
-  second funding tape is not dual-print. Same-venue prefix/suffix is
-  not independent. Binance (HTTP 451) and Bybit (HTTP 403) are probed
-  and recorded as skips when geo-blocked.
+- Dual-print only if two independent **funding** venues (e.g.
+  Hyperliquid and BitMEX) each cover BTC and ETH. A second candle
+  venue without a second funding tape is not dual-print. Same-venue
+  prefix/suffix is not independent. Binance (HTTP 451) and Bybit
+  (HTTP 403) are probed and recorded as skips when geo-blocked.
 - Otherwise the run is labeled **single-print** and **cannot promote**.
 - OKX public funding-rate-history is typically ~90d of 8h prints.
   Hyperliquid `fundingHistory` is hourly and typically reachable
   (daily runs request ~800d so a Kraken 720-bar daily window can be
-  covered on that one tape). Hard gates (#96+A+B+C) need 720 aligned
-  **daily** bars on **each** participating venue and stay UNAVAILABLE
-  on a short overlap — they are not faked. `--interval 1d` resamples
-  funding to UTC daily sums (empty days omitted, never zero-filled).
+  covered on that one tape). BitMEX `GET /api/v1/funding` is a public
+  8h settlement tape long enough for ≥720 UTC daily sums (uses
+  `fundingRate`, never `fundingRateDaily`). Hard gates (#96+A+B+C)
+  need 720 aligned **daily** bars on **each** participating venue and
+  stay UNAVAILABLE on a short overlap — they are not faked.
+  `--interval 1d` resamples funding to UTC daily sums (empty days
+  omitted, never zero-filled).
 - Hedged carry PnL is received |funding| minus two-leg fees. Perp-spot
   basis is skipped unless a PIT mark−index / perp-mid−spot-mid series
   is supplied. Hyperliquid `fundingHistory.premium` is not basis.

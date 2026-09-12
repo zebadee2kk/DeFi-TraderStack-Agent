@@ -23,6 +23,11 @@ Second independent funding tapes (skip-not-invent; do not blend):
 
 * Hyperliquid ``POST /info`` ``fundingHistory`` — public, hourly, paginable
   from listing (~2023). Typically reachable from this environment.
+* BitMEX ``GET /api/v1/funding`` — public settlements (XBTUSD from 2016,
+  ETHUSD from 2018). Modern cadence is 8h; early XBTUSD was 24h. Uses
+  ``fundingRate`` only — ``fundingRateDaily`` is a restated multiple and
+  must not be treated as a settlement. An 800d lookback yields ≥720 UTC
+  daily sums without inventing prints.
 * Bybit ``GET /v5/market/funding/history`` — public when reachable; this
   environment typically gets HTTP 403 (CloudFront country block).
 * Deribit ``public/get_funding_rate_history`` is reachable but returns
@@ -38,7 +43,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -47,6 +52,7 @@ BINANCE_FAPI_BASE = "https://fapi.binance.com"
 OKX_BASE = "https://www.okx.com"
 BYBIT_BASE = "https://api.bybit.com"
 HYPERLIQUID_BASE = "https://api.hyperliquid.xyz"
+BITMEX_BASE = "https://www.bitmex.com"
 
 _BINANCE_SYMBOL: dict[str, str] = {
     "BTC/USD": "BTCUSDT",
@@ -68,6 +74,10 @@ _HYPERLIQUID_COIN: dict[str, str] = {
     "ETH/USD": "ETH",
     "SOL/USD": "SOL",
 }
+_BITMEX_SYMBOL: dict[str, str] = {
+    "BTC/USD": "XBTUSD",
+    "ETH/USD": "ETHUSD",
+}
 HYPERLIQUID_PAGE_SIZE = 500
 HYPERLIQUID_DEFAULT_LOOKBACK_DAYS = 180
 # Daily hard gates need ~720 aligned days. Hourly fundingHistory is
@@ -79,6 +89,15 @@ HYPERLIQUID_MAX_RETRIES = 6
 HYPERLIQUID_RETRY_BASE_SECONDS = 1.5
 HYPERLIQUID_PAGE_PAUSE_SECONDS = 0.2
 HYPERLIQUID_SYMBOL_PAUSE_SECONDS = 2.0
+BITMEX_PAGE_SIZE = 500
+BITMEX_DEFAULT_LOOKBACK_DAYS = 180
+# Daily hard gates need ~720 aligned days. BitMEX 8h settlements are
+# paginable from listing (XBTUSD 2016 / ETHUSD 2018); 800d covers a
+# Kraken 720-bar daily window without inventing prints or using
+# fundingRateDaily (a restated multiple of the settlement).
+BITMEX_DAILY_LOOKBACK_DAYS = 800
+BITMEX_DAILY_LIMIT_PAGES = 8
+BITMEX_PAGE_PAUSE_SECONDS = 0.25
 
 MIN_LIQUIDATION_SPAN_SECONDS = 7 * 24 * 3600
 
@@ -182,6 +201,20 @@ def hyperliquid_coin(symbol: str) -> str:
     if key in _HYPERLIQUID_COIN:
         return _HYPERLIQUID_COIN[key]
     raise ValueError(f"no Hyperliquid coin mapping for {symbol!r}")
+
+
+def bitmex_contract(symbol: str) -> str:
+    key = symbol.upper()
+    if key in _BITMEX_SYMBOL:
+        return _BITMEX_SYMBOL[key]
+    raise ValueError(f"no BitMEX mapping for {symbol!r}")
+
+
+def _iso_to_dt(value: str) -> datetime:
+    parsed = datetime.fromisoformat(str(value))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _geo_or_http_skip(name: str, source: str, exc: BaseException) -> EdgeSeriesFetch:
@@ -568,6 +601,77 @@ async def fetch_hyperliquid_funding(
         ok_reason=(
             f"Hyperliquid public fundingHistory (hourly; paginated; "
             f"lookback {lookback_days}d){suffix}"
+        ),
+    )
+
+
+async def fetch_bitmex_funding(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+    start_iso: str | None = None,
+    limit_pages: int = 8,
+    lookback_days: int = BITMEX_DEFAULT_LOOKBACK_DAYS,
+) -> EdgeSeriesFetch:
+    """Public settlement tape. Uses fundingRate only — never fundingRateDaily."""
+    name = f"bitmex_funding:{symbol}"
+    try:
+        contract = bitmex_contract(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="bitmex")
+    if start_iso is None:
+        start = datetime.now(UTC) - timedelta(days=lookback_days)
+        cursor = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    else:
+        cursor = start_iso
+    points: list[tuple[datetime, float]] = []
+    stopped_early = ""
+    try:
+        for page in range(limit_pages):
+            response = await client.get(
+                "/api/v1/funding",
+                params={
+                    "symbol": contract,
+                    "count": BITMEX_PAGE_SIZE,
+                    "reverse": "false",
+                    "startTime": cursor,
+                },
+            )
+            response.raise_for_status()
+            rows = response.json()
+            if not isinstance(rows, list) or not rows:
+                break
+            last_ts: datetime | None = None
+            new = 0
+            for row in rows:
+                if not isinstance(row, dict) or "fundingRate" not in row:
+                    continue
+                # Settlement print. fundingRateDaily restates the same
+                # interval as a daily multiple (3× on 8h, 1× on the early
+                # 24h era) — treating it as a second print invents carry.
+                ts = _iso_to_dt(str(row["timestamp"]))
+                points.append((ts, float(row["fundingRate"])))
+                last_ts = ts if last_ts is None else max(last_ts, ts)
+                new += 1
+            if new == 0 or last_ts is None:
+                break
+            cursor = (last_ts + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            if len(rows) < BITMEX_PAGE_SIZE:
+                break
+            if page + 1 < limit_pages and BITMEX_PAGE_PAUSE_SECONDS:
+                await asyncio.sleep(BITMEX_PAGE_PAUSE_SECONDS)
+    except (httpx.HTTPError, TypeError, ValueError, KeyError) as exc:
+        if not points:
+            return _geo_or_http_skip(name, "bitmex", exc)
+        stopped_early = f"; pagination stopped ({exc})"
+    suffix = stopped_early
+    return _finish(
+        name,
+        source="bitmex:/api/v1/funding",
+        points=points,
+        ok_reason=(
+            f"BitMEX public funding settlements (paginated; fundingRate "
+            f"only, not fundingRateDaily; lookback {lookback_days}d){suffix}"
         ),
     )
 

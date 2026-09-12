@@ -392,17 +392,20 @@ modeled hedged cash-and-carry on BTC+ETH.
 | print | when | can promote? |
 | --- | --- | --- |
 | single-print | only one usable funding venue on BTC+ETH | **no** |
-| dual-print | two independent funding venues (e.g. OKX **and** Hyperliquid) | still no Settings flip |
+| dual-print | two independent funding venues (e.g. Hyperliquid **and** BitMEX) | still no Settings flip |
 
 OKX public funding-rate-history is typically ~90d of 8h prints.
 Hyperliquid `fundingHistory` is hourly and typically reachable here.
-Binance USDT-M is often HTTP 451; Bybit linear is often HTTP 403.
-Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars
-exist on **each** participating venue. `--interval 1d` resamples
-funding to UTC daily sums (empty days omitted). Hedged carry does not
-invent basis (Hyperliquid funding premium is not a PIT perp−spot mid).
-There is no paper perp / hedge path. `PAPER_PROMOTE_*` stays false.
-Empty / cannot-promote is success.
+BitMEX `GET /api/v1/funding` is a public 8h settlement tape long
+enough for ≥720 UTC daily sums (`fundingRate` only; never
+`fundingRateDaily`). Binance USDT-M is often HTTP 451; Bybit linear
+is often HTTP 403. Hard gates (#96+A+B+C) stay UNAVAILABLE unless
+720 aligned daily bars exist on **each** participating venue.
+`--interval 1d` resamples funding to UTC daily sums (empty days
+omitted). Hedged carry does not invent basis (Hyperliquid funding
+premium is not a PIT perp−spot mid). There is no paper perp / hedge
+path. `PAPER_PROMOTE_*` stays false. Empty / cannot-promote is
+success.
 
 On the 2026-09-12 live run (catalog committed first):
 
@@ -442,6 +445,17 @@ Follow-up the same day (daily resample / hard-gate honesty):
   Dual-print carry passers: **0**. The 4h #110 passer does not
   survive daily resample. **No new pin.** See
   `funding-carry-daily.md`.
+
+Follow-up the same day (BitMEX wired as a second ≥720 daily tape):
+
+- Public `GET /api/v1/funding` settlements. 800d lookback: 2402 8h
+  prints / 801 UTC days on XBTUSD and ETHUSD, no day gaps. Uses
+  `fundingRate` only (`fundingRateDaily` is a restated multiple).
+- `_pick_venues` prefers the two longest usable tapes (Hyperliquid
+  hourly, then BitMEX). OKX (~97 daily) is no longer the second
+  print when BitMEX is up.
+- Deribit / Gate / Kraken Futures / Vision zips documented, not
+  blended. No paper perp path. No new pin.
 
 See `funding-carry.md`, `funding-carry-daily.md`, and the 2026-09-12
 status memo `edge-status-2026-09-12.md`.

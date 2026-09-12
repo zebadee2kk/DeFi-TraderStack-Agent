@@ -420,8 +420,9 @@ def build_report(settings: Settings) -> ConfigReport:
         CheckItem(
             "Funding / carry search",
             "report-only",
-            "traderstack-funding-carry; OKX + Hyperliquid funding-z + "
-            "hedged carry on BTC+ETH (Binance/Bybit probed, skip-not-invent); "
+            "traderstack-funding-carry; OKX + Hyperliquid + BitMEX "
+            "funding-z + hedged carry on BTC+ETH (Binance/Bybit probed, "
+            "skip-not-invent); "
             "1d resamples funding to UTC daily sums; basis skipped unless "
             "PIT; no paper perp path; single-print cannot promote; no new "
             "PAPER_PROMOTE_* unless dual-print + hard gates + PIT basis + "
