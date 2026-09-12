@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from traderstack.candles import Candle
 from traderstack.config import Settings
 from traderstack.indicators import average_directional_index
@@ -260,6 +262,24 @@ def test_paper_garch_flag_moves_risk_policy_version() -> None:
     off = settings(paper_garch_size=False)
     on = settings(paper_garch_size=True)
     assert derive_policy_version(off) != derive_policy_version(on)
+
+
+def test_mixed_intervals_rank_on_daily_only() -> None:
+    daily = downtrend(320, symbol="BTC/USD")
+    hourly = make_candles(
+        [100.0 + 0.4 * index for index in range(320)],
+        symbol="BTC/USD",
+        interval="1h",
+    )
+    mixed = _search({"BTC/USD@1d": daily, "BTC/USD@1h": hourly})
+    daily_only = _search({"BTC/USD@1d": daily})
+    assert mixed.promotion_interval == "1d"
+    assert mixed.selected_candidate_id == daily_only.selected_candidate_id
+    mixed_sel = next(row for row in mixed.candidates if row.candidate_id == mixed.selected_candidate_id)
+    daily_sel = next(
+        row for row in daily_only.candidates if row.candidate_id == daily_only.selected_candidate_id
+    )
+    assert mixed_sel.mean_wf_total_return == pytest.approx(daily_sel.mean_wf_total_return or 0.0)
 
 
 def test_garch_candidates_are_scored_not_skipped() -> None:

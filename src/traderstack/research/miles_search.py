@@ -145,6 +145,8 @@ class MilesSearchReport(BaseModel):
     any_promoted: bool = False
     honesty: str
     data_notes: list[str] = Field(default_factory=list)
+    # Daily is the GARCH/Miles timeframe. 1h is reported but not averaged in.
+    promotion_interval: str | None = None
 
 
 def _position_decision(
@@ -353,6 +355,24 @@ def evaluate_candidate_on_series(
     )
 
 
+def promotion_interval_for(series_rows: list[SeriesCandidateMetrics]) -> str | None:
+    """Prefer daily (Miles: use the daily chart). Do not mix 1h percent returns with 1d."""
+    intervals = {row.interval for row in series_rows if row.interval}
+    if "1d" in intervals:
+        return "1d"
+    if len(intervals) == 1:
+        return next(iter(intervals))
+    return None
+
+
+def _series_for_gate(
+    per_series: list[SeriesCandidateMetrics], promotion_interval: str | None
+) -> list[SeriesCandidateMetrics]:
+    if promotion_interval is None:
+        return per_series
+    return [row for row in per_series if row.interval == promotion_interval]
+
+
 def _gate_reasons(row: CandidateSearchResult, *, min_trades: int) -> list[str]:
     reasons: list[str] = []
     if row.mean_wf_total_return is None:
@@ -389,6 +409,17 @@ def run_miles_search(
     if not histories:
         raise ValueError("no candle histories provided")
     catalog = list(candidates if candidates is not None else default_miles_candidates())
+    sample_series = [
+        SeriesCandidateMetrics(
+            asset=candles[0].symbol if candles else "unknown",
+            interval=candles[0].interval if candles else "unknown",
+            candle_count=len(candles),
+            research_bars=0,
+            holdout_bars=0,
+        )
+        for candles in histories.values()
+    ]
+    promotion_interval = promotion_interval_for(sample_series)
     rows: list[CandidateSearchResult] = []
     for candidate in catalog:
         per_series = [
@@ -408,20 +439,19 @@ def run_miles_search(
             )
             for candles in histories.values()
         ]
+        gated = _series_for_gate(per_series, promotion_interval)
         wf_excess = [
             row.walkforward_mean_excess_return
-            for row in per_series
+            for row in gated
             if row.walkforward_mean_excess_return is not None
         ]
         wf_total = [
             row.walkforward_mean_total_return
-            for row in per_series
+            for row in gated
             if row.walkforward_mean_total_return is not None
         ]
-        holdout_excess = [
-            row.holdout.excess_return for row in per_series if row.holdout is not None
-        ]
-        holdout_total = [row.holdout.total_return for row in per_series if row.holdout is not None]
+        holdout_excess = [row.holdout.excess_return for row in gated if row.holdout is not None]
+        holdout_total = [row.holdout.total_return for row in gated if row.holdout is not None]
         result = CandidateSearchResult(
             candidate_id=candidate.candidate_id,
             family=candidate.family,
@@ -431,11 +461,11 @@ def run_miles_search(
             per_series=per_series,
             mean_wf_excess_return=_mean(wf_excess),
             mean_wf_total_return=_mean(wf_total),
-            total_wf_trades=sum(row.walkforward_trades for row in per_series),
+            total_wf_trades=sum(row.walkforward_trades for row in gated),
             mean_holdout_excess_return=_mean(holdout_excess),
             mean_holdout_total_return=_mean(holdout_total),
             total_holdout_trades=sum(
-                row.holdout.trades for row in per_series if row.holdout is not None
+                row.holdout.trades for row in gated if row.holdout is not None
             ),
         )
         result.rankable = (
@@ -470,7 +500,10 @@ def run_miles_search(
         "promotions). A selected candidate is promoted only if fee-aware "
         "walk-forward mean total return is strictly greater than 0, min trades "
         "are met, and holdout mean excess return is strictly greater than 0. "
-        "Positive excess with a negative total return is not an edge."
+        "Positive excess with a negative total return is not an edge. "
+        "1h and daily percent returns are never averaged together; when daily "
+        "bars are present they are the promotion window (Miles: use the daily "
+        "chart) and 1h is a robustness table only."
     )
     if selected is None or not selected.promoted:
         honesty += " No candidate cleared the bar on this data; paper promotion must stay off."
@@ -520,6 +553,7 @@ def run_miles_search(
         any_promoted=bool(selected is not None and selected.promoted),
         honesty=honesty,
         data_notes=list(data_notes or []),
+        promotion_interval=promotion_interval,
     )
 
 
@@ -529,7 +563,12 @@ def render_miles_markdown(report: MilesSearchReport) -> str:
         "",
         f"Generated: {report.generated_at.isoformat()}",
         f"Symbols: {', '.join(report.symbols)}",
-        f"Intervals: {', '.join(report.intervals)}",
+        f"Intervals: {', '.join(report.intervals)}"
+        + (
+            f" (promotion uses {report.promotion_interval} only)"
+            if report.promotion_interval
+            else ""
+        ),
         (
             f"Costs: fee={report.fee_bps:g} bps + slippage={report.slippage_bps:g} bps "
             f"({report.cost_note})"
@@ -631,9 +670,28 @@ def render_miles_markdown(report: MilesSearchReport) -> str:
 
     lines.extend(["## Promotion decision", ""])
     if report.any_promoted:
+        garch_promoted = any(
+            row.promoted and row.family == "ema_cross_garch" for row in report.candidates
+        )
         lines.append(
-            "Promoted (research only — `PAPER_GARCH_SIZE` / paper voters stay off "
-            f"until an operator flips a flag): {', '.join(report.promoted_candidate_ids)}"
+            "Promoted on the "
+            f"{report.promotion_interval or 'available'} window "
+            f"(research only): {', '.join(report.promoted_candidate_ids)}."
+        )
+        if garch_promoted:
+            lines.append(
+                "`PAPER_GARCH_SIZE` remains an operator switch and still defaults "
+                "false until reviewed — GARCH is a reduce-only overlay in RiskEngine."
+            )
+        else:
+            lines.append(
+                "**`PAPER_GARCH_SIZE` stays false.** No GARCH-sized candidate "
+                "cleared the bar (vol-targeted size increased turnover and fee drag)."
+            )
+        lines.append(
+            "1h robustness (not in the promotion average) is in the per-series "
+            "tables. A large daily holdout on one asset is one tail, not a "
+            "live-capital claim. Do not copy YouTube return figures."
         )
     else:
         lines.append(
