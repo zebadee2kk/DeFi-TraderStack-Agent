@@ -166,12 +166,14 @@ def test_expanded_catalog_is_frozen_before_scoring() -> None:
     assert "dual_mom_10_50" in ids
     assert "dip_mr_20_1_5_vol2" in ids
     families = {item.family for item in catalog}
-    assert {"ema_cross", "ema_cross_garch", "ema_cross_riskoff", "dual_momentum", "buy_the_dip"} <= (
-        families
-    )
-    overlay = default_expanded_harder_gates_candidates(
-        btc_overlay=downtrend(220, symbol="BTC/USD")
-    )
+    assert {
+        "ema_cross",
+        "ema_cross_garch",
+        "ema_cross_riskoff",
+        "dual_momentum",
+        "buy_the_dip",
+    } <= (families)
+    overlay = default_expanded_harder_gates_candidates(btc_overlay=downtrend(220, symbol="BTC/USD"))
     overlay_ids = [item.candidate_id for item in overlay]
     assert overlay_ids == list(EXPANDED_HARDER_GATES_CORE_IDS + EXPANDED_HARDER_GATES_OVERLAY_IDS)
 
@@ -524,9 +526,7 @@ def test_markdown_table_covers_a_b_c_and_combined() -> None:
 
 
 def test_cli_default_catalog_is_expanded() -> None:
-    args = build_parser().parse_args(
-        ["--candles", "unused.json", "--no-yahoo"]
-    )
+    args = build_parser().parse_args(["--candles", "unused.json", "--no-yahoo"])
     assert args.catalog == "expanded"
     assert args.output_md.name == "expanded-harder-gates-report.md"
 

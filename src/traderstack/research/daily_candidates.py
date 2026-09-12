@@ -648,7 +648,5 @@ def default_expanded_harder_gates_candidates(
         EXPANDED_HARDER_GATES_OVERLAY_IDS if btc_overlay else ()
     )
     if ids != expected:
-        raise RuntimeError(
-            "expanded harder-gates catalog drifted from the frozen id list"
-        )
+        raise RuntimeError("expanded harder-gates catalog drifted from the frozen id list")
     return tuple(catalog)

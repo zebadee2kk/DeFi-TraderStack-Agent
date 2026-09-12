@@ -433,11 +433,7 @@ def rank_combined_passers(
     passers = [row for row in rows if row.combined]
     passers.sort(
         key=lambda row: (
-            -(
-                row.mean_holdout_excess
-                if row.mean_holdout_excess is not None
-                else float("-inf")
-            ),
+            -(row.mean_holdout_excess if row.mean_holdout_excess is not None else float("-inf")),
             row.candidate_id,
         )
     )

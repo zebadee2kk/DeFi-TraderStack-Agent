@@ -53,9 +53,10 @@ traderstack-miles-search = "traderstack.research.miles_cli:main"
 # Daily robustness / balanced-holdout: Kraken 720-bar daily + optional Yahoo
 # A/B. Offline/batch; never enables PAPER_PROMOTE_* flags.
 traderstack-daily-robustness = "traderstack.research.daily_robustness_cli:main"
-# Harder honesty gates on the #96 daily winner: magnitude balance,
-# 3x240-bar multi-window, 2x fee stress. Offline/batch; never flips
-# PAPER_PROMOTE_EMA_9_21. An honest FAIL is success.
+# Harder honesty gates on the expanded daily catalog: magnitude
+# balance, 3x240-bar multi-window, 2x fee stress. Ranks combined-passers
+# by mean holdout excess. Offline/batch; never flips PAPER_PROMOTE_*.
+# An empty promotee is success.
 traderstack-harder-gates = "traderstack.research.harder_gates_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
