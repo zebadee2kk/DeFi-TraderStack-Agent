@@ -159,9 +159,7 @@ def run(
     kraken_histories, notes = _load_histories(args)
     primary_first, source = primary_first_opened_at(kraken_histories)
     notes.append(f"primary first bar {primary_first.isoformat()} (source={source})")
-    notes.append(
-        "universe=" + ",".join(UNIVERSE) + " (SOL optional report-only; skip-not-invent)"
-    )
+    notes.append("universe=" + ",".join(UNIVERSE) + " (SOL optional report-only; skip-not-invent)")
 
     binance_histories: dict[str, tuple[Candle, ...]] = {}
     binance_source: str | None = None

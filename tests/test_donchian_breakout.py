@@ -209,13 +209,12 @@ def test_catalog_and_bar_are_frozen_before_scoring() -> None:
 def test_missing_sol_does_not_skip_btc_eth_names() -> None:
     start = datetime(2024, 1, 1, tzinfo=UTC)
     histories = {
-        "BTC/USD@1d": downtrend(80, symbol="BTC/USD", start=start),
-        "ETH/USD@1d": downtrend(80, symbol="ETH/USD", start=start),
+        "BTC/USD@1d": downtrend(160, symbol="BTC/USD", start=start),
+        "ETH/USD@1d": downtrend(160, symbol="ETH/USD", start=start),
     }
     catalog = donchian_candidates(histories)
     ids = [item.candidate_id for item in catalog]
-    assert "donchian_lo_20" in ids
-    assert CONTROL_ID in ids
+    assert ids == list(CORE_IDS)
     assert skipped_donchian_families(histories) == []
 
 
@@ -244,9 +243,7 @@ def test_channel_excludes_bar_t_high_and_uses_close() -> None:
 
     # Spike high with close still inside the prior channel must stay flat.
     inside = make_candles([100.0] * 20 + [99.5], highs=[100.0] * 20 + [200.0], lows=[99.0] * 21)
-    inside_series = donchian_position_series(
-        inside, channel_n=20, long_short=False, use_atr=False
-    )
+    inside_series = donchian_position_series(inside, channel_n=20, long_short=False, use_atr=False)
     assert inside_series[-1][1] == 0.0
 
 
@@ -264,12 +261,10 @@ def test_long_only_exits_flat_long_short_goes_short() -> None:
 
 def test_atr_buffer_requires_a_wider_close() -> None:
     prices = [100.0] * 30 + [100.4]
-    highs = [100.2] * 31
+    highs = [100.2] * 30 + [100.5]
     lows = [99.8] * 31
     candles = make_candles(prices, highs=highs, lows=lows)
-    unbuffered = donchian_position_series(
-        candles, channel_n=20, long_short=False, use_atr=False
-    )
+    unbuffered = donchian_position_series(candles, channel_n=20, long_short=False, use_atr=False)
     buffered = donchian_position_series(candles, channel_n=20, long_short=False, use_atr=True)
     assert unbuffered[-1][1] == 1.0
     assert buffered[-1][1] == 0.0
