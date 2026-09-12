@@ -1,8 +1,8 @@
 # Edge-hunt status — 2026-09-12
 
 Paper / research only. This memo summarizes the strategy-search dead
-ends through #118. It is **not** a profitability claim. No number
-here is invented.
+ends through this calendar-seasonality print. It is **not** a
+profitability claim. No number here is invented.
 
 All `PAPER_PROMOTE_*` defaults stay **false**. `TRADING_MODE` stays
 `paper`. No live path.
@@ -40,6 +40,7 @@ a missing series is a skip, not a zero-filled z.
 | #118 | Donchian / channel breakout (`traderstack-donchian-breakout`) | **0** dual-print passers | Frozen `donchian_lo/ls_{20,55,100}` + `donchian_lo_atr_{20,55}`. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. Informational positive Kraken mean HO (`donchian_ls_20` +31.04%, `donchian_lo_20` +15.10%, `donchian_lo_atr_55` +6.04%) still fails #96 on BTC walk-forward (not ETH-carried holdout). Paper path ready; still cannot promote. |
 | #119 | Time-series momentum (`traderstack-tsmom`) | **0** dual-print passers | Frozen `tsmom_lo/ls_{21,63,126,252}`. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. Informational #96 FAIL ETH-carried: `tsmom_lo_63` / `tsmom_ls_63`. Informational BTC WF-fail (positive mean HO and BTC HO): `tsmom_lo_21` / `tsmom_ls_21`. Paper path ready; still cannot promote. |
 | #120 | Bollinger band-fade (`traderstack-bollinger-fade`) | **0** dual-print passers | Frozen `bb_fade_{20x2,20x2_5,40x2}` / `bb_lo_fade_{20x2,40x2}` / `bb_squeeze_break_{20,40}`. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. #96 FAIL ETH-carried: **none**. BTC WF-fail: **none**. Informational `bb_squeeze_break_40` clears Kraken #96+A+B (mean HO +3.72%) but fails gate C; Binance #96 FAIL (BTC HO −4.69%). Paper path ready; still cannot promote. |
+| this PR | Calendar seasonality (`traderstack-calendar-seasonality`) | **0** dual-print passers | Frozen `cal_dow_lo_{mon,fri,mon_fri}` / `cal_dow_skip_weekend` / `cal_moy_lo_{q4,jan,nov_dec}` / `cal_tom_lo_3_3`. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. #96 FAIL ETH-carried: **none**. BTC WF-fail: **none**. Every Kraken mean HO negative (−5.24% to −26.42%). Paper path ready; still cannot promote. |
 
 Earlier daily work (#93–#103) documented `ema_9_21` / `ema_9_21_adx15`
 as paper-only pins. Those flags remain default **false**. The #102
@@ -492,9 +493,10 @@ on the same windows. Do not rerun the #111 daily print with only
 OKX as the second tape. Do not re-score carry on HL `premium` or
 BitMEX `.XBTUSDPI`. Do not rerun this BTC−ETH residual catalog or the
 BTC+ETH+SOL cross-sectional momentum catalog or the Donchian /
-channel-breakout catalog or the time-series momentum catalog on
-the same Kraken 720 + Binance.US older-720 windows. Do not reprint
-`mean_reversion_*` ids.
+channel-breakout catalog or the time-series momentum catalog or
+the Bollinger band-fade catalog or the calendar seasonality
+catalog on the same Kraken 720 + Binance.US older-720 windows.
+Do not reprint `mean_reversion_*` ids.
 
 1. **Second independent funding tape.** Done in #110: Hyperliquid +
    OKX dual-print. Spot-signal passers: **0**. Modeled
@@ -540,6 +542,11 @@ the same Kraken 720 + Binance.US older-720 windows. Do not reprint
     See below and `bollinger-fade.md`. Dual-print passers: **0**.
 18. **Not** a Bollinger period / k / squeeze-percentile retune on
     the same windows after seeing this print.
+19. **Calendar seasonality (UTC DOW / MOY / turn-of-month).**
+    Done this session. See below and
+    `calendar-seasonality.md`. Dual-print passers: **0**.
+20. **Not** a calendar weekday / month / N,M retune on the same
+    windows after seeing that print.
 
 ## This session — BTC−ETH relative-value residual
 
@@ -929,6 +936,98 @@ success.
 
 See `bollinger-fade.md`.
 
+## This session — calendar seasonality (catalog frozen)
+
+Highest-leverage next experiment from #120: a **non-EMA /
+non-residual / non-XS / non-Donchian / non-TSMOM /
+non-Bollinger** family that is paper-executable on Kraken
+spot. Positions are driven by the **UTC civil calendar** of
+bar t only. Catalog and dual-print bar are frozen **before**
+any live OHLC pull. Do not data-mine weekday or month sets
+after seeing PnL. Do not re-run #104 / #108 / #116 / #117 /
+#118 / #119 / #120 on the same windows. Do not invent PIT
+basis.
+
+### Catalog (frozen before the live pull)
+
+| family | ids |
+| --- | --- |
+| Day-of-week long-only | `cal_dow_lo_mon`, `cal_dow_lo_fri`, `cal_dow_lo_mon_fri` |
+| Skip-weekend (long Mon–Fri UTC; flat Sat/Sun) | `cal_dow_skip_weekend` |
+| Month-of-year long-only | `cal_moy_lo_q4`, `cal_moy_lo_jan`, `cal_moy_lo_nov_dec` |
+| Turn-of-month (last 3 / first 3 UTC calendar days) | `cal_tom_lo_3_3` |
+| Control (cannot promote) | `ma_cross_10_30` |
+
+Treatment: timezone **UTC**. Decision uses
+`opened_at.astimezone(UTC).date()` (naive timestamps treated
+as UTC). Fill at t+1 open. Turn-of-month uses
+`calendar.monthrange` (civil last-N / first-M; no look-ahead
+into future bars). A missing bar is skipped, never
+zero-filled, and does not reassign last-N onto earlier dates.
+Prices never enter the calendar decision.
+
+### Multi-asset bar (frozen)
+
+`btc_eth_signs_as_96_abc_sol_reported_not_required`: #96+A+B+C on
+BTC and ETH. SOL is reported when present and is **not** a gate.
+Equal-weight portfolio metrics were considered and **rejected**
+before scoring.
+
+### Print policy (frozen)
+
+| print | rule | can promote? |
+| --- | --- | --- |
+| Kraken primary 720 | #96+A+B+C on BTC+ETH; rank dual-print passers by Kraken mean HO | only if also Binance combined-PASS |
+| Binance.US older-720 | same #102 slice; must combined-PASS | no (gate only) |
+
+### Live print (2026-09-12)
+
+`traderstack-calendar-seasonality --live` (Kraken public Spot 1d
+BTC+ETH+SOL, 720-bar cap 2024-09-22 → 2026-09-11 UTC; Binance.US
+older-720 2022-10-03 → 2024-09-21, no overlap; costs 10+5 bps).
+Catalog frozen in a prior commit before this pull.
+
+| series | status |
+| --- | --- |
+| Kraken BTC/USD + ETH/USD + SOL/USD daily | **ok** — 720 / 720 / 720 |
+| Binance.US BTCUSDT + ETHUSDT + SOLUSDT older-720 | **ok** — 720 / 720 / 720 (`api.binance.com` HTTP 451; labeled Binance.US) |
+| Print kind | **dual_print** (two non-overlapping venue/era tapes) |
+| Hard gates (#96+A+B+C) | **available** on both prints |
+| Paper path | **true** (Kraken spot BTC/ETH; SOL optional) |
+| Dual-print passers | **0** |
+| Kraken combined-passers (ex-control) | **0** |
+| Binance.US combined-passers (ex-control) | **0** |
+| #96 FAIL ETH-carried informational names | **none** |
+| Informational BTC walk-forward fails | **none** |
+
+Informational (every name **ineligible**; rank is Kraken
+walk-forward among calendar names):
+
+| rank | id | Kraken mean HO | Binance mean HO |
+| ---: | --- | ---: | ---: |
+| 1 | `cal_dow_lo_mon` | −25.43% | −12.21% |
+| 2 | `cal_dow_skip_weekend` | −19.71% | −4.90% |
+| 3 | `cal_tom_lo_3_3` | −7.49% | −13.38% |
+| 5 | `cal_dow_lo_fri` | −6.48% | +8.07% |
+| 4 | `cal_moy_lo_jan` | −5.24% | +4.42% |
+| 9 | `ma_cross_10_30` (control) | −2.08% | −37.11% |
+
+Every calendar Kraken mean HO is **negative**. A positive
+Binance holdout (`cal_dow_lo_fri` +8.07%; the three MOY names
++4.42%) with a losing Kraken holdout is not an edge.
+
+`cal_moy_lo_jan` / `cal_moy_lo_q4` / `cal_moy_lo_nov_dec`
+share the same Kraken holdout (−5.24% / BTC −1.80% / ETH
+−8.68%). The 20% holdout on this window is ≈ Apr–Sep 2026,
+which contains none of January / Q4 / Nov–Dec, so those
+three names were flat for the whole holdout. That is a
+window artifact, not a reason to grow the month set. Do
+not retune. Empty dual-print set is success.
+
+**Cannot promote. No new `PAPER_PROMOTE_*` pin.**
+
+See `calendar-seasonality.md`.
+
 ## Pins
 
 | flag | default | status |
@@ -943,6 +1042,7 @@ See `bollinger-fade.md`.
 | new Donchian pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational positive Kraken mean HO still fails #96 on BTC walk-forward; do not add a pin |
 | new TSMOM pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `tsmom_lo_63` / `tsmom_ls_63` mean HO is ETH-carried (#96 FAIL); `tsmom_lo_21` / `tsmom_ls_21` fail BTC walk-forward; do not add a pin |
 | new Bollinger fade pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `bb_squeeze_break_40` clears Kraken #96+A+B but fails gate C; no ETH-carried / BTC-WF-fail names; do not add a pin |
+| new calendar seasonality pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; every Kraken mean HO negative; no ETH-carried / BTC-WF-fail names; do not add a pin |
 | `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
 
 `TRADING_MODE=paper`. No live.

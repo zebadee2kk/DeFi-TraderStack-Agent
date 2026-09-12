@@ -200,6 +200,18 @@ def test_bollinger_fade_is_report_only() -> None:
     assert "SOL reported" in item.detail
 
 
+def test_calendar_seasonality_is_report_only() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Calendar seasonality search")
+    assert item.value == "report-only"
+    assert "traderstack-calendar-seasonality" in item.detail
+    assert "PAPER_PROMOTE_*" in item.detail
+    assert "Kraken" in item.detail
+    assert "Binance.US" in item.detail
+    assert "paper-executable" in item.detail
+    assert "SOL reported" in item.detail
+
+
 def test_funding_carry_is_report_only() -> None:
     report = build_report(settings())
     item = next(i for i in report.items if i.label == "Funding / carry search")

@@ -189,6 +189,7 @@ simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-donchian-breakout`,
 `traderstack-tsmom`,
 `traderstack-bollinger-fade`,
+`traderstack-calendar-seasonality`,
 `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
@@ -301,6 +302,16 @@ own-asset SMA ± k × sample stdev (period×k in {20x2,
 gate. Paper-executable on Kraken spot. Empty dual-print
 set is success. Default `PAPER_PROMOTE_*` stays false.
 Report: `docs/artifacts/strategy-search/bollinger-fade.md`.
+`traderstack-calendar-seasonality` scores a frozen UTC
+day-of-week / month-of-year / turn-of-month catalog (Mon /
+Fri / Mon+Fri; skip-weekend; Q4 / Jan / Nov+Dec; last 3 /
+first 3 calendar days). Same #96+A+B+C dual-print bar
+(Kraken 720 + Binance.US older-720). Positions use the UTC
+civil date of bar t only — not a price-indicator retune.
+SOL is reported and is not a gate. Paper-executable on
+Kraken spot. Empty dual-print set is success. Default
+`PAPER_PROMOTE_*` stays false. Report:
+`docs/artifacts/strategy-search/calendar-seasonality.md`.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default)
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but
 is not traded under that envelope.
