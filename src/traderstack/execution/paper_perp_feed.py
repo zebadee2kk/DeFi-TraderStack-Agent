@@ -260,5 +260,3 @@ def settlements_after(
     """Keep prints strictly after ``since``. Does not invent a rate."""
 
     return tuple((ts, rate) for ts, rate in settlements if ts > since)
-
-

@@ -421,9 +421,7 @@ class ContinuousPaperService:
         if venue is None or since is None:
             return
         try:
-            tape = await self.paper_perp_feed.fetch_funding_since(
-                symbol, venue=venue, since=since
-            )
+            tape = await self.paper_perp_feed.fetch_funding_since(symbol, venue=venue, since=since)
         except Exception as exc:  # noqa: BLE001 - skip, never invent a rate.
             _log.warning(
                 "paper_perp_funding_fetch_failed",

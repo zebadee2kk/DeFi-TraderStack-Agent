@@ -104,9 +104,7 @@ async def test_service_uses_venue_mid_not_kraken_spot_when_feed_returns_one() ->
         async def fetch_funding_since(self, symbol: str, *, venue: str, since):
             from traderstack.execution.paper_perp_feed import PaperPerpFundingTape
 
-            return PaperPerpFundingTape(
-                venue="bitmex", asset="BTC", settlements=(), source=""
-            )
+            return PaperPerpFundingTape(venue="bitmex", asset="BTC", settlements=(), source="")
 
     result = RuntimeResult(
         tick=MarketTick(

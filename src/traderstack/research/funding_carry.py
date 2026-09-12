@@ -1348,9 +1348,7 @@ def run_funding_carry(
     if basis_status == "skipped":
         honesty += " Basis skipped (no PIT series)."
     if not paper_path_ready:
-        honesty += (
-            " Paper-executable path is not ready. Do not add a Settings pin."
-        )
+        honesty += " Paper-executable path is not ready. Do not add a Settings pin."
     else:
         honesty += (
             " Paper hedge+funding soak path is cycle-wired "
