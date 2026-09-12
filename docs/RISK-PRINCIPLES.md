@@ -92,6 +92,11 @@ string can be argued away.
 | 5 Trade | Maximum position notional | `MAX_POSITION_PCT` | `position_limit_reached`, `position_size_reduced` | `risk.py` |
 | 5 Trade | Cap a reducing SELL to held exposure | (existing exposure; not a new Settings field) | `sell_capped_to_position` | `risk.py` |
 | 5 Trade | Volatility-targeted sizing | `VOLATILITY_SIZING_ENABLED`, `TARGET_VOLATILITY` | `volatility_scaled` | `risk.py` |
+| 5 Trade | Stop-loss vs average cost | `EXIT_STOP_LOSS_PCT` | `exit_stop_loss` | `exits.py` |
+| 5 Trade | Trailing stop vs high-water | `EXIT_TRAILING_STOP_PCT` | `exit_trailing_stop` | `exits.py` |
+| 5 Trade | Take-profit vs average cost | `EXIT_TAKE_PROFIT_PCT` | `exit_take_profit` | `exits.py` |
+| 5 Trade | Maximum holding period | `EXIT_TIME_STOP_BARS` | `exit_time_stop` | `exits.py` |
+| 5 Trade | Thesis invalidated | `EXIT_ON_THESIS_INVALIDATION` | `exit_thesis_invalidated` | `exits.py` |
 | Evidence | Immutable risk-decision audit trail | `RISK_AUDIT_PATH` | — | `risk_audit.py` |
 | Evidence | Policy versioning | `RISK_POLICY_LABEL` + digest of all limits | — | `risk.py` |
 
@@ -131,10 +136,21 @@ Notes on the implemented semantics:
   (`gross_exposure_limit`, `cash_reserve_breached`, `max_positions_reached`,
   `position_limit_reached`) and volatility scaling do not block or resize
   those exits; daily-loss and drawdown are recorded as informational
-  reasons. The kill switch, stale-state shutdown, strategy breaker,
-  allowlist and spread gates still reject. Approved notional is never
-  larger than the exposure held. `RISK_LIMIT_FIELDS` is unchanged — this
-  is a semantic change to existing limits, not a new one.
+  reasons. The kill switch, stale-state shutdown, strategy breaker
+  (discretionary strategies only), allowlist and spread gates still
+  reject. Approved notional is never larger than the exposure held.
+  Deterministic `exit-*` proposals skip the entry-strategy circuit
+  breaker so a run of stop-losses cannot freeze the flatten path; the
+  kill switch is unchanged.
+- **Position-management exits.** `exits.py` evaluates stop-loss,
+  take-profit, optional trailing stop, time-stop (`EXIT_TIME_STOP_BARS`
+  × the candle interval) and optional thesis invalidation against
+  checkpointed `opened_at` / average cost / high-water. Paper and
+  shadow run the rules (paper-conservative defaults); live ignores
+  them. Each fired rule becomes a reducing SELL through
+  `RiskEngine.evaluate`. The meta-agent cannot veto an exit. The exit
+  settings are in `RISK_LIMIT_FIELDS`, so `policy_version` moves when
+  they change.
 
 ## Failure behaviour
 
@@ -143,8 +159,11 @@ The default response to uncertainty, inconsistent state, expired market data, fa
 A strategy-driven SELL against observed long exposure is the implemented
 deterministic reduce path: it may pass additive limits so the book can
 de-risk, and is separately tested (`tests/test_risk.py`,
-`tests/test_risk_reducing_exits.py`, `tests/security/`). Operator flatten
-and stop-loss position management remain separate work.
+`tests/test_risk_reducing_exits.py`, `tests/security/`). Stop-loss,
+take-profit and time-stop position management (`exits.py`) emit the
+same reducing path and are separately tested (`tests/test_exits.py`,
+`tests/acceptance/test_position_exits.py`, `tests/security/`). Operator
+flatten remains separate work.
 
 ## Key custody
 

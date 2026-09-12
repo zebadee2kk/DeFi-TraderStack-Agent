@@ -38,6 +38,7 @@ from typing import Any
 
 from traderstack.circuit_breaker import StrategyCircuitBreaker
 from traderstack.config import Settings
+from traderstack.exits import is_exit_strategy_id
 from traderstack.features import AssetFeatureVector
 from traderstack.killswitch import KillSwitch
 from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side, TradeProposal
@@ -93,6 +94,12 @@ RISK_LIMIT_FIELDS: tuple[str, ...] = (
     "robinhood_chain_max_notional_usd",
     "robinhood_chain_max_gas_limit",
     "robinhood_chain_max_gas_price_gwei",
+    # --- position management (#58) ---
+    "exit_stop_loss_pct",
+    "exit_take_profit_pct",
+    "exit_trailing_stop_pct",
+    "exit_time_stop_bars",
+    "exit_on_thesis_invalidation",
 )
 
 
@@ -206,8 +213,13 @@ class RiskEngine:
                 blocking_reasons.append("max_positions_reached")
 
         # --- 3. strategy limits -------------------------------------------
-        if self.circuit_breaker is not None and self.circuit_breaker.is_tripped(
-            proposal.strategy_id, moment
+        # Deterministic exit-* proposals skip the entry-strategy breaker so a
+        # run of stop-losses cannot freeze the book with no way to flatten.
+        # The kill switch still rejects. Discretionary SELLs keep the breaker.
+        if (
+            self.circuit_breaker is not None
+            and not is_exit_strategy_id(proposal.strategy_id)
+            and self.circuit_breaker.is_tripped(proposal.strategy_id, moment)
         ):
             reasons.append("strategy_circuit_breaker")
             blocking_reasons.append("strategy_circuit_breaker")

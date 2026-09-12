@@ -159,6 +159,72 @@ def test_apply_fill_rejects_a_negative_or_non_finite_fee() -> None:
         book.apply_fill("BTC", Side.BUY, quantity=0.1, price_usd=20_000, fee_usd=float("inf"))
 
 
+# --- position management (#58) ---------------------------------------------
+
+
+def test_opening_fill_stamps_opened_at_and_high_water() -> None:
+    moment = datetime(2026, 9, 12, 10, 0, tzinfo=UTC)
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill(
+        "BTC", Side.BUY, quantity=0.1, price_usd=20_000, now=moment, strategy_id="momentum_v1"
+    )
+
+    position = book.positions["BTC"]
+    assert position.opened_at == moment
+    assert position.high_water_price_usd == pytest.approx(20_000)
+    assert position.entry_strategy_id == "momentum_v1"
+    held = book.snapshot(now=moment).held_positions["BTC"]
+    assert held.opened_at == moment
+    assert held.average_cost_usd == pytest.approx(20_000)
+    assert held.entry_strategy_id == "momentum_v1"
+
+
+def test_mark_raises_high_water_and_sell_clears_exit_fields() -> None:
+    moment = datetime(2026, 9, 12, 10, 0, tzinfo=UTC)
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill("ETH", Side.BUY, quantity=1, price_usd=1_000, now=moment)
+    book.mark("ETH", 1_200)
+    assert book.positions["ETH"].high_water_price_usd == pytest.approx(1_200)
+
+    book.apply_fill("ETH", Side.SELL, quantity=1, price_usd=1_100)
+    assert book.positions["ETH"].opened_at is None
+    assert book.positions["ETH"].high_water_price_usd == pytest.approx(0.0)
+    assert book.positions["ETH"].entry_strategy_id is None
+    assert "ETH" not in book.snapshot().held_positions
+
+
+def test_exit_fields_survive_a_checkpoint_round_trip() -> None:
+    moment = datetime(2026, 9, 12, 10, 0, tzinfo=UTC)
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill(
+        "BTC", Side.BUY, quantity=0.1, price_usd=20_000, now=moment, strategy_id="trend_v1"
+    )
+    book.mark("BTC", 21_000)
+
+    restored = InMemoryPortfolioBook.from_state(
+        PortfolioState.model_validate_json(book.state().model_dump_json())
+    )
+    position = restored.positions["BTC"]
+    assert position.opened_at == moment
+    assert position.high_water_price_usd == pytest.approx(21_000)
+    assert position.entry_strategy_id == "trend_v1"
+
+
+def test_legacy_position_checkpoint_loads_without_exit_fields() -> None:
+    legacy = PortfolioState.model_validate(
+        {
+            "starting_nav_usd": 10_000,
+            "cash_usd": 8_000,
+            "peak_nav_usd": 10_000,
+            "positions": {"BTC": {"quantity": 0.1, "average_cost_usd": 20_000}},
+            "marks_usd": {"BTC": 20_000},
+        }
+    )
+    book = InMemoryPortfolioBook.from_state(legacy)
+    assert book.positions["BTC"].opened_at is None
+    assert book.positions["BTC"].high_water_price_usd == pytest.approx(0.0)
+
+
 def test_a_pre_epic7_checkpoint_anchors_on_load() -> None:
     """Checkpoints written before the anchor existed must not report a bogus day."""
 

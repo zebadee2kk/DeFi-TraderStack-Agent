@@ -1,8 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
-from traderstack.backtest import BaselineBacktester
+from traderstack.backtest import BacktestTrade, BaselineBacktester
 from traderstack.candles import Candle
+from traderstack.models import Side
 from traderstack.research.attribution import build_attribution_report, render_attribution_table
+from traderstack.strategies import Regime
 
 
 def make_uptrend(count: int = 200) -> tuple[Candle, ...]:
@@ -53,6 +55,42 @@ def test_attribution_report_handles_no_trades() -> None:
     assert report.gross_vs_costs.trade_count == 0
     assert report.gross_vs_costs.win_rate == 0.0
     assert report.by_strategy == []
+
+
+def test_attribution_groups_round_trips_by_exit_reason() -> None:
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    trades = [
+        BacktestTrade(
+            entry_time=start,
+            exit_time=start + timedelta(hours=2),
+            entry_price=100.0,
+            exit_price=98.0,
+            side=Side.BUY,
+            return_pct=-0.02,
+            regime=Regime.RANGE,
+            strategy_ids=["exit_stop_loss"],
+            notional_usd=1_000.0,
+            fees_paid=1.0,
+        ),
+        BacktestTrade(
+            entry_time=start,
+            exit_time=start + timedelta(hours=4),
+            entry_price=100.0,
+            exit_price=104.0,
+            side=Side.BUY,
+            return_pct=0.04,
+            regime=Regime.TRENDING_UP,
+            strategy_ids=["pretrade-backtest-gate-v1"],
+            notional_usd=1_000.0,
+            fees_paid=1.0,
+        ),
+    ]
+    report = build_attribution_report(trades, asset="BTC")
+    reasons = {bucket.key: bucket.trade_count for bucket in report.by_exit_reason}
+    assert reasons == {"discretionary": 1, "exit_stop_loss": 1}
+    text = render_attribution_table(report)
+    assert "By exit reason" in text
+    assert "exit_stop_loss" in text
 
 
 def test_render_attribution_table_produces_readable_text() -> None:

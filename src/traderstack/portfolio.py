@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 # --- risk plane (Epic 7) ---
 from traderstack.circuit_breaker import StrategyBreakerState
-from traderstack.models import PortfolioSnapshot, Side
+from traderstack.models import HeldPosition, PortfolioSnapshot, Side
 
 
 class PositionState(BaseModel):
@@ -15,6 +15,11 @@ class PositionState(BaseModel):
     # --- paper fees (#66) ---
     # Additive across fills for this asset. Legacy checkpoints omit it (0).
     fees_paid_usd: float = Field(default=0.0, ge=0)
+    # --- position management (#58) ---
+    # Additive checkpoint fields. Legacy documents omit them (None / 0).
+    opened_at: datetime | None = None
+    high_water_price_usd: float = Field(default=0.0, ge=0)
+    entry_strategy_id: str | None = None
 
 
 class PortfolioState(BaseModel):
@@ -41,6 +46,10 @@ class Position:
     average_cost_usd: float = 0.0
     # --- paper fees (#66) ---
     fees_paid_usd: float = 0.0
+    # --- position management (#58) ---
+    opened_at: datetime | None = None
+    high_water_price_usd: float = 0.0
+    entry_strategy_id: str | None = None
 
 
 @dataclass
@@ -82,6 +91,10 @@ class InMemoryPortfolioBook:
                     average_cost_usd=position.average_cost_usd,
                     # --- paper fees (#66) ---
                     fees_paid_usd=position.fees_paid_usd,
+                    # --- position management (#58) ---
+                    opened_at=position.opened_at,
+                    high_water_price_usd=position.high_water_price_usd,
+                    entry_strategy_id=position.entry_strategy_id,
                 )
                 for asset, position in state.positions.items()
             },
@@ -105,6 +118,10 @@ class InMemoryPortfolioBook:
                     average_cost_usd=position.average_cost_usd,
                     # --- paper fees (#66) ---
                     fees_paid_usd=position.fees_paid_usd,
+                    # --- position management (#58) ---
+                    opened_at=position.opened_at,
+                    high_water_price_usd=position.high_water_price_usd,
+                    entry_strategy_id=position.entry_strategy_id,
                 )
                 for asset, position in self.positions.items()
             },
@@ -117,7 +134,12 @@ class InMemoryPortfolioBook:
     def mark(self, asset: str, price_usd: float) -> None:
         if price_usd <= 0:
             raise ValueError("mark price must be positive")
-        self.marks_usd[asset.upper()] = price_usd
+        asset = asset.upper()
+        self.marks_usd[asset] = price_usd
+        # --- position management (#58) ---
+        position = self.positions.get(asset)
+        if position is not None and position.quantity > 0:
+            position.high_water_price_usd = max(position.high_water_price_usd, price_usd)
 
     def apply_fill(
         self,
@@ -126,6 +148,9 @@ class InMemoryPortfolioBook:
         quantity: float,
         price_usd: float,
         fee_usd: float = 0.0,
+        *,
+        now: datetime | None = None,
+        strategy_id: str | None = None,
     ) -> None:
         if quantity <= 0 or price_usd <= 0:
             raise ValueError("fill quantity and price must be positive")
@@ -137,6 +162,7 @@ class InMemoryPortfolioBook:
         assert self.cash_usd is not None
 
         if side is Side.BUY:
+            opening = position.quantity == 0
             new_quantity = position.quantity + quantity
             if new_quantity <= 0:
                 raise ValueError("invalid resulting position quantity")
@@ -148,6 +174,14 @@ class InMemoryPortfolioBook:
             # Fees are a realized cost even on the opening fill: they leave
             # cash and never return as inventory.
             self.realized_pnl_usd -= fee_usd
+            # --- position management (#58) ---
+            if opening:
+                position.opened_at = now or datetime.now(UTC)
+                position.high_water_price_usd = price_usd
+                if strategy_id:
+                    position.entry_strategy_id = strategy_id
+            else:
+                position.high_water_price_usd = max(position.high_water_price_usd, price_usd)
         else:
             if quantity > position.quantity:
                 raise ValueError("cannot sell more than current paper position")
@@ -156,6 +190,10 @@ class InMemoryPortfolioBook:
             position.quantity -= quantity
             if position.quantity == 0:
                 position.average_cost_usd = 0.0
+                # --- position management (#58) ---
+                position.opened_at = None
+                position.high_water_price_usd = 0.0
+                position.entry_strategy_id = None
 
         # --- paper fees (#66) ---
         position.fees_paid_usd += fee_usd
@@ -215,6 +253,19 @@ class InMemoryPortfolioBook:
             for asset, position in self.positions.items()
             if position.quantity > 0
         }
+        # --- position management (#58) ---
+        held = {
+            asset: HeldPosition(
+                quantity=position.quantity,
+                average_cost_usd=position.average_cost_usd,
+                exposure_usd=exposures[asset],
+                opened_at=position.opened_at,
+                high_water_price_usd=position.high_water_price_usd,
+                entry_strategy_id=position.entry_strategy_id,
+            )
+            for asset, position in self.positions.items()
+            if position.quantity > 0
+        }
         return PortfolioSnapshot(
             nav_usd=self.nav_usd,
             cash_usd=max(0.0, self.cash_usd),
@@ -223,4 +274,5 @@ class InMemoryPortfolioBook:
             peak_nav_usd=self.peak_nav_usd,
             asset_exposure_usd=exposures,
             observed_at=moment,
+            held_positions=held,
         )

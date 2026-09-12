@@ -129,6 +129,11 @@ def test_policy_version_moves_with_every_declared_risk_limit() -> None:
         "robinhood_chain_max_notional_usd": 100.0,
         "robinhood_chain_max_gas_limit": 250_000,
         "robinhood_chain_max_gas_price_gwei": 10.0,
+        "exit_stop_loss_pct": 0.03,
+        "exit_take_profit_pct": 0.05,
+        "exit_trailing_stop_pct": 0.01,
+        "exit_time_stop_bars": 12,
+        "exit_on_thesis_invalidation": True,
     }
     assert set(changes) == set(RISK_LIMIT_FIELDS)
     for field, value in changes.items():
