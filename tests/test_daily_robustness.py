@@ -183,6 +183,34 @@ def test_yahoo_parser_labels_non_kraken_and_drops_nulls() -> None:
     assert candles[1].close == 102.5
 
 
+def test_yahoo_parser_expands_invalid_ohlc_instead_of_dropping() -> None:
+    payload = {
+        "chart": {
+            "result": [
+                {
+                    "timestamp": [1_700_000_000, 1_700_086_400],
+                    "indicators": {
+                        "quote": [
+                            {
+                                "open": [100.0, 102.0],
+                                "high": [101.0, 100.0],
+                                "low": [99.0, 101.0],
+                                "close": [100.5, 102.5],
+                                "volume": [10.0, 12.0],
+                            }
+                        ]
+                    },
+                }
+            ],
+            "error": None,
+        }
+    }
+    candles = parse_yahoo_chart(payload, symbol="ETH-USD")
+    assert len(candles) == 2
+    assert candles[1].high >= candles[1].close
+    assert candles[1].low <= candles[1].open
+
+
 def test_yahoo_symbol_is_not_a_promotion_series() -> None:
     yahoo = make_candles([100.0 + index for index in range(10)], symbol="BTC-USD")
     from traderstack.research.miles_search import SeriesCandidateMetrics
@@ -310,6 +338,7 @@ def test_markdown_reports_drawdown_trades_and_cap() -> None:
     assert "WF maxDD" in text
     assert "holdout trades" in text
     assert "non-Kraken" in text
+    assert "Holdout concentration" in text
     assert KRAKEN_DAILY_CAP_NOTE.split("`")[0].strip() in text or "720" in text
 
 

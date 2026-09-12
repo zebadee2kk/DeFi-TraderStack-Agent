@@ -94,16 +94,29 @@ def parse_yahoo_chart(
     ):
         if close is None or open_ is None or high is None or low is None:
             continue
+        open_f = float(open_)
+        high_f = float(high)
+        low_f = float(low)
+        close_f = float(close)
+        if open_f <= 0 or close_f <= 0:
+            continue
+        # Yahoo crypto prints often violate OHLC containment after splits /
+        # adjustments. Expand high/low to contain open/close rather than
+        # drop a decade of bars. This A/B is already labeled non-Kraken.
+        high_f = max(high_f, open_f, close_f)
+        low_f = min(low_f if low_f > 0 else min(open_f, close_f), open_f, close_f)
+        if high_f < low_f:
+            continue
         opened = datetime.fromtimestamp(int(ts), tz=UTC)
         candles.append(
             Candle(
                 symbol=labeled,
                 interval=interval,
                 opened_at=opened,
-                open=float(open_),
-                high=float(high),
-                low=float(low),
-                close=float(close),
+                open=open_f,
+                high=high_f,
+                low=low_f,
+                close=close_f,
                 volume=float(volume or 0.0),
             )
         )
@@ -122,9 +135,17 @@ async def download_yahoo_daily(
     interval: str = "1d",
     client: httpx.AsyncClient | None = None,
 ) -> tuple[Candle, ...]:
-    """Fetch the longest Yahoo daily series the public chart API will return."""
+    """Fetch the longest Yahoo daily series the public chart API will return.
+
+    ``range=max`` is *not* used: Yahoo then downsamples crypto to monthly
+    (``dataGranularity=1mo``). ``period1``/``period2`` keeps ``interval=1d``.
+    ``range_label`` is accepted for compatibility and ignored.
+    """
+    del range_label
     yahoo_ticker = YAHOO_TICKERS.get(ticker.upper(), ticker)
-    params = {"interval": interval, "range": range_label}
+    period2 = int(datetime.now(UTC).timestamp())
+    # 2014-09-17: first Yahoo BTC-USD daily. ETH starts later; Yahoo clips.
+    params = {"interval": interval, "period1": "1410912000", "period2": str(period2)}
     url = YAHOO_CHART_URL.format(ticker=yahoo_ticker)
 
     async def _get(active: httpx.AsyncClient) -> object:

@@ -452,6 +452,58 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
             lines.append("Blocked by: " + ", ".join(row.ineligible_reasons))
         lines.append("")
 
+    ema = next((row for row in report.candidates if row.candidate_id == "ema_9_21"), None)
+    if ema is not None:
+        btc = series_for_asset(ema.per_series, "BTC/USD")
+        eth = series_for_asset(ema.per_series, "ETH/USD")
+        if (
+            btc is not None
+            and eth is not None
+            and btc.holdout is not None
+            and eth.holdout is not None
+        ):
+            lines.extend(
+                [
+                    "## Holdout concentration (honesty)",
+                    "",
+                    (
+                        f"`ema_9_21` Kraken holdout excess is still ETH-heavy: "
+                        f"BTC {_pct(btc.holdout.excess_return)} vs ETH "
+                        f"{_pct(eth.holdout.excess_return)}. The multi-asset bar "
+                        "only requires both **walk-forward** totals > 0; it does "
+                        "not require a balanced holdout. A +50% ETH tail on one "
+                        "~144-day window is not a live-capital claim."
+                    ),
+                    "",
+                ]
+            )
+
+    yahoo_rows = [
+        series
+        for row in report.candidates
+        if row.candidate_id == "ema_9_21"
+        for series in row.per_series
+        if is_yahoo_symbol(series.asset)
+    ]
+    if yahoo_rows:
+        lines.extend(["## Yahoo Finance A/B (non-Kraken, not promotion)", ""])
+        lines.append(
+            "Yahoo `range=max` downsamples crypto to monthly; this A/B uses "
+            "`period1`/`period2` so the series stays daily. High/low are "
+            "expanded to contain open/close when Yahoo's print is inconsistent. "
+            "Closes are not Kraken Spot. This block cannot promote."
+        )
+        lines.append("")
+        for series in yahoo_rows:
+            wf = _pct(series.walkforward_mean_total_return)
+            ho = _pct(series.holdout.excess_return) if series.holdout is not None else "n/a"
+            lines.append(
+                f"- `{series.asset}` {series.candle_count} bars: WF total {wf}, "
+                f"holdout excess {ho}"
+                + (f" ({series.skipped_reason})" if series.skipped_reason else "")
+            )
+        lines.append("")
+
     lines.extend(["## Promotion decision", ""])
     if report.any_promoted:
         lines.append(
