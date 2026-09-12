@@ -73,16 +73,42 @@ Hard gates (#96+A+B+C) need 720 aligned **daily** bars. A ~90d OKX
 funding overlap cannot unlock them; they are recorded UNAVAILABLE, not
 faked.
 
-### Live print
+### Live print (2026-09-12)
 
-See `funding-carry.md` for the measured table written by
-`traderstack-funding-carry --live`. If that report is single-print
-(typical: OKX ~90d of 8h prints; Binance HTTP 451), **cannot promote**.
-If funding history is too short for hard gates, the CLI still ships
-with measured numbers and an explicit cannot-promote.
+`traderstack-funding-carry --live` (Kraken public Spot 4h BTC+ETH,
+720-bar cap 2026-05-15 16:00 → 2026-09-12 12:00 UTC; costs 10+5 bps).
 
-**No new `PAPER_PROMOTE_*` pin.** Empty / non-promoteable search is
-success.
+| series | status |
+| --- | --- |
+| Binance USDT-M funding | **skipped** — HTTP 451 |
+| OKX funding-rate-history | **ok** — 290 prints, 2026-06-08 08:00 → 2026-09-12 16:00 UTC (~90d of 8h) per BTC and ETH |
+| Aligned 4h overlap | 578 bars (funding window; extra Kraken bars skipped, not invented) |
+| Print kind | **single_print** (one venue / one history length) |
+| Hard gates (#96+A+B+C) | **UNAVAILABLE** (need 1d and ≥720 aligned bars) |
+
+Spot-signal / overlay (informational; every name **ineligible**):
+
+| rank | id | WF excess | WF total | holdout excess |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | `funding_z_follow_2_0` | −0.46% | −0.10% | −2.59% |
+| 2 | `funding_z_fade_2_0` | −0.49% | −0.13% | −1.37% |
+| 9 | `ma_cross_10_30` (control) | −3.50% | −3.14% | −11.24% |
+
+Hedged carry (modeled; basis not invented; **not** paper-spot executable):
+
+| id | WF total | holdout total | full-sample | eligible? |
+| --- | ---: | ---: | ---: | :---: |
+| `carry_hedged_sign` | +0.16% | +0.33% | +1.03% | yes* |
+| `carry_hedged_abs_1bp` | −0.68% | −2.61% | −7.31% | no |
+| `carry_hedged_abs_3bp` | +0.00% | +0.00% | +0.00% | no (never in) |
+| `carry_hedged_z_1_5` | −3.22% | −3.49% | −18.28% | no |
+
+\*Fee-aware signs > 0 on this one ~90d OKX tape. That is **not** dual-print,
+not a hard-gate pass, not a basis-aware result, and **cannot promote**.
+
+**No new `PAPER_PROMOTE_*` pin.** Single-print / cannot-promote is success.
+
+See `funding-carry.md`.
 
 ## Next falsifiable experiments
 

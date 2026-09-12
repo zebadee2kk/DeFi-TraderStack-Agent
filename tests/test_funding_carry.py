@@ -73,8 +73,7 @@ def downtrend(
 
 def aligned_funding(candles: tuple[Candle, ...], *, amplitude: float = 0.0004) -> tuple:
     return tuple(
-        (candle.opened_at, amplitude * ((index % 7) - 3))
-        for index, candle in enumerate(candles)
+        (candle.opened_at, amplitude * ((index % 7) - 3)) for index, candle in enumerate(candles)
     )
 
 
@@ -104,9 +103,7 @@ def _search(histories: dict[str, tuple[Candle, ...]], **overrides: object) -> ob
 
 
 def test_core_catalog_is_frozen() -> None:
-    assert set(FUNDING_Z_IDS) | set(OVERLAY_IDS) | set(CARRY_IDS) | CONTROL_IDS == set(
-        CORE_IDS
-    )
+    assert set(FUNDING_Z_IDS) | set(OVERLAY_IDS) | set(CARRY_IDS) | CONTROL_IDS == set(CORE_IDS)
     assert "funding_z_fade_1_5" in FUNDING_Z_IDS
     assert "carry_hedged_sign" in CARRY_IDS
     assert "ema_9_21_funding_agree" in OVERLAY_IDS
@@ -121,12 +118,12 @@ def test_core_catalog_is_frozen() -> None:
 
 
 def test_funding_usable_requires_btc_and_eth() -> None:
-    series = tuple((datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=i), 0.0002) for i in range(30))
+    series = tuple(
+        (datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=i), 0.0002) for i in range(30)
+    )
     assert funding_usable(series) is True
     assert funding_usable(funding_by_symbol={"BTC/USD": series}) is False
-    assert (
-        funding_usable(funding_by_symbol={"BTC/USD": series, "ETH/USD": series}) is True
-    )
+    assert funding_usable(funding_by_symbol={"BTC/USD": series, "ETH/USD": series}) is True
     assert funding_usable() is False
 
 
@@ -143,9 +140,9 @@ def test_choose_walkforward_adapts_when_short() -> None:
         60,
         21,
     )
-    adapted = choose_walkforward(80, train_size=180, test_size=60, warmup=21)
-    assert adapted == (40, 20, 20, 8)
-    assert choose_walkforward(20, train_size=180, test_size=60, warmup=21) is None
+    adapted = choose_walkforward(130, train_size=180, test_size=60, warmup=31)
+    assert adapted == (80, 40, 40, 31)
+    assert choose_walkforward(20, train_size=180, test_size=60, warmup=31) is None
 
 
 def test_slice_skips_unfunded_history() -> None:
@@ -272,7 +269,9 @@ def test_skipped_families_when_no_funding() -> None:
     ids = {item["candidate_id"] for item in skipped}
     assert set(FUNDING_Z_IDS) <= ids
     assert set(CARRY_IDS) <= ids
-    assert skipped_funding_families(funding=((datetime.now(UTC), 0.1),), funding_by_symbol=None) == []
+    assert (
+        skipped_funding_families(funding=((datetime.now(UTC), 0.1),), funding_by_symbol=None) == []
+    )
 
 
 def test_cli_offline_writes_single_print_report(tmp_path: Path) -> None:

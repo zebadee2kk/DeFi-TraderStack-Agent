@@ -50,7 +50,6 @@ from traderstack.research.search import (
     CandidateSearchResult,
     StrategySearchReport,
     run_search,
-    split_holdout,
 )
 from traderstack.strategies import Regime, StrategySignal
 
@@ -70,11 +69,11 @@ Z_LOOKBACK = 20
 DEFAULT_TRAIN_SIZE = 180
 DEFAULT_TEST_SIZE = 60
 DEFAULT_STEP_SIZE = 60
-DEFAULT_WARMUP = 21
-SHORT_TRAIN_SIZE = 40
-SHORT_TEST_SIZE = 20
-SHORT_STEP_SIZE = 20
-SHORT_WARMUP = 8
+DEFAULT_WARMUP = 31
+SHORT_TRAIN_SIZE = 80
+SHORT_TEST_SIZE = 40
+SHORT_STEP_SIZE = 40
+SHORT_WARMUP = 31
 MIN_RESEARCH_BARS = SHORT_TRAIN_SIZE + SHORT_TEST_SIZE
 
 FUNDING_Z_CATALOG: tuple[tuple[str, bool, float], ...] = (
@@ -184,11 +183,7 @@ def choose_walkforward(
     warmup: int = DEFAULT_WARMUP,
 ) -> tuple[int, int, int, int] | None:
     """Return (train, test, step, warmup) that fit, or None if too short."""
-    if (
-        n_research >= train_size + test_size
-        and train_size > warmup
-        and test_size > warmup
-    ):
+    if n_research >= train_size + test_size and train_size > warmup and test_size > warmup:
         return train_size, test_size, step_size, warmup
     if (
         n_research >= MIN_RESEARCH_BARS
@@ -333,7 +328,9 @@ def overlay_candidates(
     if not (funding or funding_by_symbol):
         return ()
     by_symbol = _by_symbol(funding_by_symbol)
-    ema = EmaCrossoverStrategy(strategy_id="ema_9_21_funding_agree_inner", fast_span=9, slow_span=21)
+    ema = EmaCrossoverStrategy(
+        strategy_id="ema_9_21_funding_agree_inner", fast_span=9, slow_span=21
+    )
     mom = _mom("momentum_12", lookback=12)
     return (
         SearchCandidate(
@@ -418,8 +415,7 @@ def skipped_funding_families(
                 "family": "funding_z",
                 "candidate_id": candidate_id,
                 "reason": (
-                    f"{candidate_id}: skipped — no aligned funding series "
-                    "for the overlay gate."
+                    f"{candidate_id}: skipped — no aligned funding series for the overlay gate."
                 ),
             }
         )
@@ -487,9 +483,7 @@ def score_hedged_carry(
     per_print: list[float] = []
     for index, (_ts, rate) in enumerate(series):
         history = [value for _when, value in series[:index]]
-        want = _want_harvest(
-            history, abs_threshold=abs_threshold, z_threshold=z_threshold
-        )
+        want = _want_harvest(history, abs_threshold=abs_threshold, z_threshold=z_threshold)
         income = 0.0
         fee = 0.0
         if want != position:
@@ -656,11 +650,7 @@ def _score_carry_catalog(
         per_asset: dict[str, dict[str, float | int | str | None]] = {}
         symbols = required if funding_by_symbol else ("ALL",)
         for symbol in symbols:
-            series = (
-                _lookup_series(funding_by_symbol, symbol)
-                if symbol != "ALL"
-                else funding
-            )
+            series = _lookup_series(funding_by_symbol, symbol) if symbol != "ALL" else funding
             if series is None:
                 continue
             per_asset[symbol] = score_hedged_carry(
@@ -675,21 +665,19 @@ def _score_carry_catalog(
                 step_size=step_size,
                 min_trades=min_trades,
             )
-        wf_total = [
-            float(row["mean_wf_total_return"])
-            for row in per_asset.values()
-            if isinstance(row.get("mean_wf_total_return"), float)
-        ]
-        ho_total = [
-            float(row["mean_holdout_total_return"])
-            for row in per_asset.values()
-            if isinstance(row.get("mean_holdout_total_return"), float)
-        ]
-        full = [
-            float(row["full_sample_total_return"])
-            for row in per_asset.values()
-            if isinstance(row.get("full_sample_total_return"), float)
-        ]
+        wf_total: list[float] = []
+        ho_total: list[float] = []
+        full: list[float] = []
+        for metrics in per_asset.values():
+            wf_value = metrics.get("mean_wf_total_return")
+            ho_value = metrics.get("mean_holdout_total_return")
+            full_value = metrics.get("full_sample_total_return")
+            if isinstance(wf_value, float):
+                wf_total.append(wf_value)
+            if isinstance(ho_value, float):
+                ho_total.append(ho_value)
+            if isinstance(full_value, float):
+                full.append(full_value)
         reasons: list[str] = []
         mean_wf = _mean(wf_total)
         mean_ho = _mean(ho_total)
@@ -755,9 +743,7 @@ def run_funding_carry(
         print_kind = "single_print"
 
     sliced = (
-        slice_histories_to_funding(histories, funding_by_symbol, funding)
-        if have_primary
-        else {}
+        slice_histories_to_funding(histories, funding_by_symbol, funding) if have_primary else {}
     )
     aligned_bars = min((len(item) for item in sliced.values()), default=0)
     gates_ok = hard_gates_available(interval=interval, aligned_bars=aligned_bars)
@@ -869,17 +855,13 @@ def run_funding_carry(
             for row in (search.candidates if search is not None else [])
             if row.eligible and row.candidate_id not in CONTROL_IDS
         }
-        primary_eligible.update(
-            row.candidate_id for row in carry_rows if row.eligible
-        )
+        primary_eligible.update(row.candidate_id for row in carry_rows if row.eligible)
         second_eligible = {
             row.candidate_id
             for row in (second_search.candidates if second_search is not None else [])
             if row.eligible and row.candidate_id not in CONTROL_IDS
         }
-        second_eligible.update(
-            row.candidate_id for row in second_carry if row.eligible
-        )
+        second_eligible.update(row.candidate_id for row in second_carry if row.eligible)
         dual_passers = sorted(primary_eligible & second_eligible)
 
     skipped = skipped_funding_families(
@@ -912,11 +894,7 @@ def run_funding_carry(
             "informational only; leave every PAPER_PROMOTE_* false."
         )
 
-    generated_at = (
-        search.generated_at
-        if search is not None
-        else (now or generated)
-    )
+    generated_at = search.generated_at if search is not None else (now or generated)
     selected = search.selected_candidate_id if search is not None else None
     return FundingCarryReport(
         generated_at=generated_at,
@@ -1079,9 +1057,7 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
                 f"points={item.get('points', '0')})"
             )
     else:
-        lines.append(
-            "- No funding-series fetch notes. Families were not supplied."
-        )
+        lines.append("- No funding-series fetch notes. Families were not supplied.")
 
     if report.skipped_feature_families:
         lines.extend(["", "## Skipped families", ""])
@@ -1093,9 +1069,11 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
             "",
             "## Spot-signal / overlay (walk-forward mean excess after fees)",
             "",
-            "Informational. Eligible under a fee-aware sign check does not mean "
-            "promoted. Control cannot promote. Scored only on the funding-overlap "
-            "window (skip-not-invent extra unfunded history).",
+            (
+                "Informational. Eligible under a fee-aware sign check does not mean "
+                "promoted. Control cannot promote. Scored only on the funding-overlap "
+                "window (skip-not-invent extra unfunded history)."
+            ),
             "",
             "| rank | id | family | WF excess | WF total | holdout excess | eligible | control |",
             "| ---: | --- | --- | ---: | ---: | ---: | :---: | :---: |",
@@ -1128,10 +1106,12 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
             "",
             "## Hedged carry (modeled; basis not invented)",
             "",
-            "PnL = received |funding| while harvesting, minus two-leg "
-            "(fee+slippage) on each flip. Decision at print *i* uses only "
-            "prints before *i*. Excess is versus cash (0), not versus spot "
-            "buy-and-hold. Not paper-spot executable.",
+            (
+                "PnL = received |funding| while harvesting, minus two-leg "
+                "(fee+slippage) on each flip. Decision at print *i* uses only "
+                "prints before *i*. Excess is versus cash (0), not versus spot "
+                "buy-and-hold. Not paper-spot executable."
+            ),
             "",
             "| id | WF total | holdout total | full-sample | eligible |",
             "| --- | ---: | ---: | ---: | :---: |",
@@ -1140,20 +1120,18 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
     if not report.carry:
         lines.append("| *(none scored)* |  |  |  |  |")
     else:
-        for row in report.carry:
+        for carry_row in report.carry:
             lines.append(
-                f"| `{row.candidate_id}` | "
-                f"{_pct(row.mean_wf_total_return)} | "
-                f"{_pct(row.mean_holdout_total_return)} | "
-                f"{_pct(row.full_sample_total_return)} | "
-                f"{'yes' if row.eligible else 'no'} |"
+                f"| `{carry_row.candidate_id}` | "
+                f"{_pct(carry_row.mean_wf_total_return)} | "
+                f"{_pct(carry_row.mean_holdout_total_return)} | "
+                f"{_pct(carry_row.full_sample_total_return)} | "
+                f"{'yes' if carry_row.eligible else 'no'} |"
             )
 
     lines.extend(["", "## Dual-print passers", ""])
     if report.print_kind != PRINT_DUAL:
-        lines.append(
-            "Not a dual-print run. One venue / one history length cannot promote."
-        )
+        lines.append("Not a dual-print run. One venue / one history length cannot promote.")
     elif not report.dual_print_passer_ids:
         lines.append(
             "Dual-print was eligible (two independent funding venues) but "
