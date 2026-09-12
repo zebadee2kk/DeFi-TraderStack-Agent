@@ -88,7 +88,9 @@ Empty dual-print set is success.
 thresholds, funding-agree spot overlays, and modeled hedged
 cash-and-carry on BTC+ETH. Dual-print needs two independent funding
 venues (OKX + Hyperliquid + BitMEX when reachable; Binance/Bybit often
-geo-blocked). One venue is single-print and cannot promote. **Freqtrade
+geo-blocked). PIT basis is probed skip-not-invent (current mark/index
+only). A paper perp/hedge stub exists and cannot promote. One venue is
+single-print and cannot promote. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.

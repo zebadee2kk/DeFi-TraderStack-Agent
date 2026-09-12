@@ -6,10 +6,14 @@ import pytest
 from traderstack.candles import Candle
 from traderstack.research.candidates import FeatureZVoter
 from traderstack.research.edge_series import (
+    BITMEX_BASIS_UNAVAILABLE,
+    HYPERLIQUID_BASIS_UNAVAILABLE,
     fetch_binance_funding,
     fetch_binance_liquidations,
+    fetch_bitmex_basis,
     fetch_bitmex_funding,
     fetch_bybit_funding,
+    fetch_hyperliquid_basis,
     fetch_hyperliquid_funding,
     fetch_okx_funding,
 )
@@ -234,6 +238,82 @@ async def test_bitmex_funding_uses_settlement_not_daily_restatement() -> None:
     assert 0.0003 not in {point[1] for point in result.points}
     assert "fundingRateDaily" in result.reason
     assert "/api/v1/funding" in result.source
+
+
+@pytest.mark.asyncio
+async def test_hyperliquid_basis_skips_current_only_and_refuses_premium() -> None:
+    payload = [
+        {"universe": [{"name": "BTC"}, {"name": "ETH"}]},
+        [
+            {
+                "markPx": "77130.0",
+                "oraclePx": "77172.1",
+                "midPx": "77129.5",
+                "premium": "-0.0005",
+            },
+            {"markPx": "2524.3", "oraclePx": "2525.43", "premium": "-0.0004"},
+        ],
+    ]
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(
+        base_url="https://api.hyperliquid.xyz", transport=transport
+    ) as client:
+        result = await fetch_hyperliquid_basis("BTC/USD", client=client)
+    assert result.status == "skipped"
+    assert result.points == ()
+    assert "UNAVAILABLE" in result.reason
+    assert "premium" in result.reason.lower()
+    assert HYPERLIQUID_BASIS_UNAVAILABLE.split(".")[0] in result.reason
+    assert "Current markPx/oraclePx observed" in result.reason
+
+
+@pytest.mark.asyncio
+async def test_bitmex_basis_skips_and_refuses_premium_index() -> None:
+    calls: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path.endswith("/instrument"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "symbol": "XBTUSD",
+                        "markPrice": 77156.96,
+                        "indicativeSettlePrice": 77155.45,
+                        "midPrice": 77137.4,
+                    }
+                ],
+            )
+        if request.url.path.endswith("/trade/bucketed"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "timestamp": "2026-09-12T00:00:00.000Z",
+                        "symbol": ".XBTUSDPI",
+                        "close": -0.000299,
+                    }
+                ],
+            )
+        return httpx.Response(404, text="no")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(
+        base_url="https://www.bitmex.com", transport=transport
+    ) as client:
+        result = await fetch_bitmex_basis("BTC/USD", client=client)
+    assert result.status == "skipped"
+    assert result.points == ()
+    assert "UNAVAILABLE" in result.reason
+    assert BITMEX_BASIS_UNAVAILABLE.split(".")[0] in result.reason
+    assert "funding-formula" in result.reason
+    assert ".XBTUSDPI" in result.reason
+    assert any(path.endswith("/instrument") for path in calls)
 
 
 @pytest.mark.asyncio

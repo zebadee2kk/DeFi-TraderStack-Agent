@@ -65,7 +65,11 @@ it is relied upon.
   One venue / one history length is single-print and cannot promote.
   Daily evaluation sums settlements per UTC day and omits empty days.
   Perp-spot basis is not on those endpoints and must not be invented
-  from last-trade or from `fundingHistory.premium`. Deribit restates
+  from last-trade or from `fundingHistory.premium`. A 2026-09-12 probe
+  found Hyperliquid `metaAndAssetCtxs` and BitMEX `/instrument`
+  **current** mark/index/mid only — no historical mark−index or
+  perp-mid−spot-mid tape. BitMEX `.XBTUSDPI` is the funding-formula
+  premium index (same skip). Deribit restates
   8h interest every hour — not wired (would invent 8× carry). Gate
   `from` is capped at 180d; Bitget/MEXC public history is shorter
   than 720 UTC days from this environment.

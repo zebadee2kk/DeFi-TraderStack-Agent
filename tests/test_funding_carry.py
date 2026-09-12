@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from traderstack.candles import Candle
 from traderstack.config import Settings
 from traderstack.research.funding_carry import (
@@ -28,7 +30,12 @@ from traderstack.research.funding_carry import (
     slice_to_funding_overlap,
     spot_candidates,
 )
-from traderstack.research.funding_carry_cli import _pick_venues, build_parser, run
+from traderstack.research.funding_carry_cli import (
+    _pick_venues,
+    build_parser,
+    fetch_basis_venues,
+    run,
+)
 
 
 def settings(**overrides: object) -> Settings:
@@ -483,7 +490,7 @@ def test_daily_resample_skips_basis_and_cannot_promote() -> None:
     assert "Basis (skip-not-invent)" in text
     assert "skipped" in text
     assert "Paper-executable path" in text
-    assert "no perp book" in text
+    assert "PAPER_CARRY_PATH_READY" in text or "not promote-ready" in text
     assert "Do not add a Settings pin" in text
 
 
@@ -567,6 +574,45 @@ def test_basis_file_is_modeled_but_still_cannot_promote_without_paper_path() -> 
     assert report.can_promote is False
     assert report.paper_path_ready is False
     assert report.any_promoted is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.MonkeyPatch) -> None:
+    from traderstack.research.edge_series import EdgeSeriesFetch
+
+    async def fake_hl(symbol: str, *, client: object) -> EdgeSeriesFetch:
+        return EdgeSeriesFetch(
+            name=f"hyperliquid_basis:{symbol}",
+            status="skipped",
+            reason="UNAVAILABLE: current mark only",
+            source="hyperliquid",
+        )
+
+    async def fake_bm(symbol: str, *, client: object) -> EdgeSeriesFetch:
+        return EdgeSeriesFetch(
+            name=f"bitmex_basis:{symbol}",
+            status="skipped",
+            reason="UNAVAILABLE: current mark only",
+            source="bitmex",
+        )
+
+    monkeypatch.setattr(
+        "traderstack.research.funding_carry_cli.fetch_hyperliquid_basis", fake_hl
+    )
+    monkeypatch.setattr("traderstack.research.funding_carry_cli.fetch_bitmex_basis", fake_bm)
+    monkeypatch.setattr(
+        "traderstack.research.funding_carry_cli.HYPERLIQUID_SYMBOL_PAUSE_SECONDS", 0
+    )
+    notes = await fetch_basis_venues(("BTC/USD", "ETH/USD"))
+    names = {item["name"] for item in notes}
+    assert names == {
+        "hyperliquid_basis:BTC/USD",
+        "hyperliquid_basis:ETH/USD",
+        "bitmex_basis:BTC/USD",
+        "bitmex_basis:ETH/USD",
+    }
+    assert all(item["status"] == "skipped" for item in notes)
+    assert all(item["points"] == "0" for item in notes)
 
 
 def test_evaluate_carry_hard_gates_unavailable_on_short_daily_tape() -> None:

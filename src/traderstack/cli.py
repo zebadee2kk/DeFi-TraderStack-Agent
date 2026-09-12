@@ -35,6 +35,7 @@ from traderstack.execution.hummingbot import HummingbotPaperExecutor
 from traderstack.execution.ledger import ExecutionLedger
 from traderstack.execution.ledger_store import JsonExecutionLedgerStore
 from traderstack.execution.paper_fill import PaperFillSimulator
+from traderstack.execution.paper_perp import PaperPerpBook
 from traderstack.execution.planner import ExecutionPlanner
 from traderstack.execution.reconcile import HummingbotExecutionReconciler
 from traderstack.execution.shadow import ShadowLedger, ShadowRecorder
@@ -579,6 +580,16 @@ def build_service(
             trading_mode=trading_mode,
         )
 
+    # --- paper perp / hedge stub ---
+    paper_perp_book = None
+    if trading_mode == "paper" and settings.paper_perp_hedge:
+        paper_perp_book = PaperPerpBook(
+            trading_mode=trading_mode,
+            paper_fee_bps=settings.paper_fee_bps,
+            paper_slippage_bps=settings.paper_slippage_bps,
+            kill_switch=kill_switch,
+        )
+
     pretrade_gate = None
     candle_provider = None
     if settings.pretrade_backtest_enabled:
@@ -811,6 +822,8 @@ def build_service(
         reconcile_interval_seconds=settings.reconcile_interval_seconds,
         # --- paper fill simulation ---
         paper_fill_simulator=paper_fill_simulator,
+        # --- paper perp / hedge stub ---
+        paper_perp_book=paper_perp_book,
         # --- paper-research edge data plane ---
         edge_collectors=tuple(edge_collectors),
     )

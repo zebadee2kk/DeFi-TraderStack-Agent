@@ -36,6 +36,23 @@ Second independent funding tapes (skip-not-invent; do not blend):
 * Gate / Bitget / MEXC / dYdX public funding REST can also respond here;
   they are not blended into this adapter. See the edge-status memo.
 
+PIT perp−spot basis (skip-not-invent; do not blend):
+
+* Hyperliquid public REST exposes **current** ``markPx`` / ``oraclePx`` /
+  ``midPx`` on ``metaAndAssetCtxs`` only. There is no historical
+  mark−index or perp-mid−spot-mid tape. ``fundingHistory.premium`` is
+  the funding-formula input, not a PIT perp−spot mid — do not treat it
+  as basis. ``candleSnapshot`` is last-trade OHLC, not mid.
+* BitMEX public REST exposes **current** ``markPrice`` /
+  ``indicativeSettlePrice`` / ``midPrice`` on ``/instrument``.
+  Historical ``.XBTUSDPI`` / ``.ETHUSDPI`` are the funding-formula
+  premium index (same class as Hyperliquid premium — not wired).
+  ``quote/bucketed`` + ``.BXBT``/``.BETH`` can form perp-mid−index;
+  that is not mark−index and not perp-mid−spot-mid, and Hyperliquid
+  cannot pair it, so it is not wired as a promoting basis series.
+* Dual-print basis requires the requested construction on **both**
+  venues. Absent that, basis is UNAVAILABLE.
+
 Cross-venue divergence is not built here (needs two aligned venues).
 """
 
@@ -673,6 +690,120 @@ async def fetch_bitmex_funding(
             f"BitMEX public funding settlements (paginated; fundingRate "
             f"only, not fundingRateDaily; lookback {lookback_days}d){suffix}"
         ),
+    )
+
+
+HYPERLIQUID_BASIS_UNAVAILABLE = (
+    "UNAVAILABLE: Hyperliquid public REST has current markPx/oraclePx/midPx "
+    "only (metaAndAssetCtxs). No historical mark−index or perp-mid−spot-mid "
+    "tape. fundingHistory.premium is the funding-formula input, not a PIT "
+    "perp−spot mid, and is not used. candleSnapshot is last-trade, not mid. "
+    "Skip-not-invent."
+)
+
+BITMEX_BASIS_UNAVAILABLE = (
+    "UNAVAILABLE: BitMEX public REST has current markPrice / "
+    "indicativeSettlePrice / midPrice only. Historical .XBTUSDPI / "
+    ".ETHUSDPI is the funding-formula premium index (same class as "
+    "Hyperliquid premium — not used). quote/bucketed + .BXBT/.BETH can "
+    "form perp-mid−index, which is not mark−index and not "
+    "perp-mid−spot-mid; Hyperliquid cannot pair it. Skip-not-invent."
+)
+
+_BITMEX_PREMIUM_INDEX: dict[str, str] = {
+    "BTC/USD": ".XBTUSDPI",
+    "ETH/USD": ".ETHUSDPI",
+}
+
+
+def _hyperliquid_ctx_for(payload: object, coin: str) -> dict[str, Any] | None:
+    if not isinstance(payload, list) or len(payload) < 2:
+        return None
+    meta, ctxs = payload[0], payload[1]
+    if not isinstance(meta, dict) or not isinstance(ctxs, list):
+        return None
+    universe = meta.get("universe")
+    if not isinstance(universe, list):
+        return None
+    for index, row in enumerate(universe):
+        if isinstance(row, dict) and row.get("name") == coin and index < len(ctxs):
+            ctx = ctxs[index]
+            return ctx if isinstance(ctx, dict) else None
+    return None
+
+
+async def fetch_hyperliquid_basis(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+) -> EdgeSeriesFetch:
+    """Probe for a PIT mark−index / perp-mid−spot-mid tape. Do not invent."""
+    name = f"hyperliquid_basis:{symbol}"
+    try:
+        coin = hyperliquid_coin(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="hyperliquid")
+    try:
+        response = await _hyperliquid_post_info(client, {"type": "metaAndAssetCtxs"})
+        payload = response.json()
+    except (httpx.HTTPError, TypeError, ValueError) as exc:
+        return _geo_or_http_skip(name, "hyperliquid", exc)
+    ctx = _hyperliquid_ctx_for(payload, coin)
+    extra = ""
+    if ctx is not None and ctx.get("markPx") is not None and ctx.get("oraclePx") is not None:
+        extra = " Current markPx/oraclePx observed; snapshot only."
+    return EdgeSeriesFetch(
+        name=name,
+        status="skipped",
+        reason=HYPERLIQUID_BASIS_UNAVAILABLE + extra,
+        source="hyperliquid:/info metaAndAssetCtxs",
+    )
+
+
+async def fetch_bitmex_basis(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+) -> EdgeSeriesFetch:
+    """Probe for a PIT mark−index / perp-mid−spot-mid tape. Do not invent."""
+    name = f"bitmex_basis:{symbol}"
+    try:
+        contract = bitmex_contract(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="bitmex")
+    extra = ""
+    try:
+        response = await client.get("/api/v1/instrument", params={"symbol": contract})
+        response.raise_for_status()
+        rows = response.json()
+        if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+            row = rows[0]
+            if row.get("markPrice") is not None and row.get("indicativeSettlePrice") is not None:
+                extra = " Current markPrice/indicativeSettlePrice observed; snapshot only."
+        premium = _BITMEX_PREMIUM_INDEX.get(symbol.upper())
+        if premium:
+            probe = await client.get(
+                "/api/v1/trade/bucketed",
+                params={
+                    "symbol": premium,
+                    "binSize": "1d",
+                    "count": 1,
+                    "reverse": "true",
+                    "partial": "false",
+                },
+            )
+            if probe.status_code == 200:
+                extra += (
+                    f" {premium} historical premium index exists and is not used "
+                    "(funding-formula input, not mark−index)."
+                )
+    except (httpx.HTTPError, TypeError, ValueError, KeyError) as exc:
+        return _geo_or_http_skip(name, "bitmex", exc)
+    return EdgeSeriesFetch(
+        name=name,
+        status="skipped",
+        reason=BITMEX_BASIS_UNAVAILABLE + extra,
+        source="bitmex:/api/v1/instrument",
     )
 
 

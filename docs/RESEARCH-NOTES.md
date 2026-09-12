@@ -80,7 +80,8 @@ At minimum:
   single-venue tape cannot promote; hard gates stay UNAVAILABLE until
   720 aligned daily bars exist on two venues. BitMEX public
   settlements can fill that bar; OKX public history is still ~90d
-  after a UTC-day resample. Basis is skipped without a PIT series;
-  there is no paper perp / hedge path, so a pin stays off. Empty /
-  cannot-promote is success. See
+  after a UTC-day resample. PIT basis is UNAVAILABLE on Hyperliquid
+  and BitMEX (current mark/index only; premium is not basis). A
+  paper perp/hedge stub exists but `PAPER_CARRY_PATH_READY` stays
+  false, so a pin stays off. Empty / cannot-promote is success. See
   `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.

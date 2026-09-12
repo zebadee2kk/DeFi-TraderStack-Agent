@@ -351,11 +351,67 @@ basis-aware and **not** paper-executable. `can_promote` stays false.
 
 See `funding-carry-daily.md`.
 
+## This session — PIT basis probe + paper perp stub
+
+Highest-leverage next step after #112: close the two remaining
+honesty gaps. Do not invent basis. Do not flip `PAPER_PROMOTE_*`.
+If carry would have to be re-scored on an invented series, skip.
+
+### A — PIT basis (UNAVAILABLE on both venues)
+
+Probed 2026-09-12 from this environment. Requested construction:
+**mark−index** or **perp-mid−spot-mid**, timestamps that do not look
+ahead. Hyperliquid `premium` remains forbidden.
+
+| venue | what exists | why it is not PIT basis |
+| --- | --- | --- |
+| Hyperliquid `POST /info` `metaAndAssetCtxs` | **current** `markPx` / `oraclePx` / `midPx` (BTC mark 77130 / oracle 77172.1 at probe) | snapshot only; no historical REST |
+| Hyperliquid `fundingHistory` | hourly `fundingRate` + `premium` | `premium` is the funding-formula input, not a PIT perp−spot mid |
+| Hyperliquid `candleSnapshot` | last-trade OHLC | last-trade is not mid |
+| BitMEX `GET /instrument` | **current** `markPrice` / `indicativeSettlePrice` / `midPrice` | snapshot only |
+| BitMEX `.XBTUSDPI` / `.ETHUSDPI` `trade/bucketed` | historical premium index (minute prints; 1d close −0.000299 on 2026-09-12) | funding-formula premium, same class as HL `premium` — not wired |
+| BitMEX `quote/bucketed` XBTUSD + `.BXBT` / `.BETH` | perp quote mid and composite index | perp-mid−**index**, not mark−index and not perp-mid−**spot-mid**; HL cannot pair it |
+
+Wired: `fetch_hyperliquid_basis` and `fetch_bitmex_basis`. Both
+return **skipped** with the probe reason. `--live` appends those
+notes. `basis_status` stays `skipped`. `carry_hedged_sign` is **not
+re-scored** with a fabricated series. The #112 daily numbers
+(HL WF +1.72% / BitMEX +2.55%) are still the basis-unaware model.
+
+**Cannot unlock `basis_status=ok`. Cannot promote.**
+
+See `funding-carry-basis.md`.
+
+### B — paper perp / hedge stub (not promote-ready)
+
+`src/traderstack/execution/paper_perp.py` is a paper-only book:
+
+- refuses `live` / `shadow`;
+- kill switch withholds new hedges and funding;
+- hedges a spot paper fill only when an **explicit perp mid** is
+  supplied (Kraken spot mid is not a substitute);
+- applies funding credit/debit only from caller-supplied settlement
+  prints (positive rate: longs pay shorts);
+- writes the client order id before the simulated hedge fill;
+- does **not** book perp PnL into the spot portfolio.
+
+`PAPER_PERP_HEDGE` (default **false**) opts the stub into
+`traderstack-paper`. The cycle still passes `perp_mid_usd=None`, so
+production hedges skip. `PAPER_CARRY_PATH_READY` stays **false**.
+`can_promote` stays **false**. No new Settings pin.
+
+### Still blocked
+
+`can_promote` requires dual-print ∧ hard gates ∧ PIT basis ∧ paper
+path. After this session: dual-print **true**, hard gates **true**,
+basis **UNAVAILABLE**, paper path **stub / not ready**.
+
 ## Next falsifiable experiments
 
 Do not rerun #104 / #105 / #106 / #108 / the 4h #110 funding print
 on the same windows. Do not rerun the #111 daily print with only
-OKX as the second tape.
+OKX as the second tape. Do not re-score carry on HL `premium` or
+BitMEX `.XBTUSDPI`.
 
 1. **Second independent funding tape.** Done in #110: Hyperliquid +
    OKX dual-print. Spot-signal passers: **0**. Modeled
@@ -363,20 +419,20 @@ OKX as the second tape.
    tapes and still cannot promote.
 2. **Daily resample / #96+A+B+C honesty.** Done in #111. See above
    and `funding-carry-daily.md`.
-3. **Second long settlement tape.** This session: BitMEX. Daily
-   dual-print + hard gates are now available. Modeled
+3. **Second long settlement tape.** Done in #112: BitMEX. Daily
+   dual-print + hard gates are available. Modeled
    `carry_hedged_sign` clears both prints and the #96+A+B+C analog
-   and still cannot promote (basis skipped; no paper path).
-4. **Basis-aware carry, only if a PIT perp−spot series exists on
-   both venues.** Do not invent basis from last-trade or from
-   funding itself. Skip if the series is missing. This is now the
-   data-plane blocker.
-5. **Paper-executable path (still `TRADING_MODE=paper`).** A paper
-   perp simulator that applies venue funding at each settlement,
-   and/or a two-leg paper hedge book, plus PIT basis mark-to-market.
-   Do not add a Settings pin that implies this path exists. Not
-   scaffolded this session — a second ≥720 daily tape was found.
-   This remains the execution-plane blocker.
+   and still cannot promote (basis skipped; paper path not ready).
+4. **Basis-aware carry.** This session: probed and **UNAVAILABLE**
+   on Hyperliquid and BitMEX for mark−index / perp-mid−spot-mid.
+   Next only if a public historical mark/index or perp-mid−spot-mid
+   tape appears on **both** venues. Do not invent from last-trade
+   or from funding.
+5. **Paper-executable path (still `TRADING_MODE=paper`).** Stub
+   exists; not cycle-wired with a perp mid. Next: a PIT perp mid
+   (not Kraken spot) plus funding settlements in the paper cycle,
+   still paper-only, kill switch respected. Do not add a Settings
+   pin until A+B both work and gates still clear.
 6. **Not** another daily-EMA catalog expansion on the same Kraken 720
    + Binance.US older-720 pair.
 7. **Not** liquidation-conditioned promotion until a public historical
@@ -392,6 +448,7 @@ OKX as the second tape.
 | `PAPER_PROMOTE_EMA_9_21` | false | stay false |
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
-| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; PIT basis skipped and paper path false — do not add a pin |
+| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; PIT basis UNAVAILABLE and paper perp stub not promote-ready — do not add a pin |
+| `PAPER_PERP_HEDGE` | false | scaffold only; cycle skips without a PIT perp mid |
 
 `TRADING_MODE=paper`. No live.
