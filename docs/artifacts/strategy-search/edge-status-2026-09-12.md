@@ -519,9 +519,14 @@ Kraken 720 + Binance.US older-720 windows.
    after seeing the #116 print.
 10. **Not** an N / vol-lookback retune of this cross-section on the
     same windows after seeing this print.
-11. **Not** liquidation-conditioned promotion until a public historical
+11. **Donchian / channel breakout.** Current experiment after #117.
+    Catalog and dual-print bar frozen **before** the live pull. See
+    below and `donchian-breakout.md`.
+12. **Not** a Donchian N / ATR-period retune on the same windows
+    after seeing that print.
+13. **Not** liquidation-conditioned promotion until a public historical
     liquidation aggregate exists (it does not today).
-12. **Not** Polymarket weather promotion until a PIT CLOB mid +
+14. **Not** Polymarket weather promotion until a PIT CLOB mid +
     official station-high tape exists (it does not today).
 
 ## This session — BTC−ETH relative-value residual
@@ -657,6 +662,50 @@ not an edge. Empty dual-print set is success.
 **Cannot promote. No new `PAPER_PROMOTE_*` pin.**
 
 See `cross-sectional-momentum.md`.
+
+## This session — Donchian / channel breakout (catalog frozen)
+
+Highest-leverage next experiment from #117: a **non-EMA / non-residual
+/ non-XS** family that is paper-executable on Kraken spot. Catalog
+and dual-print bar are frozen **before** any live OHLC pull. Do not
+retune N or ATR after seeing PnL. Do not re-run #104 / #108 / #116 /
+#117 on the same windows. Do not invent PIT basis.
+
+### Catalog (frozen before the live pull)
+
+| family | ids |
+| --- | --- |
+| Long-only breakout | `donchian_lo_{20,55,100}` |
+| Long/short symmetric | `donchian_ls_{20,55,100}` |
+| ATR-buffered long-only (ATR 14 × 1.0) | `donchian_lo_atr_{20,55}` |
+| Control (cannot promote) | `ma_cross_10_30` |
+
+Treatment: close[t] vs prior N-day high/low (bars `[t-N, t)`; no
+look-ahead into t's high/low). Exit `opposite_band_same_n`. Fill at
+t+1 open. ATR uses Wilder ATR(14) through t−1.
+
+### Multi-asset bar (frozen)
+
+`btc_eth_signs_as_96_abc_sol_reported_not_required`: #96+A+B+C on
+BTC and ETH. SOL is reported when present and is **not** a gate.
+Equal-weight portfolio metrics were considered and **rejected**
+before scoring.
+
+### Print policy (frozen)
+
+| print | rule | can promote? |
+| --- | --- | --- |
+| Kraken primary 720 | #96+A+B+C on BTC+ETH; rank dual-print passers by Kraken mean HO | only if also Binance combined-PASS |
+| Binance.US older-720 | same #102 slice; must combined-PASS | no (gate only) |
+
+### Live print
+
+**Not yet run.** Freeze committed first.
+
+**Cannot promote until a committed live report names a dual-print
+passer. No new `PAPER_PROMOTE_*` pin.**
+
+See `donchian-breakout.md`.
 
 ## Pins
 
