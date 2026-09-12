@@ -172,14 +172,21 @@ Historical backtest → leakage/look-ahead checks → walk-forward validation �
 holdout evaluation → paper trading → shadow-live trading → tiny-capital live
 pilot → controlled scale-up. Benchmarks include BTC/ETH buy-and-hold and
 simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
-`traderstack-strategy-search`, `traderstack-paper-report`) so any claimed AI
-alpha is measured against appropriate baselines, not narrated after the fact.
-`traderstack-strategy-search` is the paper-research promotion loop: it will not
-register a voter unless fee-aware walk-forward **total** return is strictly
-positive *and* holdout excess is strictly positive. The default
+`traderstack-strategy-search`, `traderstack-miles-search`,
+`traderstack-paper-report`) so any claimed AI alpha is measured against
+appropriate baselines, not narrated after the fact.
+`traderstack-strategy-search` is the paper-research promotion loop: it will
+not register a voter unless fee-aware walk-forward **total** return is
+strictly positive *and* holdout excess is strictly positive. The default
 `PAPER_PROMOTE_SEARCHED_STRATEGIES=false` stays off until a report shows a
 winner, and promotion is pinned to that catalog id
-(`PAPER_PROMOTE_SEARCHED_STRATEGY_ID`).
+(`PAPER_PROMOTE_SEARCHED_STRATEGY_ID`). `traderstack-miles-search` scores
+EMA 9/21 and 12/26 (optional ADX gate) with a GARCH(1,1) vol-targeted size
+overlay under fees. Promotion requires walk-forward **total return > 0**
+and holdout **excess return > 0**. Default `PAPER_GARCH_SIZE=false` stays
+off (no GARCH-sized candidate cleared). `PAPER_PROMOTE_EMA_9_21=false` is
+the documented paper-only switch to register `ema_9_21` as the sole paper
+voter; it does not enable live.
 
 ## Roadmap
 

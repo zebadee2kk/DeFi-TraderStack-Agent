@@ -483,3 +483,51 @@ def test_buy_against_the_same_stressed_book_is_still_rejected():
     assert result.approved_notional_usd == 0
     assert "gross_exposure_limit" in result.reasons
     assert "position_limit_reached" in result.reasons
+
+
+# --- miles-inspired GARCH sizing (paper research) -------------------------
+
+
+def test_paper_garch_size_reduces_notional_and_never_scales_up() -> None:
+    engine = RiskEngine(
+        settings(
+            paper_garch_size=True,
+            paper_garch_target_vol=0.50,
+            volatility_sizing_enabled=False,
+        )
+    )
+    reduced = engine.evaluate(
+        proposal(requested_notional_usd=800),
+        portfolio(),
+        features(garch_forecast_vol=1.00),
+    )
+    assert reduced.decision == RiskDecision.REDUCE
+    assert reduced.approved_notional_usd == pytest.approx(400)
+    assert "garch_size_scaled" in reduced.reasons
+
+    calm = engine.evaluate(
+        proposal(requested_notional_usd=800),
+        portfolio(),
+        features(garch_forecast_vol=0.10),
+    )
+    assert calm.approved_notional_usd == pytest.approx(800)
+    assert "garch_size_scaled" not in calm.reasons
+
+
+def test_paper_garch_size_is_ignored_unless_paper_and_flagged() -> None:
+    live = RiskEngine(
+        settings(trading_mode="live", paper_garch_size=True, volatility_sizing_enabled=False)
+    ).evaluate(proposal(requested_notional_usd=800), portfolio(), features(garch_forecast_vol=1.0))
+    assert live.approved_notional_usd == pytest.approx(800)
+
+    paper_off = RiskEngine(
+        settings(trading_mode="paper", paper_garch_size=False, volatility_sizing_enabled=False)
+    ).evaluate(proposal(requested_notional_usd=800), portfolio(), features(garch_forecast_vol=1.0))
+    assert paper_off.approved_notional_usd == pytest.approx(800)
+
+
+def test_missing_garch_forecast_is_a_noop() -> None:
+    result = RiskEngine(settings(paper_garch_size=True, volatility_sizing_enabled=False)).evaluate(
+        proposal(requested_notional_usd=500), portfolio(), features()
+    )
+    assert result.approved_notional_usd == pytest.approx(500)

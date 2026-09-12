@@ -99,6 +99,9 @@ def test_policy_version_moves_with_every_declared_risk_limit() -> None:
         "risk_max_spread_bps": 10.0,
         "volatility_sizing_enabled": False,
         "target_volatility": 0.03,
+        # --- miles-inspired GARCH sizing (paper research) ---
+        "paper_garch_size": True,
+        "paper_garch_target_vol": 0.40,
         "strategy_max_consecutive_losses": 2,
         "strategy_drawdown_window": 5,
         "strategy_max_rolling_drawdown_pct": 0.01,

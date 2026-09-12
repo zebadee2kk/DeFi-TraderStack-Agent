@@ -9,6 +9,11 @@ class MarketFeatures(BaseModel):
     volatility_z: float
     relative_volume: float = Field(ge=0)
     spread_bps: float = Field(ge=0)
+    # --- miles-inspired GARCH sizing (paper research) ---
+    # One-step-ahead annualized vol forecast (fraction, e.g. 0.55). None when
+    # the builder did not run GARCH. RiskEngine may only *reduce* size from
+    # this number; it is never an authorisation.
+    garch_forecast_vol: float | None = Field(default=None, ge=0)
     # --- providers (Epic 3): altFINS technical-signal slot ---------------------
     # Optional pre-computed external technical-signal score in [-1, 1] (bearish
     # to bullish) and which provider it came from. None when no such provider
@@ -34,10 +39,11 @@ class NewsFeatures(BaseModel):
 
 # --- paper-research edge data plane -------------------------------------------
 #
-# Research/risk context only. RiskEngine reads market.spread_bps and
-# market.volatility_z; it does not read this slice to size, side, or
-# authorize a trade. The meta-agent may see these numbers as withhold-only
-# context. Bounded counts are in [0, 1]; z-scores are clipped to [-5, 5].
+# Research/risk context only. RiskEngine reads market.spread_bps,
+# market.volatility_z, and (when PAPER_GARCH_SIZE is on) market.garch_forecast_vol;
+# it does not read this slice to size, side, or authorize a trade. The
+# meta-agent may see these numbers as withhold-only context. Bounded counts
+# are in [0, 1]; z-scores are clipped to [-5, 5].
 
 
 class ResearchEdgeFeatures(BaseModel):

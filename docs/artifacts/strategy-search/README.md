@@ -1,5 +1,9 @@
 # Strategy search artifacts
 
+This directory holds committed offline search reports. Two catalogs share it.
+
+## Catalog search (`traderstack-strategy-search`)
+
 Committed output of `traderstack-strategy-search` on **Kraken charts-spot
 `PI_*`** (research-only; not the 720-bar public Spot OHLC). BTC/USD, ETH/USD,
 SOL/USD. Costs: `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)=10` +
@@ -66,3 +70,29 @@ Three names posted positive WF total after fees. All three **failed holdout**.
 Offline unit tests use the smaller synthetic files in
 `tests/fixtures/strategy_search/` (not this live window). Runtime default
 writes the same JSON/MD pair to `var/ops/` (gitignored).
+
+## Miles-inspired catalog (`traderstack-miles-search`)
+
+Committed output of `traderstack-miles-search --live-kraken` on Kraken public
+Spot OHLC (`GET https://api.kraken.com/0/public/OHLC`) for BTC/USD, ETH/USD,
+SOL/USD.
+
+Kraken returns at most 720 of the most recent committed bars per pair and
+interval. Daily (2024-09-22 → 2026-09-11) is the promotion window. 1h
+(2026-08-13 → 2026-09-12) is robustness only — 1h percent returns are not
+averaged with daily.
+
+Costs: `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)=10` + `PRETRADE_SLIPPAGE_BPS=5`.
+
+### Result on this window
+
+`ema_9_21` cleared the daily bar (WF mean total return +7.92%, holdout mean
+excess +22.20% after fees). That holdout is one ~144-day tail and is ETH-heavy.
+Every GARCH-sized candidate lost money after fees (more turnover). 1h lost
+money for the same EMA.
+
+**Leave `PAPER_GARCH_SIZE=false`.** This is not a live-capital claim and not
+a YouTube PnL copy. Register `ema_9_21` as a paper voter only via the
+documented `PAPER_PROMOTE_EMA_9_21` flag (default false).
+
+See `miles-inspired-report.md`.

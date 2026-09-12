@@ -7,6 +7,7 @@ from traderstack.research.download_candles import (
     _kraken_pair,
     _parse_since,
     download_candles,
+    download_spot_histories,
     fetch_ohlc_page,
 )
 
@@ -102,3 +103,26 @@ async def test_download_candles_pages_forward_and_drops_the_uncommitted_bar() ->
     assert len(candles) == 3
     assert candles[0].opened_at < candles[-1].opened_at
     assert candles[-1].close == 102.0  # the (now committed) second-page value wins
+
+
+@pytest.mark.asyncio
+async def test_download_spot_histories_fetches_each_symbol_and_resolution() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        pair = request.url.params["pair"]
+        interval = request.url.params["interval"]
+        base = 1_700_000_000
+        step = int(interval) * 60
+        rows = [_row(base, 100.0), _row(base + step, 101.0), _row(base + 2 * step, 102.0)]
+        return httpx.Response(
+            200,
+            json={"error": [], "result": {pair: rows, "last": base + 2 * step}},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(base_url="https://api.kraken.com", transport=transport) as client:
+        histories = await download_spot_histories(
+            ("BTC/USD", "ETH/USD"), ("1h", "1d"), client=client, max_candles=10
+        )
+    assert set(histories) == {"BTC/USD@1h", "BTC/USD@1d", "ETH/USD@1h", "ETH/USD@1d"}
+    for candles in histories.values():
+        assert len(candles) == 2  # uncommitted last bar dropped

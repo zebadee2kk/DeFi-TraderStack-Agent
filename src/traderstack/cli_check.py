@@ -198,6 +198,39 @@ def build_report(settings: Settings) -> ConfigReport:
                         "an edge."
                     )
 
+    # --- miles-inspired ema_9_21 paper voter ------------------------------------------
+    items.append(
+        CheckItem(
+            "Promote ema_9_21 as paper voter",
+            (
+                "active"
+                if settings.paper_promote_ema_9_21_active
+                else "ignored"
+                if settings.paper_promote_ema_9_21
+                else "no"
+            ),
+            (
+                "sole voter ema_9_21; defaults suppressed"
+                if settings.paper_promote_ema_9_21_active
+                else (
+                    f"PAPER_PROMOTE_EMA_9_21 is paper-only; TRADING_MODE={settings.trading_mode}"
+                    if settings.paper_promote_ema_9_21
+                    else "default; ema_9_21 is not a paper voter"
+                )
+            ),
+        )
+    )
+    if settings.paper_promote_ema_9_21 and settings.trading_mode != "paper":
+        warnings.append(
+            "PAPER_PROMOTE_EMA_9_21=true is ignored unless TRADING_MODE=paper. "
+            "Live/shadow do not register ema_9_21."
+        )
+    if settings.paper_promote_ema_9_21_active and settings.paper_promote_searched_strategies:
+        warnings.append(
+            "PAPER_PROMOTE_EMA_9_21=true takes precedence over "
+            "PAPER_PROMOTE_SEARCHED_STRATEGIES; only ema_9_21 is registered."
+        )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(
@@ -542,6 +575,31 @@ def build_report(settings: Settings) -> ConfigReport:
             "PAPER_FEE_BPS=0: fills with no venue fee are booked gross. Daily-loss and "
             "drawdown breakers will be optimistic versus a live fee schedule. Set this "
             "to match PRETRADE_FEE_BPS (default 10) unless the venue always reports fees."
+        )
+
+    # --- miles-inspired GARCH sizing (paper research) --------------------------------
+    items.append(
+        CheckItem(
+            "Paper GARCH size overlay",
+            "active" if settings.paper_garch_size_active else "off",
+            (
+                f"target vol={settings.paper_garch_target_vol:g}; reduce-only"
+                if settings.paper_garch_size_active
+                else "default; RiskEngine does not apply GARCH size"
+            ),
+        )
+    )
+    if settings.paper_garch_size and settings.trading_mode != "paper":
+        warnings.append(
+            "PAPER_GARCH_SIZE=true is ignored unless TRADING_MODE=paper. "
+            "Live/shadow do not apply the GARCH overlay."
+        )
+    if settings.paper_garch_size_active:
+        warnings.append(
+            "PAPER_GARCH_SIZE=true: leave this false until "
+            "docs/artifacts/strategy-search/miles-inspired-report.md shows a "
+            "candidate with walk-forward total_return>0 and holdout "
+            "excess_return>0 after fees. The overlay can only reduce size."
         )
     # --- paper fill simulation ---
     items.append(
