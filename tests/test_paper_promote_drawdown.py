@@ -79,19 +79,30 @@ def _hourly(prices: list[float], *, start: datetime = START) -> tuple[Candle, ..
     return tuple(candles)
 
 
-def _grind_then_drawdown(count: int, drop_pct: float) -> list[float]:
-    """Mostly-rising daily book that finishes ``drop_pct`` below its peak.
+def _linspace(start: float, end: float, count: int) -> list[float]:
+    if count <= 1:
+        return [end]
+    step = (end - start) / (count - 1)
+    return [start + step * index for index in range(count)]
 
-    Long enough for walk-forward (train=180, test=60). The crash sits in
-    the last fold so lookback and worst-fold DD both see it.
+
+def daily_ema_end_crash(drop_pct: float, crash_bars: int) -> tuple[Candle, ...]:
+    """Daily book whose *realized* ema_9_21 equity DD matches ``drop_pct``.
+
+    The shared backtester only marks drawdown on rebalance, so a slow
+    crash lets EMA 9/21 flip to short and recover. A 2–3 bar cliff at
+    the end closes the long near the trough (warmup rise is inside the
+    first 31 bars so buy-and-hold is also the crash — excess stays
+    inside the paper floor).
     """
-    grind = count - 40
-    prices = [100.0 + index * 0.20 for index in range(grind)]
-    peak = prices[-1]
+    peak = 180.0
     trough = peak * (1.0 - drop_pct)
-    for index in range(40):
-        prices.append(peak + (trough - peak) * (index + 1) / 40.0)
-    return prices
+    prices = (
+        _linspace(100.0, peak, 32)
+        + _linspace(peak, peak + 1.0, 325)
+        + _linspace(peak + 1.0, trough, crash_bars)
+    )
+    return _daily(prices)
 
 
 def _end(candles: tuple[Candle, ...]) -> datetime:
@@ -129,14 +140,13 @@ def test_zero_paper_promote_dd_ceiling_fails_closed_at_settings_load() -> None:
 
 
 def test_promote_daily_fixture_below_aligned_ceiling_passes() -> None:
-    prices = _grind_then_drawdown(360, drop_pct=0.20)
-    candles = _daily(prices)
+    candles = daily_ema_end_crash(0.35, crash_bars=3)
     settings = _settings(paper_promote_ema_9_21=True, pretrade_candle_interval="1h")
     gate = build_pretrade_gate(settings)
     check = gate.evaluate(candles, now=_end(candles))
     assert check.metrics is not None
     assert 0.15 < check.metrics.max_drawdown <= EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
-    assert check.confirmed_side is Side.BUY or check.confirmed_side is Side.SELL
+    assert check.confirmed_side in {Side.BUY, Side.SELL}
     assert "backtest_drawdown_above_maximum" not in check.reasons
     assert "walkforward_drawdown_above_maximum" not in check.reasons
     assert check.passed, check.reasons
@@ -144,8 +154,7 @@ def test_promote_daily_fixture_below_aligned_ceiling_passes() -> None:
 
 def test_same_fixture_fails_the_1h_fifteen_percent_bar() -> None:
     """The soak failure: research-envelope DD vs the old shared 0.15 ceiling."""
-    prices = _grind_then_drawdown(360, drop_pct=0.20)
-    candles = _daily(prices)
+    candles = daily_ema_end_crash(0.35, crash_bars=3)
     settings = _settings(
         paper_promote_ema_9_21=True,
         paper_promote_ema_9_21_max_drawdown_pct=0.15,
@@ -161,8 +170,7 @@ def test_same_fixture_fails_the_1h_fifteen_percent_bar() -> None:
 
 
 def test_promote_daily_fixture_above_aligned_ceiling_fails() -> None:
-    prices = _grind_then_drawdown(360, drop_pct=0.40)
-    candles = _daily(prices)
+    candles = daily_ema_end_crash(0.40, crash_bars=2)
     settings = _settings(paper_promote_ema_9_21=True)
     check = build_pretrade_gate(settings).evaluate(candles, now=_end(candles))
     assert check.metrics is not None
