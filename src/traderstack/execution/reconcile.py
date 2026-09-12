@@ -15,6 +15,7 @@ from traderstack.execution.ledger import (
     OrderLifecycleState,
     is_legal_transition,
 )
+from traderstack.execution.paper_fill import is_local_paper_fill
 from traderstack.models import Side
 from traderstack.portfolio import InMemoryPortfolioBook
 
@@ -176,6 +177,12 @@ class HummingbotExecutionReconciler:
             order = ledger.find_order(identifier)
             if order is None:
                 continue
+            # --- paper fill simulation ---
+            # Local FILLED + modelled fee is the paper book of record. A
+            # Hummingbot row that is still "open" is expected venue lag, not
+            # a conflict that should freeze new risk.
+            if is_local_paper_fill(order):
+                continue
             raw_status = self._text(row, "status", required=False).lower()
             state = self._map_state(raw_status)
             if state is None:
@@ -202,13 +209,18 @@ class HummingbotExecutionReconciler:
     ) -> int:
         applied = 0
         for row in self._rows(payload):
+            order_id = self._text(row, "order_id")
+            existing = ledger.find_order(order_id)
+            # --- paper fill simulation ---
+            if existing is not None and is_local_paper_fill(existing):
+                continue
             quantity = self._number(row, "amount", "quantity")
             price_usd = self._number(row, "price")
             venue_fee = self._number(row, "fee", required=False)
             fee_usd, fee_source = self._resolve_fee(venue_fee, quantity, price_usd)
             fill = ExecutionFill(
                 fill_id=self._text(row, "trade_id", "id"),
-                order_id=self._text(row, "order_id"),
+                order_id=order_id,
                 asset=self._asset(self._text(row, "trading_pair", "symbol")),
                 side=self._side(self._text(row, "trade_type", "side")),
                 quantity=quantity,

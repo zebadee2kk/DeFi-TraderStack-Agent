@@ -34,6 +34,7 @@ from traderstack.execution.hummingbot import HummingbotPaperExecutor
 # --- execution hardening (Epic 8) ---
 from traderstack.execution.ledger import ExecutionLedger
 from traderstack.execution.ledger_store import JsonExecutionLedgerStore
+from traderstack.execution.paper_fill import PaperFillSimulator
 from traderstack.execution.planner import ExecutionPlanner
 from traderstack.execution.reconcile import HummingbotExecutionReconciler
 from traderstack.execution.shadow import ShadowLedger, ShadowRecorder
@@ -481,15 +482,19 @@ def build_service(
             # --- paper fees (#66) ---
             paper_fee_bps=settings.paper_fee_bps,
         )
-        portfolio_reconciler = HummingbotPortfolioReconciler(
-            base_url=settings.hummingbot_api_url,
-            username=settings.hummingbot_api_username,
-            password=password,
-            account_name=settings.hummingbot_account_name,
-            connector_name=settings.hummingbot_connector_name,
-            max_nav_difference_bps=settings.max_nav_drift_bps,
-            client=venue_client,  # paper-trading acceptance (Epic 10)
-        )
+        # Local paper fills are the book of record when PAPER_SIMULATE_FILLS
+        # is on. Comparing that NAV to a Hummingbot paper account that may
+        # never fill would trip MAX_NAV_DRIFT_BPS and freeze new risk.
+        if not settings.paper_simulate_fills:
+            portfolio_reconciler = HummingbotPortfolioReconciler(
+                base_url=settings.hummingbot_api_url,
+                username=settings.hummingbot_api_username,
+                password=password,
+                account_name=settings.hummingbot_account_name,
+                connector_name=settings.hummingbot_connector_name,
+                max_nav_difference_bps=settings.max_nav_drift_bps,
+                client=venue_client,  # paper-trading acceptance (Epic 10)
+            )
         if execution_ledger is None:
             execution_ledger = ExecutionLedger()
         submitter = IdempotentSubmitter(
@@ -504,6 +509,24 @@ def build_service(
             ledger_store=ledger_store,
             timeout_seconds=settings.execution_submit_timeout_seconds,
             max_retries=settings.execution_max_retries,
+        )
+
+    # --- paper fill simulation ---
+    # Wired independently of --submit / Hummingbot. Compose app.command has
+    # neither; this is how a dry-run ALLOW moves NAV, cash, drawdown and fees.
+    paper_fill_simulator = None
+    if trading_mode == "paper" and settings.paper_simulate_fills:
+        if execution_ledger is None:
+            execution_ledger = ExecutionLedger()
+        paper_fill_simulator = PaperFillSimulator(
+            planner=ExecutionPlanner(
+                lot_step=settings.execution_lot_step,
+                min_notional_usd=settings.execution_min_notional_usd,
+                max_slippage_bps=settings.execution_max_slippage_bps,
+            ),
+            paper_fee_bps=settings.paper_fee_bps,
+            paper_slippage_bps=settings.paper_slippage_bps,
+            trading_mode=trading_mode,
         )
 
     pretrade_gate = None
@@ -703,6 +726,8 @@ def build_service(
         portfolio_reconciler=portfolio_reconciler,
         ledger_store=ledger_store,
         reconcile_interval_seconds=settings.reconcile_interval_seconds,
+        # --- paper fill simulation ---
+        paper_fill_simulator=paper_fill_simulator,
         # --- paper-research edge data plane ---
         edge_collectors=tuple(edge_collectors),
     )

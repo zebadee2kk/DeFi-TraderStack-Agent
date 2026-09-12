@@ -7,6 +7,7 @@ from traderstack.cli import build_parser, build_service, load_persisted_state
 from traderstack.config import Settings
 from traderstack.execution.ledger import ExecutionLedger
 from traderstack.execution.ledger_store import JsonExecutionLedgerStore
+from traderstack.execution.paper_fill import PaperFillSimulator
 from traderstack.execution.reconcile import HummingbotExecutionReconciler
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.reconciliation import HummingbotPortfolioReconciler
@@ -55,8 +56,14 @@ def test_build_service_wires_the_execution_stack(tmp_path: Path) -> None:
     )
 
     assert isinstance(service.execution_reconciler, HummingbotExecutionReconciler)
-    assert isinstance(service.portfolio_reconciler, HummingbotPortfolioReconciler)
-    assert service.portfolio_reconciler.max_nav_difference_bps == pytest.approx(15.0)
+    # Local paper fills are the book of record; Hummingbot NAV reconcile
+    # would drift and freeze new risk.
+    assert service.portfolio_reconciler is None
+    assert isinstance(service.paper_fill_simulator, PaperFillSimulator)
+    assert service.paper_fill_simulator.paper_fee_bps == pytest.approx(settings.paper_fee_bps)
+    assert service.paper_fill_simulator.paper_slippage_bps == pytest.approx(
+        settings.paper_slippage_bps
+    )
     assert service.reconcile_interval_seconds == pytest.approx(30.0)
     assert service.execution_ledger is ledger
     assert service.ledger_store is ledger_store
@@ -74,6 +81,27 @@ def test_build_service_wires_the_execution_stack(tmp_path: Path) -> None:
     assert service.execution_reconciler.paper_fee_bps == pytest.approx(settings.paper_fee_bps)
 
 
+def test_build_service_with_simulate_fills_off_wires_hummingbot_nav_reconcile(
+    tmp_path: Path,
+) -> None:
+    settings = settings_for_paper_submission()
+    settings = settings.model_copy(update={"paper_simulate_fills": False})
+    service = build_service(
+        settings,
+        submit=True,
+        cycle_seconds=1.0,
+        portfolio=InMemoryPortfolioBook(starting_nav_usd=10_000),
+        on_result=_noop,
+        checkpoint_store=JsonPortfolioCheckpointStore(tmp_path / "portfolio.json"),
+        execution_ledger=ExecutionLedger(),
+        ledger_store=JsonExecutionLedgerStore(tmp_path / "execution_ledger.json"),
+    )
+
+    assert service.paper_fill_simulator is None
+    assert isinstance(service.portfolio_reconciler, HummingbotPortfolioReconciler)
+    assert service.portfolio_reconciler.max_nav_difference_bps == pytest.approx(15.0)
+
+
 def test_build_service_without_submit_has_no_execution_stack(tmp_path: Path) -> None:
     settings = settings_for_paper_submission()
     service = build_service(
@@ -89,6 +117,9 @@ def test_build_service_without_submit_has_no_execution_stack(tmp_path: Path) -> 
     assert service.execution_reconciler is None
     assert service.portfolio_reconciler is None
     assert not service.submission_enabled
+    assert isinstance(service.paper_fill_simulator, PaperFillSimulator)
+    assert service.execution_ledger is not None
+    assert service.paper_fill_enabled is True
 
 
 @pytest.mark.asyncio

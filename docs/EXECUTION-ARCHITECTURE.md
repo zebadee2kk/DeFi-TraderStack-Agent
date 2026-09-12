@@ -216,31 +216,41 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
                (ledger write PLANNED before the venue call; planner checks lot/notional/
                slippage; timeout/5xx -> SUBMISSION_UNCERTAIN, no retry until reconciliation
                resolves it). `TRADING_MODE=live` never reaches here (`require_runtime_trading_mode`).
+               A Hummingbot *receipt* is not a fill — `_reconcile_trades` is the venue
+               fill path. Do not require this for paper PnL.
              - shadow and paper_order is not None: `ShadowRecorder` plans the same child
                order and appends it to the shadow JSONL (`execution_status=shadow_recorded`
                / `shadow_plan_rejected` / `shadow_duplicate`). Hummingbot is not constructed;
                no fill is applied. `--submit` is ignored.
         xi.  return RuntimeResult(..., trading_mode, shadow_intent, execution_receipt,
              execution_status, execution_reason, ...)
-    2d. mark the portfolio at the tick's last price; compute + publish the NAV/cash gauges
-    2e. register the execution receipt in the ledger (bare-executor path only -- the
+    2d. paper fill simulation (PAPER_SIMULATE_FILLS, paper only; default on):
+        if paper_order is still set (risk ALLOW/REDUCE, meta-agent did not veto,
+        kill switch not engaged) and durable/reconcile gates are clear: plan at
+        primary mid ± PAPER_SLIPPAGE_BPS (adverse), write the ledger (idempotent
+        paper-fill:<client_order_id>), apply_fill with PAPER_FEE_BPS
+        (fee_source=modelled), set execution_status=paper_filled. Does not call
+        a venue. Compose app.command has no --submit; this is how NAV moves.
+        A kill switch, reconciliation block, or torn ledger withholds.
+    2e. mark the portfolio at the tick's last price; compute + publish the NAV/cash gauges
+    2f. register the execution receipt in the ledger (bare-executor path only -- the
         submitter already registered it under the client order id before the venue call)
-    2f. _record_risk_decision(result)             -- append to the hash-chained risk audit
+    2g. _record_risk_decision(result)             -- append to the hash-chained risk audit
         trail. The record carries `result` (the risk engine's own decision) AND
         `meta_review`/`execution_status`/`execution_reason` from the SAME cycle, so an ALLOW
         that was subsequently vetoed is legible on one line, not only inferable by
         cross-referencing the runtime audit log separately.
-    2g. checkpoint the portfolio (on_portfolio)    -- BEFORE the event fan-out (Epic 10).
+    2h. checkpoint the portfolio (on_portfolio)    -- BEFORE the event fan-out (Epic 10).
         This is the durable local state a restart resumes from; on_result fans out to
         remote sinks (Postgres/Redis) that can be down far longer than a local write. Saving
         the checkpoint first means a downstream sink outage can never leave the checkpoint
         ahead of -- or silently behind -- the execution ledger, which the submitter persists
         regardless of the sinks' health.
-    2h. fan out RuntimeResult to on_result sinks   -- JsonlAuditSink always; Postgres +
+    2i. fan out RuntimeResult to on_result sinks   -- JsonlAuditSink always; Postgres +
         Redis additionally under --persistent-events. A sink failure is counted
         (record_event_sink_failure) and re-raised, which trips health.record_error below.
-    2i. health.record_success(symbol)
-    -- on any exception in 2a-2i: health.record_error(symbol, exc); back off
+    2j. health.record_success(symbol)
+    -- on any exception in 2a-2j: health.record_error(symbol, exc); back off
        error_backoff_seconds. 5 consecutive errors on one symbol stops the whole service
        (ContinuousPaperService.run), not only that symbol.
  3. sleep cycle_interval_seconds (or until stopped), then repeat from 1.
@@ -349,6 +359,17 @@ a fee, `modelled` when `PAPER_FEE_BPS` was charged instead).
 `InMemoryPortfolioBook.apply_fill` debits cash and realized PnL by the fee so
 NAV, daily loss and drawdown — the numbers the risk engine's breakers read —
 are not systematically optimistic.
+
+**Paper-native fills** (`execution/paper_fill.py`). Compose `app.command` and
+`make run-paper` do not pass `--submit`, so `IdempotentSubmitter` is never
+constructed and `execution_status` used to stay null. `PAPER_SIMULATE_FILLS`
+(default true on paper) books the fill in-process after risk allow: mid ±
+`PAPER_SLIPPAGE_BPS`, ledger row, `apply_fill` with `PAPER_FEE_BPS`. No venue
+API. `--submit` + Hummingbot remains an optional alternate; a Hummingbot
+receipt is still not a fill (`_reconcile_trades` is). When the local paper
+fill is the book of record, Hummingbot NAV reconcile is not wired (it would
+drift) and venue trade rows for an already-`FILLED` modelled order are
+ignored so they cannot double-apply.
 
 **Idempotent submission** (`execution/submitter.py`). `IdempotentSubmitter`
 writes the `PLANNED` order to the ledger *before* calling the venue, so a crash
