@@ -175,9 +175,11 @@ simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-strategy-search`, `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will not
-register a voter unless fee-aware walk-forward excess return is strictly
-positive. The default `PAPER_PROMOTE_SEARCHED_STRATEGIES=false` stays off
-until a report shows a winner.
+register a voter unless fee-aware walk-forward **total** return is strictly
+positive *and* holdout excess is strictly positive. The default
+`PAPER_PROMOTE_SEARCHED_STRATEGIES=false` stays off until a report shows a
+winner, and promotion is pinned to that catalog id
+(`PAPER_PROMOTE_SEARCHED_STRATEGY_ID`).
 
 ## Roadmap
 

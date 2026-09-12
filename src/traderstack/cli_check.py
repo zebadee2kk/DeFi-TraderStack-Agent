@@ -166,6 +166,12 @@ def build_report(settings: Settings) -> ConfigReport:
             settings.paper_search_report_path,
         )
     )
+    items.append(
+        CheckItem(
+            "  pinned search promote id",
+            settings.paper_promote_searched_strategy_id or "(none)",
+        )
+    )
     if settings.paper_promote_searched_strategies:
         from pathlib import Path
 

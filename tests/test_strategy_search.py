@@ -13,7 +13,9 @@ from traderstack.models import Side
 from traderstack.research.candidates import (
     AlwaysOnTrendStrategy,
     default_price_candidates,
+    expanded_price_candidates,
     feature_candidates,
+    vol_regime_agrees,
 )
 from traderstack.research.promotion import (
     PromotionError,
@@ -100,10 +102,11 @@ def test_holdout_split_is_a_strict_tail() -> None:
     assert research + holdout == candles
 
 
-def test_gate_requires_positive_wf_excess_and_min_trades() -> None:
+def test_gate_requires_positive_wf_total_and_holdout_excess() -> None:
     assert (
         row_clears_gate(
             mean_wf_excess_return=0.01,
+            mean_wf_total_return=0.01,
             total_wf_trades=5,
             mean_holdout_excess_return=0.01,
             min_trades=3,
@@ -114,7 +117,20 @@ def test_gate_requires_positive_wf_excess_and_min_trades() -> None:
     )
     assert (
         row_clears_gate(
+            mean_wf_excess_return=0.01,
+            mean_wf_total_return=-0.01,
+            total_wf_trades=5,
+            mean_holdout_excess_return=0.01,
+            min_trades=3,
+            min_wf_excess_return=0.0,
+            require_holdout_confirmation=True,
+        )
+        is False
+    )
+    assert (
+        row_clears_gate(
             mean_wf_excess_return=0.0,
+            mean_wf_total_return=0.01,
             total_wf_trades=5,
             mean_holdout_excess_return=0.01,
             min_trades=3,
@@ -126,6 +142,7 @@ def test_gate_requires_positive_wf_excess_and_min_trades() -> None:
     assert (
         row_clears_gate(
             mean_wf_excess_return=0.01,
+            mean_wf_total_return=0.01,
             total_wf_trades=2,
             mean_holdout_excess_return=0.01,
             min_trades=3,
@@ -137,6 +154,7 @@ def test_gate_requires_positive_wf_excess_and_min_trades() -> None:
     assert (
         row_clears_gate(
             mean_wf_excess_return=0.01,
+            mean_wf_total_return=0.01,
             total_wf_trades=5,
             mean_holdout_excess_return=-0.01,
             min_trades=3,
@@ -162,7 +180,10 @@ def test_search_skips_optional_features_when_absent() -> None:
     assert "liquidation_z_fade" not in ids
     assert "cross_venue_fade" not in ids
     skipped = {item["candidate_id"] for item in report.skipped_feature_families}
-    assert skipped == {"liquidation_z_fade", "cross_venue_fade"}
+    assert "liquidation_z_fade" in skipped
+    assert "funding_z_fade" in skipped
+    assert "oi_z_fade" in skipped
+    assert "cross_venue_fade" in skipped
     assert report.selection_rule == "pre_registered_top1"
     assert report.multiple_testing["n_candidates"] == len(default_price_candidates())
 
@@ -171,7 +192,9 @@ def test_search_includes_feature_candidates_when_series_supplied() -> None:
     candles = downtrend(360)
     series = tuple((c.opened_at, float(index % 7) - 3.0) for index, c in enumerate(candles))
     extra = feature_candidates(liquidation=series, cross_venue=series)
-    assert {c.candidate_id for c in extra} == {"liquidation_z_fade", "cross_venue_fade"}
+    ids = {c.candidate_id for c in extra}
+    assert {"liquidation_z_fade", "liquidation_z_follow", "cross_venue_fade"} <= ids
+    assert "momentum_12_liq_agree" in ids
     report = run_search(
         {"BTC/USD": candles},
         fee_bps=10.0,
@@ -187,7 +210,11 @@ def test_search_includes_feature_candidates_when_series_supplied() -> None:
     ids = {row.candidate_id for row in report.candidates}
     assert "liquidation_z_fade" in ids
     assert "cross_venue_fade" in ids
-    assert report.skipped_feature_families == []
+    skipped = {item["candidate_id"] for item in report.skipped_feature_families}
+    assert "liquidation_z_fade" not in skipped
+    assert "cross_venue_fade" not in skipped
+    assert "funding_z_fade" in skipped
+    assert "oi_z_fade" in skipped
 
 
 def test_holdout_tail_does_not_change_ranking() -> None:
@@ -386,7 +413,13 @@ def test_build_pretrade_gate_uses_promoted_voter(tmp_path: Path) -> None:
 
 def test_promotion_settings_do_not_move_risk_policy_version() -> None:
     a = settings(paper_promote_searched_strategies=False, paper_fee_bps=10.0)
-    b = settings(paper_promote_searched_strategies=True, paper_fee_bps=99.0)
+    b = settings(
+        paper_promote_searched_strategies=True,
+        paper_fee_bps=99.0,
+        paper_promote_searched_strategy_id="momentum_12_vol",
+        paper_search_require_wf_total_return=False,
+        paper_search_min_wf_total_return=0.5,
+    )
     assert derive_policy_version(a) == derive_policy_version(b)
 
 
@@ -462,6 +495,50 @@ def test_catalog_is_pre_registered_and_small() -> None:
     ids = [c.candidate_id for c in catalog]
     assert len(ids) == len(set(ids))
     assert "ma_always_on_10_30" in ids
+
+
+def test_expanded_catalog_adds_vol_regime_filters() -> None:
+    catalog = expanded_price_candidates()
+    ids = [c.candidate_id for c in catalog]
+    assert len(ids) == len(set(ids))
+    assert "momentum_12_vol" in ids
+    assert "ma_cross_10_30_vol" in ids
+    assert 16 <= len(catalog) <= 24
+    vol = next(c for c in catalog if c.candidate_id == "momentum_12_vol")
+    assert vol.params["vol_regime_filter"] is True
+
+
+def test_vol_regime_agreement_is_family_aware() -> None:
+    assert vol_regime_agrees("momentum", Side.BUY, Regime.TRENDING_UP) is True
+    assert vol_regime_agrees("momentum", Side.BUY, Regime.TRENDING_DOWN) is False
+    assert vol_regime_agrees("mean_reversion", Side.BUY, Regime.RANGE) is True
+    assert vol_regime_agrees("mean_reversion", Side.BUY, Regime.HIGH_VOLATILITY) is False
+
+
+def test_pinned_promote_id_rejects_other_winners(tmp_path: Path) -> None:
+    report = run_search(
+        {"BTC/USD": downtrend(400)},
+        fee_bps=10.0,
+        train_size=120,
+        test_size=60,
+        step_size=60,
+        holdout_fraction=0.2,
+        min_trades=1,
+    )
+    path = tmp_path / "report.json"
+    path.write_text(report.model_dump_json())
+    cfg = settings(
+        paper_promote_searched_strategies=True,
+        paper_search_report_path=str(path),
+        paper_search_min_trades=1,
+        paper_promote_searched_strategy_id="not_a_real_candidate",
+    )
+    if report.any_promoted:
+        with pytest.raises(PromotionError, match="PAPER_PROMOTE_SEARCHED_STRATEGY_ID"):
+            build_paper_ensemble(cfg)
+    else:
+        with pytest.raises(PromotionError):
+            build_paper_ensemble(cfg)
 
 
 def test_candidate_result_defaults_are_not_promoted() -> None:

@@ -24,7 +24,7 @@ without activating the venv.
 | `traderstack-resume` | Removes the sentinel file. Does **not** clear the `KILL_SWITCH` setting, the Redis key, or a latched `SIGUSR1` — those are separate channels and print as a reminder. |
 | `traderstack-trace` | Read-only: prints the full ordered runtime-event trace for one `decision_id` from Postgres (requires `--persistent-events` to have been running). `traderstack-trace <decision_id> [--limit N]`. |
 | `traderstack-research` | Runs the research harness end-to-end over a candle history (JSON file via `--candles`, or live from Kraken via `--symbol`): backtest with realistic costs, walk-forward, required baselines, and a performance attribution report. `--json` for machine-readable output. |
-| `traderstack-strategy-search` | Offline catalog search: scores pre-registered MA-cross / momentum / mean-reversion variants (optional liquidation-z / cross-venue series) on Kraken Spot OHLC with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
+| `traderstack-strategy-search` | Offline catalog search: scores the expanded pre-registered catalog (MA / momentum / mean-reversion + vol-regime filters; optional funding / OI / liquidation series) on Kraken charts-spot (~180d 1h) or public Spot OHLC (720-bar cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Promotion additionally requires WF **total** return > 0. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
@@ -197,9 +197,10 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
   design. Loosen them only with the same deliberation you'd give a risk-policy
   change, and confirm the result with `traderstack-check-config`.
 - Leave `PAPER_PROMOTE_SEARCHED_STRATEGIES=false` unless a
-  `traderstack-strategy-search` report shows a gate-clearing winner (WF excess > 0
-  after fees, min trades, holdout confirmation). The flag does not relax
-  `RiskEngine`; flipping it on with no winner fails closed.
+  `traderstack-strategy-search` report shows a gate-clearing winner (WF **total**
+  return > 0 after fees, holdout excess > 0, min trades) and pin
+  `PAPER_PROMOTE_SEARCHED_STRATEGY_ID` to that exact id. The flag does not relax
+  `RiskEngine`; flipping it on with no winner or the wrong id fails closed.
 - `ROBINHOOD_CHAIN_*` values (RPC URL, chain id, router/token allowlists) must come
   from Robinhood's own official chain docs, never guessed — see the warnings
   already in `.env.example` and `docs/DATA-SOURCES.md`.
@@ -436,29 +437,35 @@ as *standalone* voters under `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` +
   --output-json var/ops/strategy_search_report.json \
   --output-md var/ops/strategy_search_report.md
 
-# Live Kraken Spot OHLC (same provider as paper; last ~720 committed bars)
+# Live Kraken charts-spot ~180d 1h (public OHLC cannot page older than 720 bars)
 .venv/bin/traderstack-strategy-search \
   --symbol BTC/USD --symbol ETH/USD --symbol SOL/USD \
-  --resolution 1h --count 720
+  --resolution 1h --also-resolution 4h --count 4320 --source auto
 ```
 
 Multiple-testing policy is **pre-registered top-1** (one promotion decision over the
 catalog, not K independent "we found a winner" claims). A Bonferroni note is written
 into the report; we do not invent per-fold p-values. Promotion additionally requires
-walk-forward mean excess return **> 0 after fees**, `PAPER_SEARCH_MIN_TRADES`, and
-(default) the same sign on holdout.
+walk-forward mean **total** return **> 0 after fees**, holdout excess > 0,
+`PAPER_SEARCH_MIN_TRADES`, and `PAPER_PROMOTE_SEARCHED_STRATEGY_ID` equal to that
+id. Beating buy-and-hold while still losing money is not an edge.
 
 `PAPER_PROMOTE_SEARCHED_STRATEGIES` stays **false** until a report shows a winner.
 Turning it on without a gate-clearing report fails closed at
 `traderstack-check-config` and at `build_pretrade_gate` — the process does not
 quietly fall back to the unpromoted MA ensemble under the promotion flag.
 
-Binance USDT-M liquidations and second-venue bookTicker exist as paper-research
-feeds on main (`BINANCE_LIQ_ENABLED` / `BOOK_TICKER_ENABLED`). They are not an
-execution venue and they are **not** auto-scored by this search. Pass
-`--liquidation-z` / `--cross-venue-z` JSON series to score those families;
-otherwise the report lists them as skipped, not as zeros. Do not invent a
-winner from an unused feed.
+`BINANCE_LIQ_ENABLED` / `BOOK_TICKER_ENABLED` are live paper-research *streams*
+(not an execution venue). They do not provide a 90–180d historical liquidation
+series: Binance USDT-M historical REST is missing (live WS `!forceOrder@arr`
+only; Vision `um/liquidationSnapshot` removed). Search therefore probes public
+REST and records a skip rather than inventing a z from the live socket.
+
+Funding and open-interest series are fetched from public REST when `--symbol` is
+used (`--fetch-edge-series`, default on): Binance USDT-M first, OKX if Binance
+returns 451/403. Pass `--liquidation-z` / `--funding-z` / `--oi-z` /
+`--cross-venue-z` JSON to score a local series; otherwise those families are
+skipped, not zero-filled.
 
 ## Key rotation
 

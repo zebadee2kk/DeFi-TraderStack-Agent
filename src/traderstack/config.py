@@ -278,9 +278,12 @@ class Settings(BaseSettings):
     # registered until a report shows a real winner. These fields are not
     # RiskEngine policy -- flipping them must not move policy_version.
     paper_promote_searched_strategies: bool = False
+    paper_promote_searched_strategy_id: str = ""
     paper_search_report_path: str = "var/ops/strategy_search_report.json"
     paper_search_min_trades: int = Field(default=3, ge=0)
     paper_search_min_wf_excess_return: float = 0.0
+    paper_search_min_wf_total_return: float = 0.0
+    paper_search_require_wf_total_return: bool = True
     paper_search_require_holdout: bool = True
 
     # --- execution hardening (Epic 8) ---
