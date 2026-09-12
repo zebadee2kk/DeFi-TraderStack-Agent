@@ -50,6 +50,19 @@ paper_orders_submitted_total = Counter(
     ("symbol", "side"),
 )
 
+# --- shadow-live (Roadmap Phase 7) -----------------------------------------
+
+shadow_intents_recorded_total = Counter(
+    "traderstack_shadow_intents_recorded_total",
+    "Would-have-been venue orders recorded in shadow-live mode, by symbol, side and status",
+    ("symbol", "side", "status"),
+)
+trading_mode_info = Gauge(
+    "traderstack_trading_mode_info",
+    "Configured trading mode: 1 for the active mode, 0 otherwise",
+    ("mode",),
+)
+
 # --- provider fetches ----------------------------------------------------
 
 provider_fetch_latency_seconds = Histogram(
@@ -127,6 +140,15 @@ def record_pipeline_result(symbol: str, pipeline: PipelineResult) -> None:
 
 def record_paper_order_submitted(symbol: str, side: str) -> None:
     paper_orders_submitted_total.labels(symbol=symbol, side=side).inc()
+
+
+def record_shadow_intent(symbol: str, side: str, status: str) -> None:
+    shadow_intents_recorded_total.labels(symbol=symbol, side=side, status=status).inc()
+
+
+def record_trading_mode(mode: str) -> None:
+    for candidate in ("paper", "shadow", "live"):
+        trading_mode_info.labels(mode=candidate).set(1 if candidate == mode else 0)
 
 
 def record_candles_loaded(symbol: str, count: int) -> None:

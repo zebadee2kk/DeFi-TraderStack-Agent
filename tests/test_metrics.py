@@ -84,6 +84,42 @@ def test_record_paper_order_submitted() -> None:
     )
 
 
+def test_record_shadow_intent_is_distinct_from_paper_submits() -> None:
+    before_shadow = _counter_value(
+        "traderstack_shadow_intents_recorded_total",
+        symbol="SOL/USD",
+        side="buy",
+        status="shadow_recorded",
+    )
+    before_paper = _counter_value(
+        "traderstack_paper_orders_submitted_total", symbol="SOL/USD", side="buy"
+    )
+    metrics.record_shadow_intent("SOL/USD", "buy", "shadow_recorded")
+    assert (
+        _counter_value(
+            "traderstack_shadow_intents_recorded_total",
+            symbol="SOL/USD",
+            side="buy",
+            status="shadow_recorded",
+        )
+        == before_shadow + 1
+    )
+    assert (
+        _counter_value("traderstack_paper_orders_submitted_total", symbol="SOL/USD", side="buy")
+        == before_paper
+    )
+
+
+def test_record_trading_mode_marks_only_the_active_mode() -> None:
+    metrics.record_trading_mode("shadow")
+    assert REGISTRY.get_sample_value("traderstack_trading_mode_info", {"mode": "shadow"}) == 1
+    assert REGISTRY.get_sample_value("traderstack_trading_mode_info", {"mode": "paper"}) == 0
+    assert REGISTRY.get_sample_value("traderstack_trading_mode_info", {"mode": "live"}) == 0
+    metrics.record_trading_mode("paper")
+    assert REGISTRY.get_sample_value("traderstack_trading_mode_info", {"mode": "paper"}) == 1
+    assert REGISTRY.get_sample_value("traderstack_trading_mode_info", {"mode": "shadow"}) == 0
+
+
 def test_record_candles_loaded_sets_gauge() -> None:
     metrics.record_candles_loaded("BTC/USD", 250)
     assert (

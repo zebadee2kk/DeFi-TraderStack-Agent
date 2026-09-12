@@ -94,7 +94,7 @@ and reason string behind each control.
 - [x] decision-to-fill trace view
 
 ## Epic 10 — Paper-Trading Acceptance
-- [ ] 24/7 soak test — **the runner exists and is tested; the 24-hour window itself has not been run.** `traderstack-soak --seconds 86400 --workdir var/soak --report var/soak/report.json` drives the real `cli.build_service` wiring against a seeded synthetic market with optional scheduled fault injection, and emits a machine-readable acceptance report. See docs/RUNBOOK.md, "24/7 acceptance soak", for the procedure and the pass criteria.
+- [ ] 24/7 soak test — **the runner exists, a short CI soak archives a machine-readable report, and the 24-hour window itself has not been run.** `traderstack-soak --preset ci` (also `make soak-ci`, and a `soak-ci` GitHub Actions job) is the CI-friendly path. `traderstack-soak --preset full --cycle-seconds 5 --workdir var/soak` (also `make soak-24h`) is the 86400s window. Every run writes `<workdir>/report.json` with `passed` / `failures[]` / `full_24h_window_executed`. See docs/RUNBOOK.md, "24/7 acceptance soak".
 - [x] forced provider outages (`tests/acceptance/test_provider_outages.py`)
 - [x] forced database restart (`tests/acceptance/test_database_restart.py`)
 - [x] stale-data test (`tests/acceptance/test_stale_data.py`)
@@ -123,12 +123,15 @@ Everything below is unticked above (or open in `docs/SECURITY-REVIEW-2026-09.md`
 for a reason worth restating here in one place. See `docs/ROADMAP.md` for the
 phase each belongs to, with a dated status line per phase.
 
-1. **The 24/7 soak window itself** (Epic 10; Roadmap Phase 6). The runner and
-   every drill are implemented and tested; the sustained 24-hour run has not
-   yet been executed and archived as evidence.
-2. **Shadow-live validation** (Roadmap Phase 7) — not started.
-   `TRADING_MODE=shadow` is an accepted `Settings` value with no distinct
-   runtime behaviour behind it yet.
+1. **The 24/7 soak window itself** (Epic 10; Roadmap Phase 6). The runner,
+   drills, CI-length soak and report archival are implemented; the sustained
+   24-hour run has not yet been executed and archived as evidence
+   (`full_24h_window_executed` will stay false until it is).
+2. **Shadow-live validation** (Roadmap Phase 7) — **runtime implemented;
+   statistical exit gate not.** `TRADING_MODE=shadow` now runs the full
+   decision/risk/meta-agent pipeline, records would-have-been orders, and
+   never submits to Hummingbot or broadcasts on-chain. The Phase 7 exit gate
+   (adequate sample vs paper/reality) still needs an operator campaign.
 3. **On-chain execution signing** (Roadmap Phase 8). `execution/robinhood_chain.py`
    stops at an unsigned, simulated transaction by design; no isolated signer,
    smart-account/guard policy or spending-cap service exists. Two specific
@@ -141,10 +144,11 @@ phase each belongs to, with a dated status line per phase.
    access (SEC-2026-09-11); `pip-audit` is red in CI on its own resolved `pip`
    advisories, not this project's dependencies (SEC-2026-09-12); dev tooling
    and every non-app container image are unpinned (SEC-2026-09-13,
-   SEC-2026-09-14); `RiskEngine.policy_version` does not cover every limit
-   enforced around it — pretrade/execution/reference-divergence/market-data-age
-   settings can change without moving the version (SEC-2026-09-18); a few
-   narrower fail-closed-by-accident items (SEC-2026-09-17, -19, -20).
+   SEC-2026-09-14); a few remaining fail-closed items that need a host
+   Docker-socket redesign or signer work (SEC-2026-09-11, -15, -16).
+   SEC-2026-09-18 (policy_version coverage of surrounding gates) and the
+   narrower fail-closed-by-accident items SEC-2026-09-17, -19 and -20 are
+   fixed in this pass.
 5. **Tiny-capital live pilot and controlled scale-up** (Roadmap Phases 9-10) —
    blocked on 2 and 3 above by design; not started.
 

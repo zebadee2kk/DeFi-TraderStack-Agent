@@ -50,11 +50,20 @@ def build_report(settings: Settings) -> ConfigReport:
 
     # --- Trading mode & kill switch -------------------------------------------------
     items.append(CheckItem("Trading mode", settings.trading_mode))
-    if settings.trading_mode != "paper":
+    if settings.trading_mode == "live":
         warnings.append(
-            f"TRADING_MODE={settings.trading_mode!r}: MVP scope is paper trading only. "
-            "shadow/live modes require explicit governance sign-off before use "
-            "(see docs/MVP-BACKLOG.md, docs/SECURITY-THREAT-MODEL.md)."
+            "TRADING_MODE='live' is rejected by the runtime; live capital is out of "
+            "scope until the remaining gates in docs/MVP-BACKLOG.md close. "
+            "Use paper (venue paper orders) or shadow (record would-have-been orders)."
+        )
+    elif settings.trading_mode == "shadow":
+        items.append(
+            CheckItem(
+                "  shadow-live effect",
+                "record only",
+                "full decision/risk/meta-agent pipeline; no Hummingbot submit, "
+                "no chain broadcast, no paper fills",
+            )
         )
 
     kill_switch_state = (

@@ -285,6 +285,24 @@ async def test_feed_verifies_chain_subscribes_and_streams_ticks() -> None:
 
 
 @pytest.mark.asyncio
+async def test_feed_skips_a_malformed_log_and_keeps_streaming() -> None:
+    sqrt_price = sqrt_price_for(3000.0, 18, 6)
+    good = v3_swap_log(-(10**18), 3_000_000_000, sqrt_price)
+    malformed = {
+        "address": V3_POOL,
+        "topics": [UNISWAP_V3_SWAP_TOPIC],
+        # Missing `data` used to raise KeyError and kill the feed (SEC-2026-09-19).
+    }
+    socket = FakeSocket(hex(4663), [malformed, good])
+    feed = feed_with(socket, (v3_pool(),))
+
+    ticks = [tick async for tick in feed.stream_ticks(("ETH/USDG",))]
+
+    assert len(ticks) == 1
+    assert ticks[0].last == pytest.approx(3000.0, rel=1e-6)
+
+
+@pytest.mark.asyncio
 async def test_feed_fails_closed_on_chain_id_mismatch() -> None:
     socket = FakeSocket(hex(1), [])
     feed = feed_with(socket, (v3_pool(),))

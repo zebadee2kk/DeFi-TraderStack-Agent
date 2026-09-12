@@ -4,9 +4,11 @@ This is the operational guide for running DeFi TraderStack Agent as a paper-trad
 service: zero-to-running, day-to-day operation, the kill switch, key rotation, how to
 read what it produced, and how to respond to the incidents that matter most in the MVP.
 
-Everything here assumes **`TRADING_MODE=paper`**. Live capital is explicitly out of
-MVP scope (see `docs/MVP-BACKLOG.md`); nothing in this document authorizes live
-trading.
+The default, production-supported path is **`TRADING_MODE=paper`**.
+`TRADING_MODE=shadow` is the Phase 7 record-only path (same decisions, no venue
+orders). `TRADING_MODE=live` is rejected at startup. Live capital is explicitly
+out of MVP scope (see `docs/MVP-BACKLOG.md`); nothing in this document
+authorizes live trading.
 
 ## Console scripts
 
@@ -16,14 +18,14 @@ without activating the venv.
 
 | Script | What it does |
 |---|---|
-| `traderstack-paper` | Runs the continuous paper-trading service (`ContinuousPaperService`). `--submit` enables real (paper-venue) order submission; without it, proposals are computed and risk-checked but nothing is sent to Hummingbot. See "Zero to paper trading" below. |
+| `traderstack-paper` | Runs the continuous service (`ContinuousPaperService`). In `TRADING_MODE=paper`, `--submit` enables Hummingbot paper-venue orders; without it, proposals are computed and risk-checked but nothing is sent. In `TRADING_MODE=shadow`, `--submit` is ignored and would-have-been orders are written to `--shadow-ledger-path`. See "Zero to paper trading" and "Shadow-live" below. |
 | `traderstack-check-config` | Loads `Settings` exactly as the runtime does and prints what's enabled — venue feed, meta-agent mode, every provider, execution/reconciliation settings, provider quotas, kill-switch channels, risk limits — warning (and exiting non-zero) on unsafe combinations. Never prints secret values. Run this before every start and after every `.env` change. |
 | `traderstack-kill` | Engages the kill switch by writing the sentinel file (`--file`, default `$KILL_SWITCH_FILE` or `var/state/KILL`). Needs no access to the running process. See "Engaging / releasing the kill switch". |
 | `traderstack-resume` | Removes the sentinel file. Does **not** clear the `KILL_SWITCH` setting, the Redis key, or a latched `SIGUSR1` — those are separate channels and print as a reminder. |
 | `traderstack-trace` | Read-only: prints the full ordered runtime-event trace for one `decision_id` from Postgres (requires `--persistent-events` to have been running). `traderstack-trace <decision_id> [--limit N]`. |
 | `traderstack-research` | Runs the research harness end-to-end over a candle history (JSON file via `--candles`, or live from Kraken via `--symbol`): backtest with realistic costs, walk-forward, required baselines, and a performance attribution report. `--json` for machine-readable output. |
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles` and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
-| `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and emits a pass/fail JSON report. See "24/7 acceptance soak" below. |
+| `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 
 ## Zero to paper trading
@@ -94,6 +96,51 @@ blank use `PAPER_RESEARCH_MODE=true` (documented paper default) so the
 strategy ensemble can form a candle-only consensus and reach that risk
 decision; see "Paper research mode and strategy consensus". Live/shadow never
 get that voter rule.
+
+## Shadow-live
+
+`TRADING_MODE=shadow` (Roadmap Phase 7) consumes the same live feeds and runs the
+same decision, risk, pre-trade and meta-agent pipeline as paper. The difference
+is at the execution boundary:
+
+- approved intents are planned with the same lot / min-notional / slippage
+  constraints;
+- each would-have-been order is appended to `--shadow-ledger-path` (default
+  `var/audit/shadow_intents.jsonl`) and stamped on the runtime audit line as
+  `trading_mode: "shadow"` / `execution_status: "shadow_recorded"` (or
+  `shadow_plan_rejected` / `shadow_duplicate`);
+- Hummingbot is never constructed, even if `--submit` is passed;
+- Robinhood Chain execution is not called; nothing is signed or broadcast;
+- the paper portfolio is **not** filled from a shadow intent.
+
+This is how you tell the two modes apart:
+
+| Surface | Paper (`--submit`) | Shadow |
+|---|---|---|
+| `RuntimeResult.trading_mode` | `paper` | `shadow` |
+| `execution_status` | `submitted` / planner or venue refusal | `shadow_recorded` / `shadow_plan_rejected` / `shadow_duplicate` |
+| Prometheus | `traderstack_paper_orders_submitted_total` | `traderstack_shadow_intents_recorded_total` and `traderstack_trading_mode_info{mode="shadow"}=1` |
+| Durable record | `var/state/execution_ledger.json` | `var/audit/shadow_intents.jsonl` |
+| Venue HTTP | Hummingbot `POST /trading/orders` | none |
+
+```bash
+# .env: TRADING_MODE=shadow  (and KILL_SWITCH=false only if you actually want
+# recorded intents; the default kill switch still rejects every proposal)
+make check-config
+make run-shadow
+# or:
+.venv/bin/traderstack-paper \
+  --persistent-events \
+  --shadow-ledger-path var/audit/shadow_intents.jsonl
+```
+
+`traderstack-check-config` reports shadow as "record only" and does **not** treat
+it as an unsafe combination. `TRADING_MODE=live` is still flagged unsafe and
+rejected by `cli.build_service`. Shadow does not authorise live capital; it is
+the validation step *before* any live-capital phase.
+
+Do not loosen kill switch, risk limits or pre-trade gates "to make shadow trade
+more". A shadow run full of `kill_switch_enabled` is the system working.
 
 ## Filling in `.env` safely
 
@@ -210,8 +257,25 @@ submitter, execution ledger, reconcilers, kill switch and hash-chained audit tra
 against a seeded synthetic market instead of live providers. It needs no network, no
 database and no vendor credentials, so it can be left running anywhere.
 
+Every run writes a machine-readable JSON report to `--report`, defaulting to
+`<workdir>/report.json`, so a pass/fail artefact is always archived. The report
+includes `schema_version`, `passed`, `failures[]`, `full_24h_window_executed`
+(true only when a ≥86400s request actually ran for ~24 hours), health, the risk
+audit-chain verification, and a Prometheus snapshot. **A short CI soak is not
+the 24-hour window.** `full_24h_window_executed` stays `false` unless you
+really ran it.
+
 ```bash
-# 24-hour window, one cycle every 5 seconds, JSON report written at the end
+# CI / local smoke (same wiring, 8 cycles). Also: make soak-ci
+.venv/bin/traderstack-soak --preset ci --workdir var/soak-ci
+
+# 24-hour window, one cycle every 5 seconds. Also: make soak-24h
+.venv/bin/traderstack-soak --preset full --cycle-seconds 5 --workdir var/soak
+```
+
+Equivalent long-form commands:
+
+```bash
 .venv/bin/traderstack-soak \
   --seconds 86400 \
   --cycle-seconds 5 \
@@ -222,10 +286,11 @@ database and no vendor credentials, so it can be left running anywhere.
 Useful variations:
 
 ```bash
-# A quick smoke run before committing to 24 hours
+# A longer smoke run before committing to 24 hours
 .venv/bin/traderstack-soak --cycles 200 --workdir var/soak
 
-# The shipped scenarios: clean baseline, provider outages, kill-switch drill
+# The shipped scenarios: CI, clean baseline, provider outages, kill-switch drill
+.venv/bin/traderstack-soak --scenario ops/soak/scenarios/ci.json
 .venv/bin/traderstack-soak --scenario ops/soak/scenarios/baseline.json --seconds 86400
 .venv/bin/traderstack-soak --scenario ops/soak/scenarios/provider_outage.json --cycles 60
 .venv/bin/traderstack-soak --scenario ops/soak/scenarios/kill_switch_drill.json --cycles 30
@@ -266,9 +331,13 @@ and how often. What you are looking for in a 24-hour report is:
 - `ledger_orders == orders_submitted`, and every order in a terminal or open state you
   can explain.
 
-Keep `var/soak/report.json` alongside the audit trail: together they are the artefact
-that satisfies the exit criterion, and `traderstack-paper-report` (below) turns the same
-files into the performance comparison.
+Keep `<workdir>/report.json` alongside the audit trail. For a 24-hour run that
+is `var/soak/report.json`; confirm `full_24h_window_executed: true` before
+treating it as the Epic 10 exit-criterion artefact. The CI job
+(`traderstack-soak --preset ci`) archives a short report so the runner and
+report schema stay green — it does **not** satisfy the 24-hour gate.
+`traderstack-paper-report` (below) turns the same files into the performance
+comparison.
 
 ## Paper performance versus baselines
 

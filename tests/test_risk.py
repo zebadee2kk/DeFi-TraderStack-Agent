@@ -350,6 +350,15 @@ def test_changing_a_limit_changes_the_policy_version():
         {"strategy_breaker_cooldown_seconds": 1},
         {"mvp_assets": "BTC,ETH,SOL,DOGE"},
         {"kill_switch": True},
+        {"pretrade_backtest_enabled": False},
+        {"max_spread_bps": 15.0},
+        {"max_reference_divergence_bps": 25.0},
+        {"max_market_data_age_seconds": 10.0},
+        {"execution_min_notional_usd": 25.0},
+        {"execution_lot_step": 0.001},
+        {"execution_max_slippage_bps": 20.0},
+        {"max_nav_drift_bps": 10.0},
+        {"robinhood_chain_max_notional_usd": 100.0},
     ],
 )
 def test_every_risk_limit_is_covered_by_the_policy_version(change):

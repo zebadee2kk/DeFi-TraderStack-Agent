@@ -1,0 +1,12 @@
+{
+  "name": "ci",
+  "description": "CI-friendly short soak: the same cli.build_service wiring as the 24h window, bounded to a few cycles so CI can archive a machine-readable pass/fail report. This is not the 24-hour acceptance window.",
+  "seed": 7,
+  "symbols": ["BTC/USD"],
+  "cycles": 8,
+  "cycle_seconds": 0.0,
+  "error_backoff_seconds": 0.0,
+  "submit": true,
+  "starting_nav_usd": 10000.0,
+  "faults": []
+}

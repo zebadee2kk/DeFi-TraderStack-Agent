@@ -125,6 +125,10 @@ class Settings(BaseSettings):
     edge_backoff_max_seconds: float = Field(default=30.0, gt=0)
 
     trading_mode: Literal["paper", "shadow", "live"] = "paper"
+    # paper  = decisions + optional Hummingbot paper submit
+    # shadow = same decision/risk/meta-agent pipeline; records would-have-been
+    #          orders; never calls a venue (Roadmap Phase 7)
+    # live   = rejected at service construction; no live-capital path exists
     # Which venue supplies the primary execution-quality tick stream.
     venue_feed: Literal["kraken", "robinhood_chain"] = "kraken"
     paper_starting_nav_usd: float = 10_000
@@ -146,8 +150,10 @@ class Settings(BaseSettings):
     # --- risk plane (Epic 7) ---
     # Every value below is deterministic risk policy. It is read from
     # version-controlled configuration only: no agent, LLM message, tool result
-    # or runtime API may mutate it. Changing any of them changes
-    # RiskEngine.policy_version, which is stamped into every audit record.
+    # or runtime API may mutate it. Changing any of them — plus the pretrade /
+    # execution / market-data / chain-policy fields listed in RISK_LIMIT_FIELDS
+    # (SEC-2026-09-18) — changes RiskEngine.policy_version, which is stamped
+    # into every audit record.
     #
     # Manual policy label. Bump it when the *meaning* of the policy changes even
     # though no numeric limit did.
@@ -335,3 +341,22 @@ class Settings(BaseSettings):
         if self.trading_mode == "paper":
             return self.paper_pretrade_min_walkforward_excess_return
         return 0.0
+
+
+# Modes the continuous service may actually run. `live` is accepted by Settings
+# so an operator misconfiguration is visible to `traderstack-check-config`, but
+# `require_runtime_trading_mode` rejects it before any venue client is built.
+SUPPORTED_RUNTIME_MODES: frozenset[str] = frozenset({"paper", "shadow"})
+
+
+def require_runtime_trading_mode(mode: str) -> str:
+    """Single choke point: paper and shadow may run; live is always rejected."""
+
+    if mode == "live":
+        raise RuntimeError(
+            "TRADING_MODE=live is rejected; live capital is out of scope until "
+            "the remaining gates in docs/MVP-BACKLOG.md close"
+        )
+    if mode not in SUPPORTED_RUNTIME_MODES:
+        raise RuntimeError(f"unsupported trading mode: {mode}")
+    return mode
