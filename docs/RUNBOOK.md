@@ -762,7 +762,9 @@ See `docs/artifacts/strategy-search/funding-carry.md` (4h dual-print),
 `docs/artifacts/strategy-search/funding-carry-daily.md` (daily
 resample / hard-gate print),
 `docs/artifacts/strategy-search/funding-carry-basis.md` (PIT basis
-probe: UNAVAILABLE), and the 2026-09-12 status memo
+probe: UNAVAILABLE),
+`docs/artifacts/strategy-search/pit-basis-archives.md` (public
+archive probe: still UNAVAILABLE), and the 2026-09-12 status memo
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with

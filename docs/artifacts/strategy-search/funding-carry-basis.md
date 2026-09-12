@@ -62,6 +62,17 @@ funding exercised with real mid+funding inputs). `can_promote`
 stays **false** while historical PIT basis is UNAVAILABLE.
 `PAPER_PERP_HEDGE` still defaults **false**.
 
+## Archive follow-up (after #114)
+
+Public historical archives were probed 2026-09-12. **Still
+UNAVAILABLE.** Official Hyperliquid `asset_ctxs` is requester-pays
+(anonymous 403; no AWS keys invented). BitMEX `public.bitmex.com`
+is trade+quote only (no mark dump). BitMEX perp-mid−spot-mid via
+`XBTUSDT`−`XBT_USDT` is calendar-long enough but the spot book is
+150–600 bps (ETH ~3500 bps) and is not used. Tardis / Coin Metrics
+community / empty HuggingFace schemas were skipped. Carry was
+**not** re-scored. See `pit-basis-archives.md`.
+
 ## Promotion decision
 
 **No candidate is promoted.** PIT basis is UNAVAILABLE. The paper
