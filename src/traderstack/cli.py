@@ -73,12 +73,12 @@ from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.pretrade import PreTradeBacktestGate
-from traderstack.strategies import PaperResearchStrategy, StrategyEnsemble
 from traderstack.reconciliation import HummingbotPortfolioReconciler
 from traderstack.risk import RiskEngine
 from traderstack.risk_audit import JsonlRiskAuditTrail
 from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
+from traderstack.strategies import PaperResearchStrategy, StrategyEnsemble
 from traderstack.tracing import configure_tracing  # observability (Epic 9)
 
 ResultHandler = Callable[[RuntimeResult], Awaitable[None]]

@@ -76,9 +76,7 @@ def test_paper_research_keeps_two_voters_when_intel_is_configured() -> None:
 
 def test_paper_research_ensemble_ignored_for_shadow_and_live() -> None:
     for mode in ("shadow", "live"):
-        ensemble = paper_research_ensemble(
-            _settings(trading_mode=mode, paper_research_mode=True)
-        )
+        ensemble = paper_research_ensemble(_settings(trading_mode=mode, paper_research_mode=True))
         assert ensemble.paper_research_strategy is None
         assert ensemble.min_agreeing == 2
 
@@ -143,10 +141,15 @@ def test_pipeline_reaches_risk_on_paper_research_consensus() -> None:
         feature_builder=CandleMarketFeatureBuilder(),
         max_tick_age_seconds=30.0,
     )
+    last = candles[-1].close
     tick = MarketTick(
-        source=MarketSource.KRAKEN, symbol="BTC/USD", bid=123.5, ask=124.5, last=124.0
+        source=MarketSource.KRAKEN,
+        symbol="BTC/USD",
+        bid=last * 0.9995,
+        ask=last * 1.0005,
+        last=last,
     )
-    references = [ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=124.0)]
+    references = [ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=last)]
     portfolio = PortfolioSnapshot(
         nav_usd=10_000, cash_usd=10_000, daily_pnl_usd=0, peak_nav_usd=10_000
     )
@@ -174,4 +177,6 @@ def test_paper_research_does_not_change_demonstration_notional() -> None:
     pipeline_strict = VerticalSlicePipeline(
         risk_engine=RiskEngine(_settings(paper_research_mode=False))
     )
-    assert pipeline_research.demonstration_notional_pct == pipeline_strict.demonstration_notional_pct
+    assert (
+        pipeline_research.demonstration_notional_pct == pipeline_strict.demonstration_notional_pct
+    )

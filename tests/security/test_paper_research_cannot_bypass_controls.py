@@ -90,8 +90,8 @@ def test_kill_switch_still_withholds_after_paper_research_consensus() -> None:
         MarketTick(
             source=MarketSource.KRAKEN,
             symbol="BTC/USD",
-            bid=last - 0.5,
-            ask=last + 0.5,
+            bid=last * 0.9995,
+            ask=last * 1.0005,
             last=last,
         ),
         [ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=last)],
@@ -119,8 +119,8 @@ def test_paper_research_cannot_increase_approved_notional() -> None:
         MarketTick(
             source=MarketSource.KRAKEN,
             symbol="BTC/USD",
-            bid=last - 0.5,
-            ask=last + 0.5,
+            bid=last * 0.9995,
+            ask=last * 1.0005,
             last=last,
         ),
         [ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=last)],
