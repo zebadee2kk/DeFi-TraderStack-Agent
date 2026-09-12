@@ -1,9 +1,9 @@
 # Strategy search report
 
-Generated: 2026-09-12T13:20:08.766206+00:00
-Symbols: BTC/USD:1h, ETH/USD:1h, SOL/USD:1h
+Generated: 2026-09-12T13:21:53.050557+00:00
+Symbols: BTC/USD:4h, ETH/USD:4h, SOL/USD:4h
 Costs: fee=10 bps + slippage=5 bps (fee_bps is max(PRETRADE_FEE_BPS, PAPER_FEE_BPS); slippage_bps is PRETRADE_SLIPPAGE_BPS. Every fill pays both.)
-Walk-forward: train=360 test=168 step=168 warmup=31; holdout_fraction=20%
+Walk-forward: train=180 test=60 step=60 warmup=31; holdout_fraction=20%
 Promotion floor: WF total > 0 (require_wf_total=True), WF excess > 0, min trades=3, holdout confirmation=on
 Selection: pre_registered_top1 (K=23)
 
@@ -19,35 +19,35 @@ K catalog members are scored on the same research window. We do not treat every 
 
 | rank | id | family | WF excess | WF total | WF trades | holdout excess | eligible | promoted |
 | ---: | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
-| 1 | `funding_z_follow` | funding_z | -0.11% | -0.09% | 52 | -20.12% | no | no |
-| 2 | `oi_z_follow` | open_interest_z | -0.43% | -0.41% | 94 | -28.92% | no | no |
-| 3 | `funding_z_fade` | funding_z | -0.51% | -0.49% | 52 | -21.42% | no | no |
-| 4 | `ma_cross_10_30_wide` | ma_cross | -0.54% | -0.52% | 100 | -13.08% | no | no |
-| 5 | `momentum_12_strict` | momentum | -0.57% | -0.54% | 39 | -18.33% | no | no |
-| 6 | `oi_z_fade` | open_interest_z | -0.64% | -0.62% | 94 | -40.62% | no | no |
-| 7 | `ma_cross_10_30` | ma_cross | -0.78% | -0.76% | 163 | -18.22% | no | no |
-| 8 | `ma_cross_10_30_vol` | ma_cross | -0.78% | -0.76% | 163 | -18.22% | no | no |
-| 9 | `ma_always_on_10_30_vol` | ma_cross | -0.78% | -0.76% | 163 | -18.22% | no | no |
-| 10 | `momentum_6_vol` | momentum | -0.81% | -0.78% | 85 | -18.09% | no | no |
-| 11 | `ma_cross_5_20` | ma_cross | -0.85% | -0.83% | 175 | -17.24% | no | no |
-| 12 | `ma_always_on_10_30` | ma_cross | -0.86% | -0.84% | 237 | -16.03% | no | no |
-| 13 | `mean_reversion_20_2_0` | mean_reversion | -0.92% | -0.90% | 175 | -27.05% | no | no |
-| 14 | `mean_reversion_20_2_0_vol` | mean_reversion | -0.92% | -0.90% | 175 | -27.05% | no | no |
-| 15 | `momentum_12_vol` | momentum | -0.99% | -0.97% | 157 | -17.65% | no | no |
-| 16 | `momentum_6` | momentum | -1.11% | -1.09% | 126 | -18.56% | no | no |
-| 17 | `momentum_12` | momentum | -1.34% | -1.31% | 193 | -17.11% | no | no |
-| 18 | `momentum_24` | momentum | -1.45% | -1.43% | 261 | -15.62% | no | no |
-| 19 | `mean_reversion_20_1_5` | mean_reversion | -1.63% | -1.61% | 293 | -29.30% | no | no |
-| 20 | `mean_reversion_20_1_5_vol` | mean_reversion | -1.63% | -1.61% | 293 | -29.30% | no | no |
-| 21 | `mean_reversion_10_1_5` | mean_reversion | -1.94% | -1.92% | 363 | -31.97% | no | no |
+| 1 | `momentum_12_strict` | momentum | +0.44% | +0.45% | 19 | -13.06% | no | no |
+| 2 | `momentum_6_vol` | momentum | +0.19% | +0.19% | 24 | -13.89% | no | no |
+| 3 | `ma_cross_5_20` | ma_cross | +0.06% | +0.06% | 38 | -13.96% | no | no |
+| 4 | `mean_reversion_20_1_5` | mean_reversion | -0.03% | -0.03% | 31 | -18.80% | no | no |
+| 5 | `mean_reversion_20_1_5_vol` | mean_reversion | -0.03% | -0.03% | 31 | -18.80% | no | no |
+| 6 | `mean_reversion_10_1_5` | mean_reversion | -0.04% | -0.04% | 38 | -18.82% | no | no |
+| 7 | `mean_reversion_20_2_0` | mean_reversion | -0.15% | -0.15% | 23 | -18.91% | no | no |
+| 8 | `mean_reversion_20_2_0_vol` | mean_reversion | -0.15% | -0.15% | 23 | -18.91% | no | no |
+| 9 | `momentum_12_vol` | momentum | -0.17% | -0.17% | 41 | -18.74% | no | no |
+| 10 | `ma_cross_10_30_wide` | ma_cross | -0.20% | -0.20% | 32 | -10.24% | no | no |
+| 11 | `funding_z_follow` | funding_z | -0.22% | -0.22% | 31 | -21.64% | no | no |
+| 12 | `oi_z_follow` | open_interest_z | -0.24% | -0.24% | 29 | -31.67% | no | no |
+| 13 | `momentum_6` | momentum | -0.26% | -0.26% | 42 | -15.10% | no | no |
+| 14 | `oi_z_fade` | open_interest_z | -0.28% | -0.28% | 29 | -26.30% | no | no |
+| 15 | `funding_z_fade` | funding_z | -0.34% | -0.34% | 31 | -22.13% | no | no |
+| 16 | `ma_always_on_10_30` | ma_cross | -0.45% | -0.45% | 64 | -8.88% | no | no |
+| 17 | `ma_cross_10_30` | ma_cross | -0.53% | -0.52% | 46 | -10.83% | no | no |
+| 18 | `ma_cross_10_30_vol` | ma_cross | -0.53% | -0.52% | 46 | -10.83% | no | no |
+| 19 | `ma_always_on_10_30_vol` | ma_cross | -0.53% | -0.52% | 46 | -10.83% | no | no |
+| 20 | `momentum_24` | momentum | -0.76% | -0.75% | 69 | -11.93% | no | no |
+| 21 | `momentum_12` | momentum | -0.92% | -0.92% | 67 | -20.23% | no | no |
 | — | `ma_cross_20_50` | ma_cross | n/a | n/a | 0 | n/a | no | no |
 | — | `mean_reversion_40_2_0` | mean_reversion | n/a | n/a | 0 | n/a | no | no |
 
 ## History sources
 
-- `BTC/USD` 1h source=kraken_charts_spot n=4320 — Kraken futures charts spot PI_* (research-only). Closes can differ a few bps from /0/public/OHLC. volume is zero on this path
-- `ETH/USD` 1h source=kraken_charts_spot n=4320 — Kraken futures charts spot PI_* (research-only). Closes can differ a few bps from /0/public/OHLC. volume is zero on this path
-- `SOL/USD` 1h source=kraken_charts_spot n=4320 — Kraken futures charts spot PI_* (research-only). Closes can differ a few bps from /0/public/OHLC. volume is zero on this path
+- `BTC/USD` 4h source=kraken_charts_spot n=1080 — Kraken futures charts spot PI_* (research-only). Closes can differ a few bps from /0/public/OHLC. volume is zero on this path
+- `ETH/USD` 4h source=kraken_charts_spot n=1080 — Kraken futures charts spot PI_* (research-only). Closes can differ a few bps from /0/public/OHLC. volume is zero on this path
+- `SOL/USD` 4h source=kraken_charts_spot n=1080 — Kraken futures charts spot PI_* (research-only). Closes can differ a few bps from /0/public/OHLC. volume is zero on this path
 
 ## Edge series
 
@@ -79,4 +79,4 @@ K catalog members are scored on the same research window. We do not treat every 
 ## Promotion decision
 
 **No candidate cleared the bar.** Leave `PAPER_PROMOTE_SEARCHED_STRATEGIES=false`. This is not an edge.
-Pre-registered top-1 by WF excess was `funding_z_follow` (WF excess=-0.11%, holdout excess=-20.12%; blocked by: walkforward_excess_return_not_positive, walkforward_total_return_not_positive, holdout_excess_return_not_positive).
+Pre-registered top-1 by WF excess was `momentum_12_strict` (WF excess=+0.44%, holdout excess=-13.06%; blocked by: holdout_excess_return_not_positive).
