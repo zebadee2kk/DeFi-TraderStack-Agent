@@ -265,6 +265,41 @@ def _walkforward_with_train_warmup(
     )
 
 
+def walkforward_candidate_on_window(
+    candidate: SearchCandidate,
+    candles: tuple[Candle, ...],
+    *,
+    fee_bps: float,
+    slippage_bps: float,
+    starting_equity: float,
+    train_size: int,
+    test_size: int,
+    step_size: int,
+    garch_min_train: int = DEFAULT_MIN_TRAIN,
+    garch_refit_every: int = DEFAULT_REFIT_EVERY,
+    garch_target_vol_ann: float = DEFAULT_TARGET_VOL_ANN,
+) -> WalkForwardReport:
+    """Fee-aware walk-forward on a contiguous window with no holdout split.
+
+    Used by the harder-gates multi-window bar: each 240-bar slice is the
+    robustness window itself, so a holdout tail would leave too few bars
+    for the #96 train=180 / test=60 fold.
+    """
+    return _walkforward_with_train_warmup(
+        candidate,
+        candles,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+        starting_equity=starting_equity,
+        train_size=train_size,
+        test_size=test_size,
+        step_size=step_size,
+        garch_min_train=garch_min_train,
+        garch_refit_every=garch_refit_every,
+        garch_target_vol_ann=garch_target_vol_ann,
+    )
+
+
 def evaluate_candidate_on_series(
     candidate: SearchCandidate,
     candles: tuple[Candle, ...],

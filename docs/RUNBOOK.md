@@ -27,7 +27,8 @@ without activating the venv.
 | `traderstack-strategy-search` | Offline catalog search: scores the expanded pre-registered catalog (MA / momentum / mean-reversion + vol-regime filters; optional funding / OI / liquidation series) on Kraken charts-spot (~180d 1h) or public Spot OHLC (720-bar cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Promotion additionally requires WF **total** return > 0. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
 | `traderstack-miles-search` | Miles-inspired catalog search: EMA 9/21 and 12/26 (optional ADX gate) × optional GARCH vol-targeted sizing, scored on Kraken Spot OHLC (daily and 1h, 720-bar public cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout. Writes `docs/artifacts/strategy-search/miles-inspired-report.md`. Never flips `PAPER_GARCH_SIZE` or `PAPER_PROMOTE_EMA_9_21`. Daily promotion is not a 1h-runtime claim — the paper promote flag forces `1d` / 1440m. |
 | `traderstack-daily-robustness` | Daily robustness / balanced-holdout pass: EMA 9/21, 12/26, 20/50, 50/200 (ADX variants), dual-mom grid, buy-the-dip, MA risk-off, optional GARCH size on the longest Kraken public daily OHLC (720-bar ≈ 2y cap). Optional Yahoo Finance BTC-USD/ETH-USD daily is a non-Kraken A/B only. Promotes only if **BTC and ETH** both have WF total > 0 **and** both have holdout excess > 0 (ETH cannot carry a losing BTC holdout). Writes `docs/artifacts/strategy-search/balanced-holdout-report.md`. Never flips `PAPER_PROMOTE_*`. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-harder-gates` | Harder honesty gates on the #96 Kraken daily window: **A** magnitude (BTC and ETH holdout excess > 0 and min/max ratio ≥ 0.25), **B** three contiguous 240-bar windows (BTC and ETH WF total > 0 in ≥ 2 of 3), **C** 2× fees (20+10 bps) still clearing #96 balanced signs. Yahoo is A/B only. Writes `docs/artifacts/strategy-search/magnitude-multiwindow-report.md`. Never flips `PAPER_PROMOTE_EMA_9_21`. An honest FAIL is success. |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
@@ -479,6 +480,35 @@ an id that still clears this bar. Do not flip
 `PAPER_PROMOTE_EMA_9_21` or `PAPER_GARCH_SIZE` from their defaults
 because a report exists. Finding no promotee is a successful research
 outcome.
+
+## Harder honesty gates (magnitude / multi-window / fee stress)
+
+`#96` still lets a tiny BTC holdout and a huge ETH holdout both count
+as a PASS. `traderstack-harder-gates` pre-registers three additional
+bars **before** the window is scored:
+
+- **A magnitude:** both holdout excesses > 0 **and**
+  `min(BTC,ETH)/max(BTC,ETH) ≥ 0.25`.
+- **B multi-window:** most recent 720 Kraken daily bars split into
+  three contiguous 240-bar slices. Each slice uses the #96 walk-forward
+  (train=180, test=60, step=60) with no in-window holdout. BTC **and**
+  ETH WF total must be > 0 in at least 2 of 3 windows.
+- **C fee stress:** re-score at 2× fee and slippage (defaults 20+10
+  bps). Must still clear the #96 balanced signs.
+
+Yahoo / non-Kraken prints stay A/B only and are never averaged in.
+Selection is still pre-registered top-1; a more balanced ADX/SMA #2
+cannot skip a failing `ema_9_21`. Combined promote requires A **and**
+B **and** C **and** the #96 bar. This command does not flip
+`PAPER_PROMOTE_EMA_9_21` (default false). An honest FAIL is the
+successful research outcome.
+
+```bash
+.venv/bin/traderstack-harder-gates --live-kraken
+.venv/bin/traderstack-harder-gates --live-kraken --no-yahoo
+```
+
+See `docs/artifacts/strategy-search/magnitude-multiwindow-report.md`.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
 the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:

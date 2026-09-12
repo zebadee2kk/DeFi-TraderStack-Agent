@@ -55,7 +55,10 @@ winner. `traderstack-daily-robustness` re-scores a pre-registered daily
 catalog (EMA 9/21–50/200, dual-mom grid, dip, MA risk-off, optional
 GARCH size) on the 720-bar Kraken daily cap with a balanced-holdout bar:
 BTC **and** ETH walk-forward total > 0 **and** BTC **and** ETH holdout
-excess > 0 (Yahoo daily is a labeled non-Kraken A/B only). **Freqtrade
+excess > 0 (Yahoo daily is a labeled non-Kraken A/B only).
+`traderstack-harder-gates` adds pre-registered magnitude, 3×240-bar
+multi-window, and 2× fee-stress bars on that same window; combined
+promotion stays off unless top-1 clears all three. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.
