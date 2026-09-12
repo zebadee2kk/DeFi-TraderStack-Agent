@@ -164,6 +164,14 @@ def test_promote_ema_9_21_default_is_off_and_safe() -> None:
     assert item.value == "no"
 
 
+def test_promote_universe_default_is_documented_and_unused() -> None:
+    report = build_report(settings())
+    assert report.safe
+    item = next(i for i in report.items if i.label == "Paper promote universe")
+    assert item.value == "BTC/USD, ETH/USD"
+    assert "used only when a daily paper pin is on" in item.detail
+
+
 def test_promote_ema_9_21_on_paper_is_safe() -> None:
     report = build_report(settings(paper_promote_ema_9_21=True, pretrade_candle_interval="1h"))
     assert report.safe
@@ -177,6 +185,9 @@ def test_promote_ema_9_21_on_paper_is_safe() -> None:
     drawdown = next(i for i in report.items if i.label == "Paper promote ema_9_21 max drawdown")
     assert drawdown.value == "30.00%"
     assert "PRETRADE_MAX_DRAWDOWN_PCT=15.00%" in drawdown.detail
+    universe = next(i for i in report.items if i.label == "Paper promote universe")
+    assert universe.value == "BTC/USD, ETH/USD"
+    assert "promote_universe_excluded" in universe.detail
 
 
 def test_promote_ema_9_21_tight_drawdown_ceiling_warns() -> None:

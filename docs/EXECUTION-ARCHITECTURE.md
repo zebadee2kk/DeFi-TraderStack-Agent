@@ -122,8 +122,12 @@ buy-and-hold, a Sharpe floor below the one-trade fee-shock artifact).
 When `PAPER_PROMOTE_EMA_9_21` is also on, the drawdown ceiling is
 `PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` (default 0.30, the daily
 `ema_9_21` research envelope) instead of `PRETRADE_MAX_DRAWDOWN_PCT=0.15`.
-Live/shadow keep `PRETRADE_MIN_EXCESS_RETURN=0` / `PRETRADE_MIN_SHARPE=0`
-and the 0.15 drawdown bar.
+The promote-path cycle list is `PAPER_PROMOTE_UNIVERSE` (default
+`BTC/USD,ETH/USD`, the #100 honesty envelope); SOL stays in
+`MVP_ASSETS` but is not cycled, and a leaked non-envelope tick is
+rejected with `promote_universe_excluded` after exits. Live/shadow keep
+`PRETRADE_MIN_EXCESS_RETURN=0` / `PRETRADE_MIN_SHARPE=0`, the 0.15
+drawdown bar, and the full `MVP_ASSETS` list.
 `RiskEngine` and the kill switch are unchanged.
 
 This exists because the default three voters are regime-exclusive, so typical
@@ -183,7 +187,7 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
              paper may reuse last-good on 429 / open breaker — live/shadow do not)
         iii. fetch candle history (if the pre-trade gate is enabled;
              interval is Settings.effective_pretrade_candle_interval —
-             `1d` / Kraken 1440 when PAPER_PROMOTE_EMA_9_21 is active on paper)
+             `1d` / Kraken 1440 when a daily paper promote pin is active)
         iv.  best-effort candle persistence (--persistent-events; failure never fails the cycle)
         v.   fetch external intelligence (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS,
              concurrent, isolated failures, cached)
@@ -206,6 +210,11 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
                freeze a stop. Live mode skips this step. A fired rule
                becomes a reducing SELL (`strategy_id=exit-<rule>`) and
                skips the discretionary path below.
+             - paper daily promote universe (#100 honesty): when a daily
+               pin is active, a tick outside PAPER_PROMOTE_UNIVERSE /
+               {BTC/USD, ETH/USD} is rejected (`promote_universe_excluded`)
+               so SOL is not scored under the BTC+ETH envelope. Exits
+               above still run. Live/shadow skip this step.
              - intelligence / adverse-news gate (entries only)
              - pre-trade backtest gate (strategy re-confirmation, backtest, walk-forward)
              - optional thesis-invalidation exit (if `EXIT_ON_THESIS_INVALIDATION`

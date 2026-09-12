@@ -205,6 +205,9 @@ combined-passer top-1 is documented as `PAPER_PROMOTE_EMA_9_21_ADX15`
 (default false; paper only; daily candles). `traderstack-honesty-pack`
 reprints that id only (Yahoo A/B, WF maxDD vs 0.30, multi-window) and
 does not flip the pin. An empty promotee would also have been success.
+When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default
+`BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but
+is not traded under that envelope.
 
 ## Roadmap
 

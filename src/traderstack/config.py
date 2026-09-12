@@ -22,6 +22,11 @@ EMA_9_21_PAPER_RESEARCH_WF_MAX_DRAWDOWN_PCT = 0.2335
 # (mean 23.35%, ETH per-asset WF ~28.77%) with a small buffer. SOL's
 # ~50% WF maxDD is supporting-only and is not this envelope.
 EMA_9_21_PAPER_MAX_DRAWDOWN_PCT = 0.30
+# #100 honesty: daily paper pins were researched on Kraken Spot BTC/USD
+# + ETH/USD only. SOL remains in MVP_ASSETS (~50% WF maxDD) and must
+# not be cycled as if it were inside that envelope. Extra names in
+# PAPER_PROMOTE_UNIVERSE cannot expand past this hard set.
+PAPER_PROMOTE_UNIVERSE_SYMBOLS: tuple[str, ...] = ("BTC/USD", "ETH/USD")
 
 
 class Settings(BaseSettings):
@@ -348,6 +353,17 @@ class Settings(BaseSettings):
     # Same daily-candle force as PAPER_PROMOTE_EMA_9_21. PAPER_PROMOTE_EMA_9_21
     # wins if both are true. Ignored on live/shadow. Not RiskEngine policy.
     paper_promote_ema_9_21_adx15: bool = False
+    # --- paper daily promote universe (#100 honesty) ---
+    # Trading universe used only when a daily paper pin is active
+    # (PAPER_PROMOTE_EMA_9_21 or PAPER_PROMOTE_EMA_9_21_ADX15) and
+    # TRADING_MODE=paper. Default is the #95/#96/#98/#100 Kraken Spot
+    # BTC/USD + ETH/USD envelope. SOL stays in MVP_ASSETS (risk
+    # allowlist / non-promote paper) but is skipped on this path with
+    # promote_universe_excluded. Extra names cannot expand past
+    # PAPER_PROMOTE_UNIVERSE_SYMBOLS. Not RiskEngine policy -- flipping
+    # it must not move policy_version. Live/shadow ignore this field.
+    # This is universe alignment, not a claim of edge.
+    paper_promote_universe: str = "BTC/USD,ETH/USD"
 
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue
@@ -422,6 +438,56 @@ class Settings(BaseSettings):
     @property
     def assets(self) -> tuple[str, ...]:
         return tuple(x.strip().upper() for x in self.mvp_assets.split(",") if x.strip())
+
+    # --- paper daily promote universe (#100 honesty) ---
+    @property
+    def configured_promote_universe_symbols(self) -> tuple[str, ...]:
+        """PAPER_PROMOTE_UNIVERSE tokens as SYMBOL/USD (accepts BTC or BTC/USD)."""
+
+        symbols: list[str] = []
+        for raw in self.paper_promote_universe.split(","):
+            token = raw.strip().upper()
+            if not token:
+                continue
+            symbols.append(token if "/" in token else f"{token}/USD")
+        return tuple(symbols)
+
+    @property
+    def effective_promote_universe_symbols(self) -> tuple[str, ...]:
+        """Research-envelope symbols a daily paper pin may cycle.
+
+        Intersection of PAPER_PROMOTE_UNIVERSE, MVP_ASSETS-as-SYMBOL/USD,
+        and the hard #100 set (BTC/USD, ETH/USD). Extra configured names
+        cannot sneak SOL (or any other mvp asset) onto the promote path.
+        """
+
+        configured = set(self.configured_promote_universe_symbols)
+        mvp = {f"{asset}/USD" for asset in self.assets}
+        return tuple(
+            symbol
+            for symbol in PAPER_PROMOTE_UNIVERSE_SYMBOLS
+            if symbol in configured and symbol in mvp
+        )
+
+    @property
+    def effective_cycle_symbols(self) -> tuple[str, ...]:
+        """Symbols ContinuousPaperService cycles.
+
+        Daily paper promote pins use the BTC/USD + ETH/USD research
+        envelope. Live/shadow and the flag-off paper path keep the full
+        MVP_ASSETS list as SYMBOL/USD.
+        """
+
+        if self.paper_daily_promote_active:
+            return self.effective_promote_universe_symbols
+        return tuple(f"{asset}/USD" for asset in self.assets)
+
+    def promote_universe_allows(self, symbol: str) -> bool:
+        """True unless a daily paper pin is active and ``symbol`` is outside it."""
+
+        if not self.paper_daily_promote_active:
+            return True
+        return symbol.strip().upper() in self.effective_promote_universe_symbols
 
     # --- paper research mode ---
     def _secret_configured(self, value: SecretStr | None) -> bool:
