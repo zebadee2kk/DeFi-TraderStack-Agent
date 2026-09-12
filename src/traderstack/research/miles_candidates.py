@@ -36,6 +36,7 @@ class DirectionStrategy(Protocol):
 CandidateFamily = Literal[
     "ema_cross",
     "ema_cross_garch",
+    "ema_cross_riskoff",
     "dual_momentum",
     "buy_the_dip",
 ]

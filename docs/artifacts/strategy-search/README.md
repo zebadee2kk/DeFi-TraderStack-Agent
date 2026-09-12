@@ -118,3 +118,19 @@ momentum and buy-the-dip did not. Documented pin is
 
 See `daily-robustness-report.md`.
 
+## Balanced holdout (`traderstack-daily-robustness`, default bar)
+
+The #95 bar still lets an ETH holdout tail carry a **mean** that is
+positive while BTC holdout is not. The default promotion bar now also
+requires **BTC holdout excess > 0 and ETH holdout excess > 0**. SOL is
+reported and is not a gate. Yahoo remains A/B only.
+
+The catalog is pre-registered (frozen before the window is scored): the
+#95 EMA/ADX names, slower EMA 20/50 and 50/200, a dual-mom lookback
+grid, a dip z grid, asset-local and BTC-overlay SMA200 risk-off, and
+two GARCH size overlays. `PAPER_GARCH_SIZE` and
+`PAPER_PROMOTE_EMA_9_21` stay false unless a committed report names a
+paper-only pin and an operator flips the flag.
+
+See `balanced-holdout-report.md`.
+

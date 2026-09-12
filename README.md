@@ -188,10 +188,11 @@ off (no GARCH-sized candidate cleared). `PAPER_PROMOTE_EMA_9_21=false` is
 the documented paper-only switch to register `ema_9_21` as the sole paper
 voter on daily candles (`1d` / Kraken 1440); it does not enable live and
 must not be read as a 1h-runtime edge.
-`traderstack-daily-robustness` stress-tests that daily winner (plus
-dual-momentum and buy-the-dip) on the 720-bar Kraken daily cap and only
-documents a `PAPER_PROMOTE_*` id if **BTC and ETH** both have walk-forward
-total return > 0 after fees.
+`traderstack-daily-robustness` stress-tests that daily winner (plus a
+pre-registered slower-EMA / dual-mom / risk-off / optional-GARCH grid)
+on the 720-bar Kraken daily cap and only documents a `PAPER_PROMOTE_*`
+id if **BTC and ETH** both have walk-forward total > 0 **and** both have
+holdout excess > 0 after fees.
 
 ## Roadmap
 
