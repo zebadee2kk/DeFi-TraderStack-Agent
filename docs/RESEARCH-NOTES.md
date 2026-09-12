@@ -114,3 +114,12 @@ At minimum:
   Paper-executable on Kraken spot. Empty dual-print is success.
   Not an EMA, residual, or XS reprint. See
   `docs/artifacts/strategy-search/donchian-breakout.md`.
+- Does a fee-aware own-asset time-series momentum (trailing
+  N-day close-to-close return; N in {21, 63, 126, 252};
+  long-only or long/short) clear the same #96+A+B+C
+  dual-print bar (Kraken 720 + Binance.US older-720)?
+  `traderstack-tsmom` scores that family. BTC and ETH signs
+  remain the gate; SOL is reported, not required.
+  Paper-executable on Kraken spot. Empty dual-print is
+  success. Not an EMA, residual, XS, or Donchian reprint.
+  See `docs/artifacts/strategy-search/tsmom.md`.

@@ -1,7 +1,7 @@
 # Edge-hunt status — 2026-09-12
 
 Paper / research only. This memo summarizes the strategy-search dead
-ends through #117. It is **not** a profitability claim. No number
+ends through #118. It is **not** a profitability claim. No number
 here is invented.
 
 All `PAPER_PROMOTE_*` defaults stay **false**. `TRADING_MODE` stays
@@ -525,9 +525,14 @@ older-720 windows.
     and `donchian-breakout.md`. Dual-print passers: **0**.
 12. **Not** a Donchian N / ATR-period retune on the same windows
     after seeing that print.
-13. **Not** liquidation-conditioned promotion until a public historical
+13. **Time-series momentum (own-asset trailing return).** This
+    session. See below and `tsmom.md`. Catalog frozen before any
+    live OHLC pull.
+14. **Not** a TSMOM N retune on the same windows after seeing that
+    print.
+15. **Not** liquidation-conditioned promotion until a public historical
     liquidation aggregate exists (it does not today).
-14. **Not** Polymarket weather promotion until a PIT CLOB mid +
+16. **Not** Polymarket weather promotion until a PIT CLOB mid +
     official station-high tape exists (it does not today).
 
 ## This session — BTC−ETH relative-value residual
@@ -742,6 +747,57 @@ is success.
 
 See `donchian-breakout.md`.
 
+## This session — time-series momentum (catalog frozen)
+
+Highest-leverage next experiment from #118: a **non-EMA /
+non-residual / non-XS / non-Donchian** family that is
+paper-executable on Kraken spot. Catalog and dual-print bar are
+frozen **before** any live OHLC pull. Do not retune N after
+seeing PnL. Do not re-run #104 / #108 / #116 / #117 / #118 on
+the same windows. Do not invent PIT basis.
+
+### Catalog (frozen before the live pull)
+
+| family | ids |
+| --- | --- |
+| Long-only (return > 0 else flat) | `tsmom_lo_{21,63,126,252}` |
+| Long/short (sign of return) | `tsmom_ls_{21,63,126,252}` |
+| Control (cannot promote) | `ma_cross_10_30` |
+
+Vol-scaled sign variants (`tsmom_*_vol_*`) are **omitted**:
+`sign(return/vol)` equals `sign(return)` whenever vol > 0, so
+those ids would be duplicates. A `return/vol` size overlay would
+be GARCH-class sizing and is out of scope. Do not add either
+after seeing PnL.
+
+Treatment: each asset uses **its own** trailing N-day
+close-to-close return (`closes_through_t`: close[t] / close[t−N]
+− 1). Fill at t+1 open. Missing series skipped, not zero-filled.
+
+### Multi-asset bar (frozen)
+
+`btc_eth_signs_as_96_abc_sol_reported_not_required`: #96+A+B+C on
+BTC and ETH. SOL is reported when present and is **not** a gate.
+Equal-weight portfolio metrics were considered and **rejected**
+before scoring.
+
+### Print policy (frozen)
+
+| print | rule | can promote? |
+| --- | --- | --- |
+| Kraken primary 720 | #96+A+B+C on BTC+ETH; rank dual-print passers by Kraken mean HO | only if also Binance combined-PASS |
+| Binance.US older-720 | same #102 slice; must combined-PASS | no (gate only) |
+
+### Live print
+
+**Not yet run.** This freeze commit exists so the catalog and bar
+cannot change after seeing PnL.
+
+**Cannot promote. No new `PAPER_PROMOTE_*` pin** unless the later
+live dual-print table is non-empty (and then default **false**).
+
+See `tsmom.md`.
+
 ## Pins
 
 | flag | default | status |
@@ -754,6 +810,7 @@ See `donchian-breakout.md`.
 | new relative-value pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; do not add a pin |
 | new cross-sectional momentum pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `xs_mom_lo_vol_63` mean HO is ETH-carried (#96 FAIL); do not add a pin |
 | new Donchian pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational positive Kraken mean HO still fails #96 on BTC walk-forward; do not add a pin |
+| new TSMOM pin | *(not added)* | catalog frozen; live dual-print not yet run; do not add a pin unless the passer table is non-empty (default false if added) |
 | `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
 
 `TRADING_MODE=paper`. No live.

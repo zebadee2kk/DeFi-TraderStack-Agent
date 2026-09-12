@@ -187,6 +187,7 @@ simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-relative-value`,
 `traderstack-xs-momentum`,
 `traderstack-donchian-breakout`,
+`traderstack-tsmom`,
 `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
@@ -282,6 +283,14 @@ older-720). SOL is reported and is not a gate. Paper-executable
 on Kraken spot. Empty dual-print set is success. Default
 `PAPER_PROMOTE_*` stays false. Report:
 `docs/artifacts/strategy-search/donchian-breakout.md`.
+`traderstack-tsmom` scores a frozen long-only /
+long-short own-asset trailing N-day close-to-close return
+(N in {21, 63, 126, 252}). Same #96+A+B+C dual-print bar
+(Kraken 720 + Binance.US older-720). SOL is reported and
+is not a gate. Paper-executable on Kraken spot. Empty
+dual-print set is success. Default `PAPER_PROMOTE_*`
+stays false. Report:
+`docs/artifacts/strategy-search/tsmom.md`.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default)
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but
 is not traded under that envelope.

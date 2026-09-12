@@ -610,3 +610,30 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `donchian-breakout.md`.
 
+## Time-series momentum (`traderstack-tsmom`)
+
+#118 left the Donchian / channel-breakout dual-print empty.
+This command is a **different family**: long-only or long/short
+on each asset's own frozen trailing N-day close-to-close return
+(N in {21, 63, 126, 252}). Not a cross-section rank and not a
+channel.
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | public Spot daily; #96+A+B+C on BTC+ETH (SOL reported); rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same #102 slice; must combined-PASS | no (gate only) |
+
+Catalog is frozen (K=9): four long-only books, four long/short
+books, plus informational `ma_cross_10_30` (cannot promote).
+Vol-scaled sign variants omitted (`sign(return/vol)` equals
+`sign(return)` when vol > 0). Decision at bar t uses closes
+through t; fill at t+1 open. Missing series skipped, not
+zero-filled. Multi-asset bar (frozen): BTC and ETH signs as
+#96+A+B+C; SOL reported, not a gate. Equal-weight portfolio
+metrics are not used. Paper-executable on Kraken spot BTC/ETH.
+Empty dual-print set is success. `PAPER_PROMOTE_*` stays false.
+No new pin unless a committed report names a passer (default
+false if added).
+
+Live print is a later commit. See `tsmom.md`.
+
