@@ -106,6 +106,11 @@ or long/short on a frozen prior N-day Donchian channel (optional
 ATR-14 buffer) on that same dual-print bar. SOL is reported, not
 a gate. Paper-executable on Kraken spot. Empty dual-print is
 success.
+`traderstack-tsmom` is the post-#118 slice: long-only or
+long/short on each asset's own frozen trailing N-day
+close-to-close return (N in {21, 63, 126, 252}) on that same
+dual-print bar. SOL is reported, not a gate. Paper-executable
+on Kraken spot. Empty dual-print is success.
 **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
