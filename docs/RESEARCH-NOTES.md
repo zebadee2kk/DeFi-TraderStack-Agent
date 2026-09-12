@@ -73,3 +73,9 @@ At minimum:
   official station-high tape, so the committed live print is empty and
   cannot promote. Gates 2 and 3 (WF parameter fit; a full season of live
   paper A/B) are still open. That is not evidence of alpha.
+- Does a fee-aware funding-z threshold or hedged cash-and-carry clear
+  dual independent prints on BTC+ETH? `traderstack-funding-carry`
+  scores a frozen catalog against OKX (and Binance when reachable)
+  funding-rate history. A ~90d single-venue tape cannot promote; hard
+  gates stay UNAVAILABLE until 720 aligned daily bars exist on two
+  venues. See `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
