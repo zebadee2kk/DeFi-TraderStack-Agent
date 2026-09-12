@@ -180,7 +180,11 @@ def test_dual_print_small_n_cannot_promote() -> None:
     assert report.print_kind == PRINT_DUAL
     assert report.independent is True
     assert report.independence_reason == "non_overlapping_event_dates"
-    assert all(item.fail_closed_reason == "below_min_eligible" for item in report.prints)
+    assert all(
+        item.fail_closed_reason in {"below_min_eligible", "below_min_trades"}
+        for item in report.prints
+    )
+    assert all(not print_clears_calculator(item) for item in report.prints)
     assert report.can_promote is False
 
 
