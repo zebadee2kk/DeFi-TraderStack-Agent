@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     coinmarketcap_calls_per_day: int | None = Field(default=300, gt=0)
     candle_provider_calls_per_minute: int | None = None
     intelligence_provider_calls_per_minute: int | None = None
+    # --- paper reference resilience ---
+    # TRADING_MODE=paper only. A longer TTL plus last-good reuse so a CoinGecko
+    # 429 does not fail-close every cycle. Live/shadow ignore these and keep
+    # the short cache / no last-good fail-closed posture. Last-good still
+    # carries the original observed_at; a moved market fails
+    # reference_price_divergence rather than trading a stale mid blindly.
+    paper_reference_cache_seconds: float = Field(default=120.0, ge=0)
+    paper_reference_last_good_seconds: float = Field(default=300.0, ge=0)
 
     # --- providers (Epic 2): Kraken WS resilience -------------------------------
     kraken_max_reconnect_attempts: int = Field(default=10, gt=0)
@@ -169,6 +177,20 @@ class Settings(BaseSettings):
     # no edge fields). Live/shadow ignore this flag — see paper_research_active.
     # Does not bypass RiskEngine, the kill switch, or raise notionals.
     paper_research_mode: bool = True
+    # --- paper pretrade thresholds ---
+    # TRADING_MODE=paper only. Documented paper defaults for a candle-only
+    # baseline on ~400-bar Kraken 1h Spot: still require positive evidence
+    # (total return at/above this floor, at least one completed trade) and
+    # keep the gate enabled. Beating costless buy-and-hold (excess_return>=0)
+    # and printing a non-negative Sharpe over ~16 days is a promotion bar,
+    # not a paper-research bar — fee drag on an always-in MA voter makes
+    # PRETRADE_MIN_EXCESS_RETURN=0.0 structurally unreachable on a BUY
+    # uptrend. Live/shadow always use PRETRADE_MIN_* above.
+    paper_pretrade_min_total_return: float = 0.0
+    paper_pretrade_min_excess_return: float = -0.05
+    paper_pretrade_min_sharpe: float = -10.0
+    paper_pretrade_min_trades: int = Field(default=1, ge=0)
+    paper_pretrade_min_walkforward_excess_return: float = -0.05
 
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue
@@ -238,3 +260,52 @@ class Settings(BaseSettings):
     def paper_research_active(self) -> bool:
         """Paper-research looseness applies only on the paper path."""
         return self.trading_mode == "paper" and self.paper_research_mode
+
+    # --- paper reference resilience / paper pretrade thresholds ---
+    @property
+    def paper_reference_resilience_active(self) -> bool:
+        """Last-good / longer reference cache apply only on the paper path."""
+        return self.trading_mode == "paper"
+
+    @property
+    def effective_reference_cache_seconds(self) -> float:
+        if self.paper_reference_resilience_active:
+            return self.paper_reference_cache_seconds
+        return self.reference_price_cache_seconds
+
+    @property
+    def effective_reference_last_good_seconds(self) -> float:
+        if self.paper_reference_resilience_active:
+            return self.paper_reference_last_good_seconds
+        return 0.0
+
+    @property
+    def effective_pretrade_min_excess_return(self) -> float:
+        if self.trading_mode == "paper":
+            return self.paper_pretrade_min_excess_return
+        return self.pretrade_min_excess_return
+
+    @property
+    def effective_pretrade_min_sharpe(self) -> float:
+        if self.trading_mode == "paper":
+            return self.paper_pretrade_min_sharpe
+        return self.pretrade_min_sharpe
+
+    @property
+    def effective_pretrade_min_trades(self) -> int:
+        if self.trading_mode == "paper":
+            return self.paper_pretrade_min_trades
+        return self.pretrade_min_trades
+
+    @property
+    def effective_pretrade_min_total_return(self) -> float | None:
+        """Paper requires a total-return floor; live/shadow do not add this check."""
+        if self.trading_mode == "paper":
+            return self.paper_pretrade_min_total_return
+        return None
+
+    @property
+    def effective_pretrade_min_walkforward_excess_return(self) -> float:
+        if self.trading_mode == "paper":
+            return self.paper_pretrade_min_walkforward_excess_return
+        return 0.0

@@ -135,6 +135,37 @@ def test_paper_research_cannot_increase_approved_notional() -> None:
     assert research.proposal.side is Side.BUY
 
 
+def test_paper_thresholds_cannot_apply_on_live_or_shadow() -> None:
+    for mode in ("live", "shadow"):
+        settings = _settings(
+            trading_mode=mode,
+            paper_research_mode=True,
+            paper_pretrade_min_excess_return=-10.0,
+            paper_pretrade_min_sharpe=-100.0,
+            paper_pretrade_min_trades=0,
+            paper_reference_last_good_seconds=9_999,
+        )
+        assert settings.effective_reference_last_good_seconds == 0.0
+        gate = build_pretrade_gate(settings)
+        assert gate.min_excess_return == settings.pretrade_min_excess_return
+        assert gate.min_sharpe == settings.pretrade_min_sharpe
+        assert gate.min_trades == settings.pretrade_min_trades
+        assert gate.min_total_return is None
+
+
+def test_paper_last_good_does_not_change_risk_limits() -> None:
+    settings = _settings(
+        trading_mode="paper",
+        paper_reference_last_good_seconds=300,
+        max_position_pct=0.10,
+        kill_switch=True,
+    )
+    engine = RiskEngine(settings)
+    assert engine.settings.max_position_pct == 0.10
+    assert engine.settings.kill_switch is True
+    assert settings.effective_reference_last_good_seconds == 300
+
+
 def test_build_pretrade_gate_does_not_rewrite_risk_policy_fields() -> None:
     settings = _settings(
         trading_mode="paper",

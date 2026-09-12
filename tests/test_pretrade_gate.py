@@ -175,6 +175,14 @@ def test_paper_research_gate_reaches_consensus_on_mild_uptrend() -> None:
     assert research.confirmed_side is Side.BUY
 
 
+def test_gate_rejects_on_total_return_floor_when_configured() -> None:
+    candles = uptrend()
+    check = lenient_gate(min_total_return=5.0).evaluate(candles, Side.BUY, now=end_time(candles))
+    assert not check.passed
+    assert "backtest_total_return_below_minimum" in check.reasons
+    assert check.metrics is not None
+
+
 def test_gate_rejects_on_backtest_thresholds() -> None:
     candles = uptrend()
     check = lenient_gate(min_excess_return=5.0, min_trades=50, min_sharpe=1_000.0).evaluate(

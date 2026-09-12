@@ -99,6 +99,16 @@ _BASE_SETTINGS: dict[str, Any] = {
     "pretrade_require_walkforward": False,
     "provider_timeout_seconds": 1.0,
     "reference_price_cache_seconds": 0.0,
+    # Fault-injection soaks must not reuse a last-good mid after a forced
+    # reference error — that would hide the no_independent_reference_price
+    # path the drills assert. Paper production defaults stay in Settings.
+    "paper_reference_cache_seconds": 0.0,
+    "paper_reference_last_good_seconds": 0.0,
+    "paper_pretrade_min_total_return": -10.0,
+    "paper_pretrade_min_excess_return": -10.0,
+    "paper_pretrade_min_sharpe": -1_000.0,
+    "paper_pretrade_min_trades": 0,
+    "paper_pretrade_min_walkforward_excess_return": -10.0,
     "coingecko_calls_per_minute": None,
     "coinmarketcap_calls_per_minute": None,
     "coinmarketcap_calls_per_day": None,

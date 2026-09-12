@@ -19,6 +19,27 @@ from traderstack.market.models import (
 
 COINGECKO_IDS = {"BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana"}
 
+# CoinGecko Demo / public free tiers return HTTP 429 under even modest
+# multi-asset polling. One bounded retry that honours Retry-After (capped)
+# is good-client behaviour for every trading mode; it does not loosen
+# fail-closed. Paper last-good reuse lives in ProviderRegistry, not here.
+DEFAULT_COINGECKO_RETRY_429_ATTEMPTS = 1
+DEFAULT_COINGECKO_MAX_RETRY_AFTER_SECONDS = 2.0
+
+
+def retry_after_seconds(response: httpx.Response, cap_seconds: float) -> float:
+    """Parse Retry-After as a delay in seconds, capped. Non-numeric values
+    (HTTP-date) fall back to 1s rather than blocking a cycle on a long wait.
+    """
+    cap = max(0.0, cap_seconds)
+    raw = response.headers.get("Retry-After")
+    if raw is None:
+        return min(1.0, cap)
+    try:
+        return min(max(0.0, float(raw)), cap)
+    except ValueError:
+        return min(1.0, cap)
+
 
 # --- providers (Epic 2): Kraken WS resilience ----------------------------------
 #
@@ -313,24 +334,27 @@ class KrakenBookProvider:
 
 class CoinGeckoPriceProvider:
     def __init__(
-        self, api_key: str | None = None, base_url: str = "https://api.coingecko.com/api/v3"
+        self,
+        api_key: str | None = None,
+        base_url: str = "https://api.coingecko.com/api/v3",
+        client: httpx.AsyncClient | None = None,
+        retry_429_attempts: int = DEFAULT_COINGECKO_RETRY_429_ATTEMPTS,
+        max_retry_after_seconds: float = DEFAULT_COINGECKO_MAX_RETRY_AFTER_SECONDS,
+        sleep: SleepFn = asyncio.sleep,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.client = client
+        self.retry_429_attempts = max(0, retry_429_attempts)
+        self.max_retry_after_seconds = max(0.0, max_retry_after_seconds)
+        self.sleep = sleep
 
     async def get_prices(self, assets: tuple[str, ...]) -> list[ReferencePrice]:
         ids = [COINGECKO_IDS[a] for a in assets if a in COINGECKO_IDS]
         if not ids:
             return []
         headers = {"x-cg-demo-api-key": self.api_key} if self.api_key else {}
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                f"{self.base_url}/simple/price",
-                params={"ids": ",".join(ids), "vs_currencies": "usd"},
-                headers=headers,
-            )
-            response.raise_for_status()
-            payload = response.json()
+        payload = await self._fetch_payload(ids, headers)
         now = datetime.now(UTC)
         reverse = {v: k for k, v in COINGECKO_IDS.items()}
         prices: list[ReferencePrice] = []
@@ -349,6 +373,29 @@ class CoinGeckoPriceProvider:
                     )
                 )
         return prices
+
+    async def _fetch_payload(self, ids: list[str], headers: dict[str, str]) -> dict[str, Any]:
+        owns_client = self.client is None
+        client = self.client or httpx.AsyncClient(timeout=10)
+        try:
+            for attempt in range(self.retry_429_attempts + 1):
+                response = await client.get(
+                    f"{self.base_url}/simple/price",
+                    params={"ids": ",".join(ids), "vs_currencies": "usd"},
+                    headers=headers,
+                )
+                if response.status_code == 429 and attempt < self.retry_429_attempts:
+                    await self.sleep(retry_after_seconds(response, self.max_retry_after_seconds))
+                    continue
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise TypeError("unexpected CoinGecko payload")
+                return payload
+            raise RuntimeError("CoinGecko 429 retries exhausted")
+        finally:
+            if owns_client:
+                await client.aclose()
 
 
 class CoinMarketCapPriceProvider:

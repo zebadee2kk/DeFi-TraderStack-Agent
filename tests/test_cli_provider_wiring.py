@@ -28,7 +28,7 @@ def test_build_provider_registry_uses_settings_defaults() -> None:
         provider_breaker_cooldown_seconds=12,
     )
     registry = build_provider_registry(
-        settings, "example", calls_per_minute=5, cache_ttl_seconds=15
+        settings, "example", calls_per_minute=5, cache_ttl_seconds=15, last_good_ttl_seconds=90
     )
     assert registry.name == "example"
     assert registry.timeout_seconds == 7.5
@@ -36,6 +36,7 @@ def test_build_provider_registry_uses_settings_defaults() -> None:
     assert registry.cooldown_seconds == 12
     assert registry.calls_per_minute == 5
     assert registry.cache_ttl_seconds == 15
+    assert registry.last_good_ttl_seconds == 90
 
 
 def test_build_intelligence_includes_altfins_alone() -> None:

@@ -77,6 +77,25 @@ def test_paper_research_mode_ignored_on_live_is_unsafe() -> None:
     assert any("PAPER_RESEARCH_MODE" in w for w in report.warnings)
 
 
+def test_paper_reference_resilience_and_pretrade_thresholds_are_active_on_paper() -> None:
+    report = build_report(settings())
+    resilience = next(i for i in report.items if i.label == "Paper reference resilience")
+    thresholds = next(i for i in report.items if i.label == "Paper pretrade thresholds")
+    assert resilience.value == "active"
+    assert "last-good" in resilience.detail
+    assert thresholds.value == "active"
+    assert "min total return=0.0" in thresholds.detail
+    assert report.safe
+
+
+def test_paper_reference_resilience_ignored_on_live() -> None:
+    report = build_report(settings(trading_mode="live"))
+    resilience = next(i for i in report.items if i.label == "Paper reference resilience")
+    thresholds = next(i for i in report.items if i.label == "Paper pretrade thresholds")
+    assert resilience.value == "ignored"
+    assert thresholds.value == "ignored"
+
+
 def test_paper_research_keeps_two_voters_when_intel_configured() -> None:
     report = build_report(settings(lunarcrush_api_key="secret-key"))
     item = next(i for i in report.items if i.label == "Paper research mode")
