@@ -106,6 +106,35 @@ async def test_bybit_funding_parses_pages_when_reachable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hyperliquid_funding_retries_http_429() -> None:
+    pages = [
+        httpx.Response(429, text="too many requests"),
+        httpx.Response(
+            200,
+            json=[{"coin": "BTC", "fundingRate": "0.0004", "time": 1_000_000}],
+        ),
+    ]
+    calls = {"n": 0}
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        idx = min(calls["n"], len(pages) - 1)
+        calls["n"] += 1
+        return pages[idx]
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(
+        base_url="https://api.hyperliquid.xyz", transport=transport
+    ) as client:
+        result = await fetch_hyperliquid_funding(
+            "BTC/USD", client=client, start_ms=1, limit_pages=2
+        )
+    assert result.status == "ok"
+    assert len(result.points) == 1
+    assert result.points[0][1] == 0.0004
+    assert calls["n"] >= 2
+
+
+@pytest.mark.asyncio
 async def test_hyperliquid_funding_parses_pages() -> None:
     pages = [
         [

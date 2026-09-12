@@ -36,6 +36,7 @@ Cross-venue divergence is not built here (needs two aligned venues).
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -74,6 +75,10 @@ HYPERLIQUID_DEFAULT_LOOKBACK_DAYS = 180
 # 720-bar daily window without inventing prints.
 HYPERLIQUID_DAILY_LOOKBACK_DAYS = 800
 HYPERLIQUID_DAILY_LIMIT_PAGES = 48
+HYPERLIQUID_MAX_RETRIES = 6
+HYPERLIQUID_RETRY_BASE_SECONDS = 1.5
+HYPERLIQUID_PAGE_PAUSE_SECONDS = 0.2
+HYPERLIQUID_SYMBOL_PAUSE_SECONDS = 2.0
 
 MIN_LIQUIDATION_SPAN_SECONDS = 7 * 24 * 3600
 
@@ -479,6 +484,35 @@ async def fetch_bybit_funding(
     )
 
 
+async def _hyperliquid_post_info(
+    client: httpx.AsyncClient,
+    payload: dict[str, Any],
+) -> httpx.Response:
+    """POST /info with backoff on HTTP 429. Does not invent a body."""
+    last_exc: BaseException | None = None
+    for attempt in range(HYPERLIQUID_MAX_RETRIES):
+        try:
+            response = await client.post("/info", json=payload)
+            if response.status_code == 429:
+                last_exc = httpx.HTTPStatusError(
+                    "429 Too Many Requests",
+                    request=response.request,
+                    response=response,
+                )
+                await asyncio.sleep(HYPERLIQUID_RETRY_BASE_SECONDS * (2**attempt))
+                continue
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as exc:
+            if exc.response is not None and exc.response.status_code == 429:
+                last_exc = exc
+                await asyncio.sleep(HYPERLIQUID_RETRY_BASE_SECONDS * (2**attempt))
+                continue
+            raise
+    assert last_exc is not None
+    raise last_exc
+
+
 async def fetch_hyperliquid_funding(
     symbol: str,
     *,
@@ -496,13 +530,13 @@ async def fetch_hyperliquid_funding(
     now_ms = int(datetime.now(UTC).timestamp() * 1000)
     cursor = start_ms if start_ms is not None else now_ms - lookback_days * 24 * 3600 * 1000
     points: list[tuple[datetime, float]] = []
+    stopped_early = ""
     try:
-        for _ in range(limit_pages):
-            response = await client.post(
-                "/info",
-                json={"type": "fundingHistory", "coin": coin, "startTime": cursor},
+        for page in range(limit_pages):
+            response = await _hyperliquid_post_info(
+                client,
+                {"type": "fundingHistory", "coin": coin, "startTime": cursor},
             )
-            response.raise_for_status()
             rows = response.json()
             if not isinstance(rows, list) or not rows:
                 break
@@ -520,14 +554,20 @@ async def fetch_hyperliquid_funding(
             cursor = last_ms + 1
             if len(rows) < HYPERLIQUID_PAGE_SIZE:
                 break
+            if page + 1 < limit_pages and HYPERLIQUID_PAGE_PAUSE_SECONDS:
+                await asyncio.sleep(HYPERLIQUID_PAGE_PAUSE_SECONDS)
     except (httpx.HTTPError, TypeError, ValueError, KeyError) as exc:
-        return _geo_or_http_skip(name, "hyperliquid", exc)
+        if not points:
+            return _geo_or_http_skip(name, "hyperliquid", exc)
+        stopped_early = f"; pagination stopped ({exc})"
+    suffix = stopped_early
     return _finish(
         name,
         source="hyperliquid:/info fundingHistory",
         points=points,
         ok_reason=(
-            f"Hyperliquid public fundingHistory (hourly; paginated; lookback {lookback_days}d)"
+            f"Hyperliquid public fundingHistory (hourly; paginated; "
+            f"lookback {lookback_days}d){suffix}"
         ),
     )
 

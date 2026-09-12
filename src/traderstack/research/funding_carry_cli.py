@@ -32,6 +32,7 @@ from traderstack.research.edge_series import (
     HYPERLIQUID_DAILY_LIMIT_PAGES,
     HYPERLIQUID_DAILY_LOOKBACK_DAYS,
     HYPERLIQUID_DEFAULT_LOOKBACK_DAYS,
+    HYPERLIQUID_SYMBOL_PAUSE_SECONDS,
     OKX_BASE,
     fetch_binance_funding,
     fetch_bybit_funding,
@@ -238,8 +239,10 @@ async def fetch_funding_venues(
             notes.append(result.as_note())
             if result.status == "ok":
                 venue_maps["okx"][symbol.upper()] = result.points
-    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=timeout) as client:
-        for symbol in symbols:
+    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=max(timeout, 30.0)) as client:
+        for index, symbol in enumerate(symbols):
+            if index:
+                await asyncio.sleep(HYPERLIQUID_SYMBOL_PAUSE_SECONDS)
             result = await fetch_hyperliquid_funding(
                 symbol,
                 client=client,

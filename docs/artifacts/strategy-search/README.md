@@ -429,11 +429,18 @@ Follow-up the same day (Hyperliquid wired as the second tape):
 
 Follow-up the same day (daily resample / hard-gate honesty):
 
-- `traderstack-funding-carry --live --interval 1d` resamples both
-  funding tapes to UTC daily sums and evaluates the #96+A+B+C analog
-  or records UNAVAILABLE. OKX public history is still ~90d, so the
-  dual-print hard-gate bar cannot unlock. Basis skipped (no PIT
-  series). No paper perp path. **No new pin.** See
+- `traderstack-funding-carry --live --interval 1d`: Kraken 1d 720
+  (2024-09-22 → 2026-09-11 UTC). HL 19199 hourly → **801** daily
+  sums; OKX 290 8h → **97** daily sums. Dual-print. Hard gates
+  **UNAVAILABLE** (aligned 720 / 96). Basis skipped. Paper path
+  false.
+- Spot-signal dual-print passers: **0**. Informational HL top-1 is
+  the control `ma_cross_10_30` (WF excess −4.41%).
+- Modeled `carry_hedged_sign` HL WF +1.72% / HO +3.32% (eligible on
+  that tape) and clears the one-venue #96+A+B+C analog. OKX WF
+  **n/a** (97 daily prints cannot form the frozen short bar).
+  Dual-print carry passers: **0**. The 4h #110 passer does not
+  survive daily resample. **No new pin.** See
   `funding-carry-daily.md`.
 
 See `funding-carry.md`, `funding-carry-daily.md`, and the 2026-09-12
