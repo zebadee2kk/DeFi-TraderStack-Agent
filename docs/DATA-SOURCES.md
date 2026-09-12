@@ -126,6 +126,15 @@ it is relied upon.
   closes through t; fill at t+1 open of the traded asset).
   Unpaired BTC/ETH days are skipped, not zero-filled. No
   exogenous series. Input to `traderstack-lead-lag`.
+- **Volume-confirmed breakout (research only):** built from the
+  same public Spot daily OHLC **and** base volume — Kraken
+  `GET /0/public/OHLC` (720-bar cap) and Binance.US older-720
+  (`api.binance.us` when `api.binance.com` is HTTP 451). Prior
+  channel uses bars `[t-N, t)`; volume SMA through t−1 (V=20).
+  Missing volume skips that bar (never invented). Quote volume
+  is not substituted. A venue without usable base volume fails
+  closed for volume names. Fill at t+1 open. No exogenous
+  series. Input to `traderstack-volume-breakout`.
 
 ## Robinhood Chain
 

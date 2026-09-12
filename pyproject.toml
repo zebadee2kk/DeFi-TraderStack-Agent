@@ -129,6 +129,13 @@ traderstack-calendar-seasonality = "traderstack.research.calendar_seasonality_cl
 # dual-print is success. Not an EMA / residual / XS / Donchian /
 # TSMOM / Bollinger / calendar reprint.
 traderstack-lead-lag = "traderstack.research.lead_lag_cli:main"
+# Volume-confirmed breakout (price breakout AND volume gate; not a
+# Donchian N retune). Same #96+A+B+C dual-print bar as #104
+# (Kraken 720 + Binance.US older-720). SOL reported, not a gate.
+# Paper spot executable. Never flips PAPER_PROMOTE_*. Empty
+# dual-print is success. Not an EMA / residual / XS / Donchian /
+# TSMOM / Bollinger / calendar / lead-lag reprint.
+traderstack-volume-breakout = "traderstack.research.volume_breakout_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.

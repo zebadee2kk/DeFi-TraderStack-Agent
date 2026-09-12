@@ -156,3 +156,15 @@ At minimum:
   success. Not an EMA, residual, XS, Donchian, TSMOM,
   Bollinger, or calendar reprint. See
   `docs/artifacts/strategy-search/lead-lag.md`.
+- Does a fee-aware volume-confirmed breakout book (price
+  breakout **and** volume > V-day SMA × mult; V=20 through
+  t−1; N×mult in {20x1.5, 55x1.5, 20x2} plus a small
+  volume-surge set) clear the same #96+A+B+C dual-print bar
+  (Kraken 720 + Binance.US older-720)?
+  `traderstack-volume-breakout` scores that family. Not a
+  Donchian N retune (#118). Missing volume is skipped, never
+  invented. BTC and ETH signs remain the gate; SOL is
+  reported, not required. Paper-executable on Kraken spot.
+  Empty dual-print is success. Not an EMA, residual, XS,
+  Donchian, TSMOM, Bollinger, calendar, or lead-lag reprint.
+  See `docs/artifacts/strategy-search/volume-breakout.md`.
