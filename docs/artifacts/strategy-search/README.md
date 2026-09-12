@@ -1,5 +1,9 @@
 # Strategy search artifacts
 
+This directory holds committed offline search reports. Two catalogs share it.
+
+## Catalog search (`traderstack-strategy-search`)
+
 Committed output of `traderstack-strategy-search` on **Kraken charts-spot
 `PI_*`** (research-only; not the 720-bar public Spot OHLC). BTC/USD, ETH/USD,
 SOL/USD. Costs: `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)=10` +
@@ -66,3 +70,16 @@ Three names posted positive WF total after fees. All three **failed holdout**.
 Offline unit tests use the smaller synthetic files in
 `tests/fixtures/strategy_search/` (not this live window). Runtime default
 writes the same JSON/MD pair to `var/ops/` (gitignored).
+
+## Miles-inspired catalog (`traderstack-miles-search`)
+
+Committed output of `traderstack-miles-search` on Kraken public Spot OHLC
+(`GET https://api.kraken.com/0/public/OHLC`) for BTC/USD, ETH/USD, SOL/USD.
+
+Kraken returns at most 720 of the most recent committed bars per pair and
+interval. Daily is the long window (~2 years). 1h is the recent window
+(~30 days). Older history cannot be retrieved via `since`.
+
+Costs: `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)=10` + `PRETRADE_SLIPPAGE_BPS=5`.
+
+This is **not** a profitability claim. See `miles-inspired-report.md`.

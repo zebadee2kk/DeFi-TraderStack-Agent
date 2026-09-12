@@ -40,6 +40,7 @@ from traderstack.circuit_breaker import StrategyCircuitBreaker
 from traderstack.config import Settings
 from traderstack.exits import is_exit_strategy_id
 from traderstack.features import AssetFeatureVector
+from traderstack.garch import paper_risk_garch_factor
 from traderstack.killswitch import KillSwitch
 from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side, TradeProposal
 
@@ -58,6 +59,9 @@ RISK_LIMIT_FIELDS: tuple[str, ...] = (
     "risk_max_spread_bps",
     "volatility_sizing_enabled",
     "target_volatility",
+    # --- miles-inspired GARCH sizing (paper research) ---
+    "paper_garch_size",
+    "paper_garch_target_vol",
     "strategy_max_consecutive_losses",
     "strategy_drawdown_window",
     "strategy_max_rolling_drawdown_pct",
@@ -266,11 +270,23 @@ class RiskEngine:
                 requested = requested * factor
                 volatility_scaled = True
 
+        # --- miles-inspired GARCH sizing (paper research) ---
+        # Opt-in, paper-only, reduce-only. A low forecast must never scale a
+        # proposal *up* — that would invent risk nobody proposed.
+        garch_scaled = False
+        if features is not None and self.settings.paper_garch_size_active:
+            garch_factor = self._garch_size_factor(features)
+            if garch_factor < 1.0:
+                requested = requested * garch_factor
+                garch_scaled = True
+
         # The position limit caps volatility sizing, and portfolio-level room
         # caps everything: the tightest constraint wins.
         approved = min(requested, remaining, gross_room, cash_room)
         if volatility_scaled:
             reasons.append("volatility_scaled")
+        if garch_scaled:
+            reasons.append("garch_size_scaled")
         decision = (
             RiskDecision.ALLOW
             if approved == proposal.requested_notional_usd
@@ -301,6 +317,13 @@ class RiskEngine:
         if observed <= 0:
             return 1.0
         return min(1.0, self.settings.target_volatility / observed)
+
+    def _garch_size_factor(self, features: AssetFeatureVector) -> float:
+        """target / GARCH forecast, never above 1.0. Missing forecast is a no-op."""
+        return paper_risk_garch_factor(
+            features.market.garch_forecast_vol,
+            self.settings.paper_garch_target_vol,
+        )
 
     def _result(
         self,

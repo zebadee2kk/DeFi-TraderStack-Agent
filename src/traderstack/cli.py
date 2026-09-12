@@ -569,7 +569,15 @@ def build_service(
         max_spread_bps=settings.max_spread_bps,
         max_reference_divergence_bps=settings.max_reference_divergence_bps,
         pretrade_gate=pretrade_gate,
-        feature_builder=CandleMarketFeatureBuilder() if pretrade_gate else None,
+        # --- miles-inspired GARCH sizing (paper research) ---
+        feature_builder=(
+            CandleMarketFeatureBuilder(
+                garch_enabled=settings.paper_garch_size_active,
+                garch_target_vol_ann=settings.paper_garch_target_vol,
+            )
+            if pretrade_gate
+            else None
+        ),
         block_on_adverse_news=settings.intelligence_block_on_adverse_news,
         require_external_intelligence=settings.intelligence_required,
     )

@@ -25,7 +25,8 @@ without activating the venv.
 | `traderstack-trace` | Read-only: prints the full ordered runtime-event trace for one `decision_id` from Postgres (requires `--persistent-events` to have been running). `traderstack-trace <decision_id> [--limit N]`. |
 | `traderstack-research` | Runs the research harness end-to-end over a candle history (JSON file via `--candles`, or live from Kraken via `--symbol`): backtest with realistic costs, walk-forward, required baselines, and a performance attribution report. `--json` for machine-readable output. |
 | `traderstack-strategy-search` | Offline catalog search: scores the expanded pre-registered catalog (MA / momentum / mean-reversion + vol-regime filters; optional funding / OI / liquidation series) on Kraken charts-spot (~180d 1h) or public Spot OHLC (720-bar cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Promotion additionally requires WF **total** return > 0. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-miles-search` | Miles-inspired catalog search: EMA 9/21 and 12/26 (optional ADX gate) × optional GARCH vol-targeted sizing, scored on Kraken Spot OHLC (daily and 1h, 720-bar public cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout. Writes `docs/artifacts/strategy-search/miles-inspired-report.md`. Never flips `PAPER_GARCH_SIZE`. |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
@@ -172,6 +173,9 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
 - Leave any provider key blank to leave that feature off; nothing in this repo
   requires all providers to be configured. Run `traderstack-check-config` after
   editing to see exactly what turned on.
+- Leave `PAPER_GARCH_SIZE=false` unless `traderstack-miles-search` shows
+  walk-forward total return > 0 and holdout excess return > 0 after fees.
+  The overlay does not relax `RiskEngine`; it can only reduce size.
 - Prefer a secret manager or your platform's env-injection mechanism over a
   plaintext `.env` file for anything beyond a local paper-trading sandbox
   (`docs/INFRASTRUCTURE.md`, "Secrets"). If you must use a file, restrict its
@@ -382,6 +386,31 @@ report schema stay green — it does **not** satisfy the 24-hour gate.
 comparison.
 
 ## Paper performance versus baselines
+
+## Miles-inspired EMA / ADX / GARCH search
+
+Public methods only (not claimed YouTube PnL): EMA 9/21 and 12/26 direction,
+optional ADX chop gate, GARCH(1,1) walk-forward vol as a **size** overlay
+(`target_vol / forecast_vol`, clip [0.25, 2.0]). GARCH never chooses a side.
+
+```bash
+# Live Kraken Spot OHLC — daily (~2y) and 1h (~30d). 720 committed bars each.
+.venv/bin/traderstack-miles-search --live-kraken
+
+# Offline fixtures
+.venv/bin/traderstack-miles-search \
+  --candles var/research/btc_1d.json \
+  --output-md docs/artifacts/strategy-search/miles-inspired-report.md
+```
+
+Kraken's public OHLC endpoint cannot retrieve bars older than the most recent
+720, regardless of `since`. Daily is the long window; 1h is the recent window.
+
+Promotion (research only): walk-forward **mean total return > 0 after fees**
+**and** holdout **mean excess return > 0 after fees**, plus min trades.
+`PAPER_GARCH_SIZE` stays **false** until a report shows a winner. When on,
+`RiskEngine` may only *reduce* approved notional. Leave the flag false if
+nothing cleared — that is not an edge.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
 the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:

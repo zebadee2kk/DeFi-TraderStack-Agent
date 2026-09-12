@@ -543,6 +543,31 @@ def build_report(settings: Settings) -> ConfigReport:
             "drawdown breakers will be optimistic versus a live fee schedule. Set this "
             "to match PRETRADE_FEE_BPS (default 10) unless the venue always reports fees."
         )
+
+    # --- miles-inspired GARCH sizing (paper research) --------------------------------
+    items.append(
+        CheckItem(
+            "Paper GARCH size overlay",
+            "active" if settings.paper_garch_size_active else "off",
+            (
+                f"target vol={settings.paper_garch_target_vol:g}; reduce-only"
+                if settings.paper_garch_size_active
+                else "default; RiskEngine does not apply GARCH size"
+            ),
+        )
+    )
+    if settings.paper_garch_size and settings.trading_mode != "paper":
+        warnings.append(
+            "PAPER_GARCH_SIZE=true is ignored unless TRADING_MODE=paper. "
+            "Live/shadow do not apply the GARCH overlay."
+        )
+    if settings.paper_garch_size_active:
+        warnings.append(
+            "PAPER_GARCH_SIZE=true: leave this false until "
+            "docs/artifacts/strategy-search/miles-inspired-report.md shows a "
+            "candidate with walk-forward total_return>0 and holdout "
+            "excess_return>0 after fees. The overlay can only reduce size."
+        )
     # --- paper fill simulation ---
     items.append(
         CheckItem(

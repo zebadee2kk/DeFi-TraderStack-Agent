@@ -286,6 +286,16 @@ class Settings(BaseSettings):
     paper_search_require_wf_total_return: bool = True
     paper_search_require_holdout: bool = True
 
+    # --- miles-inspired GARCH sizing (paper research) ---
+    # Optional overlay on paper RiskEngine sizing. Default false until a
+    # miles-inspired candidate clears WF total_return>0 AND holdout
+    # excess_return>0 after fees. When on, RiskEngine may only *reduce*
+    # approved notional (target/forecast capped at 1.0) — never invent
+    # leverage. Ignored unless TRADING_MODE=paper. Folded into
+    # RISK_LIMIT_FIELDS because it changes approved size.
+    paper_garch_size: bool = False
+    paper_garch_target_vol: float = Field(default=0.50, gt=0)
+
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue
     # orders/fills and NAV on this interval; a failed pass or NAV drift beyond
@@ -452,6 +462,12 @@ class Settings(BaseSettings):
         if self.trading_mode == "paper":
             return self.paper_pretrade_min_walkforward_excess_return
         return 0.0
+
+    # --- miles-inspired GARCH sizing (paper research) ---
+    @property
+    def paper_garch_size_active(self) -> bool:
+        """GARCH size overlay applies only on the paper path when opted in."""
+        return self.trading_mode == "paper" and self.paper_garch_size
 
     # --- paper-only Polymarket weather research ---
     @property

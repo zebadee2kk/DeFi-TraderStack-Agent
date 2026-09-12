@@ -57,3 +57,77 @@ def zscore(value: float, population: list[float]) -> float:
     if deviation == 0:
         return 0.0
     return (value - mean(population)) / deviation
+
+
+def exponential_moving_average(values: list[float], span: int) -> list[float]:
+    """EMA series, seed = first value. ``span`` is the common 2/(span+1) form."""
+    if span <= 0:
+        raise ValueError("EMA span must be positive")
+    if not values:
+        raise ValueError("at least one value is required")
+    alpha = 2.0 / (span + 1)
+    out = [values[0]]
+    for value in values[1:]:
+        out.append(alpha * value + (1.0 - alpha) * out[-1])
+    return out
+
+
+def ema(candles: tuple[Candle, ...], span: int) -> float:
+    if len(candles) < span:
+        raise ValueError("insufficient candles for EMA")
+    return exponential_moving_average([candle.close for candle in candles], span)[-1]
+
+
+def _true_range(current: Candle, previous: Candle) -> float:
+    return max(
+        current.high - current.low,
+        abs(current.high - previous.close),
+        abs(current.low - previous.close),
+    )
+
+
+def _wilder_smooth(values: list[float], period: int) -> list[float]:
+    if len(values) < period:
+        raise ValueError("insufficient values for Wilder smoothing")
+    seed = mean(values[:period])
+    out = [seed]
+    decay = (period - 1) / period
+    gain = 1.0 / period
+    for value in values[period:]:
+        out.append(out[-1] * decay + value * gain)
+    return out
+
+
+def average_directional_index(candles: tuple[Candle, ...], period: int = 14) -> float:
+    """Latest Wilder ADX. Needs ``2 * period + 1`` bars (DM/TR seed + DX seed)."""
+    if period <= 1:
+        raise ValueError("ADX period must be greater than 1")
+    required = 2 * period + 1
+    if len(candles) < required:
+        raise ValueError("insufficient candles for ADX")
+    plus_dm: list[float] = []
+    minus_dm: list[float] = []
+    true_ranges: list[float] = []
+    for index in range(1, len(candles)):
+        current = candles[index]
+        previous = candles[index - 1]
+        up_move = current.high - previous.high
+        down_move = previous.low - current.low
+        plus = up_move if up_move > down_move and up_move > 0 else 0.0
+        minus = down_move if down_move > up_move and down_move > 0 else 0.0
+        plus_dm.append(plus)
+        minus_dm.append(minus)
+        true_ranges.append(_true_range(current, previous))
+    smooth_plus = _wilder_smooth(plus_dm, period)
+    smooth_minus = _wilder_smooth(minus_dm, period)
+    smooth_tr = _wilder_smooth(true_ranges, period)
+    dx: list[float] = []
+    for plus, minus, tr in zip(smooth_plus, smooth_minus, smooth_tr, strict=True):
+        if tr <= 0:
+            dx.append(0.0)
+            continue
+        plus_di = 100.0 * plus / tr
+        minus_di = 100.0 * minus / tr
+        denom = plus_di + minus_di
+        dx.append(0.0 if denom <= 0 else 100.0 * abs(plus_di - minus_di) / denom)
+    return _wilder_smooth(dx, period)[-1]

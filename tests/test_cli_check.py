@@ -144,6 +144,19 @@ def test_promote_without_report_is_unsafe() -> None:
     assert any("PAPER_PROMOTE_SEARCHED_STRATEGIES" in w for w in report.warnings)
 
 
+def test_paper_garch_size_default_is_off_and_safe() -> None:
+    report = build_report(settings())
+    assert report.safe
+    item = next(i for i in report.items if i.label == "Paper GARCH size overlay")
+    assert item.value == "off"
+
+
+def test_paper_garch_size_on_warns_until_a_winner_exists() -> None:
+    report = build_report(settings(paper_garch_size=True))
+    assert not report.safe
+    assert any("PAPER_GARCH_SIZE" in warning for warning in report.warnings)
+
+
 def test_pretrade_gate_disabled_warns() -> None:
     report = build_report(settings(pretrade_backtest_enabled=False))
     assert not report.safe

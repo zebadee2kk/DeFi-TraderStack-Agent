@@ -109,6 +109,40 @@ async def download_candles(
     return tuple(ordered)
 
 
+async def download_spot_histories(
+    symbols: tuple[str, ...],
+    resolutions: tuple[str, ...],
+    *,
+    max_candles: int = 720,
+    base_url: str = KRAKEN_REST_BASE_URL,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, tuple[Candle, ...]]:
+    """Page every ``symbol@resolution`` pair up to Kraken's 720-bar public cap.
+
+    Keys are ``SYMBOL@interval``. The public OHLC endpoint cannot retrieve
+    bars older than the most recent 720 regardless of ``since``; daily is
+    therefore the long window (~2y) and 1h is the recent window (~30d).
+    """
+    owned = client is None
+    active = client or httpx.AsyncClient(base_url=base_url, timeout=30)
+    try:
+        out: dict[str, tuple[Candle, ...]] = {}
+        for symbol in symbols:
+            for resolution in resolutions:
+                candles = await download_candles(
+                    symbol,
+                    resolution,
+                    max_candles=max_candles,
+                    base_url=base_url,
+                    client=active,
+                )
+                out[f"{symbol.upper()}@{resolution}"] = candles
+        return out
+    finally:
+        if owned:
+            await active.aclose()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Download Kraken OHLC candles into the traderstack-research JSON format"

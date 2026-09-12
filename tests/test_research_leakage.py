@@ -74,6 +74,17 @@ def test_candle_market_feature_builder_has_no_lookahead_under_shuffled_future() 
     assert_no_lookahead_under_shuffled_future(fn, candles, min_index=30, step=5)
 
 
+def test_garch_enabled_feature_builder_has_no_lookahead() -> None:
+    builder = CandleMarketFeatureBuilder(garch_enabled=True, garch_min_train=40)
+    candles = make_candles(count=160)
+
+    def fn(window: tuple[Candle, ...]) -> object:
+        return builder.build(window, spread_bps=4.0)
+
+    assert_no_lookahead(fn, candles, min_index=50, step=10)
+    assert_no_lookahead_under_shuffled_future(fn, candles, min_index=50, step=10)
+
+
 def test_assert_no_lookahead_catches_a_stateful_leak() -> None:
     """A realistic lookahead-adjacent bug: a "signal" implemented as a streaming
     accumulator (e.g. an EMA kept between calls) instead of being purely

@@ -46,7 +46,12 @@ implemented, exposed via `traderstack-research` and
 `traderstack-download-candles`. `traderstack-strategy-search` adds a
 pre-registered catalog search (MA / momentum / mean-reversion, optional
 feature series) with fee-aware walk-forward + holdout and a promotion gate
-that stays off until a report shows WF excess > 0 after fees. **Freqtrade
+that stays off until a report shows WF excess > 0 after fees.
+`traderstack-miles-search` adds a Miles-inspired EMA 9/21 and 12/26 catalog
+(optional ADX gate) with a walk-forward GARCH(1,1) size overlay, fee-aware
+walk-forward + holdout, and a promotion bar of WF total return > 0 **and**
+holdout excess > 0. `PAPER_GARCH_SIZE` stays off until a report shows a
+winner. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.
