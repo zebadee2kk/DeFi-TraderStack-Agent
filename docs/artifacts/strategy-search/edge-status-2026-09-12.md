@@ -37,6 +37,7 @@ a missing series is a skip, not a zero-filled z.
 | #108 | 4h non-EMA dual-print (`traderstack-intraday-dual-print`) | **0** passers | Kraken 4h combined-passers: **0** (every Kraken mean HO negative). Binance.US 4h combined-passers: **0**. OKX funding/OI were aligned and still did not produce a dual-print passer. |
 | #116 | BTC−ETH residual (`traderstack-relative-value`) | **0** dual-print passers | Fade/follow daily `r_BTC − r_ETH` at frozen \|z\| ≥ 1.0 / 1.5 / 2.0. Kraken combined-passers: **0** (every RV mean HO negative, −5.49% to −15.64%). Binance.US combined-passers: **0**. Paper path ready; still cannot promote. |
 | #117 | Cross-sectional momentum (`traderstack-xs-momentum`) | **0** dual-print passers | Long top-1 / optional short bottom-1 among {BTC,ETH,SOL} at frozen N in {21,63,126} (`ls`/`lo`, optional vol-scaled ranking). Kraken combined-passers: **0**. Binance.US combined-passers: **0**. Informational `xs_mom_lo_vol_63` mean HO +7.13% / +9.55% still fails #96 (BTC HO −16.52%). Paper path ready; still cannot promote. |
+| #118 | Donchian / channel breakout (`traderstack-donchian-breakout`) | **0** dual-print passers | Frozen `donchian_lo/ls_{20,55,100}` + `donchian_lo_atr_{20,55}`. Kraken combined-passers: **0**. Binance.US combined-passers: **0**. Informational positive Kraken mean HO (`donchian_ls_20` +31.04%, `donchian_lo_20` +15.10%, `donchian_lo_atr_55` +6.04%) still fails #96 on BTC walk-forward (not ETH-carried holdout). Paper path ready; still cannot promote. |
 
 Earlier daily work (#93–#103) documented `ema_9_21` / `ema_9_21_adx15`
 as paper-only pins. Those flags remain default **false**. The #102
@@ -488,8 +489,9 @@ Do not rerun #104 / #105 / #106 / #108 / the 4h #110 funding print
 on the same windows. Do not rerun the #111 daily print with only
 OKX as the second tape. Do not re-score carry on HL `premium` or
 BitMEX `.XBTUSDPI`. Do not rerun this BTC−ETH residual catalog or the
-BTC+ETH+SOL cross-sectional momentum catalog on the same
-Kraken 720 + Binance.US older-720 windows.
+BTC+ETH+SOL cross-sectional momentum catalog or the Donchian /
+channel-breakout catalog on the same Kraken 720 + Binance.US
+older-720 windows.
 
 1. **Second independent funding tape.** Done in #110: Hyperliquid +
    OKX dual-print. Spot-signal passers: **0**. Modeled
@@ -519,9 +521,8 @@ Kraken 720 + Binance.US older-720 windows.
    after seeing the #116 print.
 10. **Not** an N / vol-lookback retune of this cross-section on the
     same windows after seeing this print.
-11. **Donchian / channel breakout.** Current experiment after #117.
-    Catalog and dual-print bar frozen **before** the live pull. See
-    below and `donchian-breakout.md`.
+11. **Donchian / channel breakout.** Done this session. See below
+    and `donchian-breakout.md`. Dual-print passers: **0**.
 12. **Not** a Donchian N / ATR-period retune on the same windows
     after seeing that print.
 13. **Not** liquidation-conditioned promotion until a public historical
@@ -698,12 +699,46 @@ before scoring.
 | Kraken primary 720 | #96+A+B+C on BTC+ETH; rank dual-print passers by Kraken mean HO | only if also Binance combined-PASS |
 | Binance.US older-720 | same #102 slice; must combined-PASS | no (gate only) |
 
-### Live print
+### Live print (2026-09-12)
 
-**Not yet run.** Freeze committed first.
+`traderstack-donchian-breakout --live` (Kraken public Spot 1d
+BTC+ETH+SOL, 720-bar cap 2024-09-22 → 2026-09-11 UTC; Binance.US
+older-720 2022-10-03 → 2024-09-21, no overlap; costs 10+5 bps).
+Catalog frozen in a prior commit before this pull.
 
-**Cannot promote until a committed live report names a dual-print
-passer. No new `PAPER_PROMOTE_*` pin.**
+| series | status |
+| --- | --- |
+| Kraken BTC/USD + ETH/USD + SOL/USD daily | **ok** — 720 / 720 / 720 |
+| Binance.US BTCUSDT + ETHUSDT + SOLUSDT older-720 | **ok** — 720 / 720 / 720 (`api.binance.com` HTTP 451; labeled Binance.US) |
+| Print kind | **dual_print** (two non-overlapping venue/era tapes) |
+| Hard gates (#96+A+B+C) | **available** on both prints |
+| Paper path | **true** (Kraken spot BTC/ETH; SOL optional) |
+| Dual-print passers | **0** |
+| Kraken combined-passers (ex-control) | **0** |
+| Binance.US combined-passers (ex-control) | **0** |
+| #96 FAIL ETH-carried informational names | **none** |
+
+Informational (every name **ineligible**; rank is Kraken
+walk-forward among Donchian names):
+
+| rank | id | Kraken mean HO | Binance mean HO |
+| ---: | --- | ---: | ---: |
+| 1 | `donchian_lo_55` | −12.58% | −0.40% |
+| 4 | `donchian_lo_atr_55` | +6.04% | −6.40% |
+| 7 | `donchian_lo_20` | +15.10% | −9.35% |
+| 9 | `donchian_ls_20` | +31.04% | −23.75% |
+| 3 | `ma_cross_10_30` (control) | −2.08% | −37.11% |
+
+Three names have a **positive** Kraken mean HO
+(`donchian_ls_20` +31.04%, `donchian_lo_20` +15.10%,
+`donchian_lo_atr_55` +6.04%) and **positive BTC holdout**. That is
+**not** the ETH-carried #96 FAIL pattern from `xs_mom_lo_vol_63`
+in #117. They still fail #96 because BTC walk-forward total is
+negative (and Binance holdout is negative). A positive holdout
+with a losing walk-forward is not an edge. Empty dual-print set
+is success.
+
+**Cannot promote. No new `PAPER_PROMOTE_*` pin.**
 
 See `donchian-breakout.md`.
 
@@ -718,6 +753,7 @@ See `donchian-breakout.md`.
 | new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; paper soak path ready; PIT basis archives UNAVAILABLE — do not add a pin |
 | new relative-value pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; do not add a pin |
 | new cross-sectional momentum pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `xs_mom_lo_vol_63` mean HO is ETH-carried (#96 FAIL); do not add a pin |
+| new Donchian pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational positive Kraken mean HO still fails #96 on BTC walk-forward; do not add a pin |
 | `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
 
 `TRADING_MODE=paper`. No live.

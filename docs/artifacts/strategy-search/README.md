@@ -595,5 +595,18 @@ executable on Kraken spot BTC/ETH. Empty dual-print set is
 success. `PAPER_PROMOTE_*` stays false. No new pin unless a
 committed report names a passer (default false if added).
 
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720).
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Labeled Binance.US (`api.binance.com` HTTP 451).
+- Kraken combined-passers: **0**.
+- Binance.US combined-passers: **0**.
+- Informational `donchian_ls_20` / `donchian_lo_20` /
+  `donchian_lo_atr_55` Kraken mean HO +31.04% / +15.10% / +6.04%
+  with **positive BTC holdout** — still #96 FAIL on BTC
+  walk-forward, not ETH-carried. Binance holdout negative.
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
 See `donchian-breakout.md`.
 
