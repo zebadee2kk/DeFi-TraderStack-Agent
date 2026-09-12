@@ -785,7 +785,10 @@ way live/shadow do.
 
 `traderstack-check-config` reports whether paper research mode is `active`,
 `off`, or `ignored` (flag set but `TRADING_MODE` is not paper), and the
-same for paper reference resilience and paper pretrade thresholds.
+same for paper reference resilience and paper pretrade thresholds. On the
+daily promote path it also prints `PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT`
+and warns if that ceiling is tighter than the documented ~23.35% research
+envelope.
 
 ## Paper pre-trade thresholds on Spot OHLC
 
