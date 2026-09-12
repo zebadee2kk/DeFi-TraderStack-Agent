@@ -166,7 +166,10 @@ class RiskEngine:
             open_positions = {
                 name for name, exposure in portfolio.asset_exposure_usd.items() if exposure > 0
             }
-            if asset not in open_positions and len(open_positions) >= self.settings.max_open_positions:
+            if (
+                asset not in open_positions
+                and len(open_positions) >= self.settings.max_open_positions
+            ):
                 reasons.append("max_positions_reached")
                 blocking_reasons.append("max_positions_reached")
 
