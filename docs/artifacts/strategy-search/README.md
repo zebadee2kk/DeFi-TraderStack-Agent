@@ -500,6 +500,15 @@ Follow-up the same day (public PIT basis archives):
   EMA). Do not re-run dead EMA dual-prints.
 - `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
+Re-hunt after #123 (volume-confirmed breakout: **0** passers):
+
+- HuggingFace `asiletto81/hyperliquid` `asset_ctxs` is a public
+  ≥720d Hyperliquid mark−index tape (883 contiguous days,
+  `mark_px`/`oracle_px`). BitMEX still missing. Dual-print
+  basis stays **UNAVAILABLE**. **No fetcher. Carry not
+  re-scored.** See `pit-basis-archives.md`.
+- `can_promote=false`. `PAPER_PROMOTE_*` stays false.
+
 See `funding-carry.md`, `funding-carry-daily.md`,
 `funding-carry-basis.md`, `pit-basis-archives.md`, and the
 2026-09-12 status memo `edge-status-2026-09-12.md`.

@@ -1,7 +1,9 @@
 # Edge-hunt status — 2026-09-12
 
 Paper / research only. This memo summarizes the strategy-search dead
-ends through #122. It is **not** a profitability claim. No number
+ends through #123 (volume-confirmed breakout: **0** dual-print
+passers) plus the PIT-basis archive re-hunt after that empty
+print. It is **not** a profitability claim. No number
 here is invented.
 
 All `PAPER_PROMOTE_*` defaults stay **false**. `TRADING_MODE` stays
@@ -513,11 +515,17 @@ Donchian N after seeing #118.
    dual-print + hard gates are available. Modeled
    `carry_hedged_sign` clears both prints and the #96+A+B+C analog
    and still cannot promote (basis skipped; paper path not ready).
-4. **Basis-aware carry.** REST probe (#113) and archive probe (this
-   session) are **UNAVAILABLE**. Next only if a readable public
-   mark−index or perp-mid−spot-mid tape appears on **both** venues
-   without invented AWS/Tardis keys and without an illiquid BitMEX
-   spot book. Do not invent from last-trade or from funding.
+4. **Basis-aware carry.** REST probe (#113) and first archive
+   probe (#115) were **UNAVAILABLE**. Re-hunt after #123 (this
+   session): Hyperliquid now has a public ≥720d mark−index tape
+   (`asiletto81/hyperliquid` `asset_ctxs`, 883 contiguous days,
+   `mark_px`/`oracle_px` confirmed). BitMEX still has no free
+   ≥720d tape. Dual-print basis stays **UNAVAILABLE**. Next only
+   when BitMEX mark−index or a liquid perp-mid−spot-mid appears
+   without invented AWS/Tardis/Dune keys and without the
+   still-illiquid BitMEX spot book (150–600 / ~3500 bps). Do not
+   invent from last-trade or from funding. Do not stitch Tardis
+   first-of-month samples.
 5. **Paper-executable path (still `TRADING_MODE=paper`).** Done in
    #114. `PAPER_CARRY_PATH_READY` is true for the soak. Promote
    still blocked on historical PIT basis. Do not add a Settings pin.
@@ -562,6 +570,10 @@ Donchian N after seeing #118.
     passers: **0**. Not a Donchian N retune of #118.
 24. **Not** an N / V / vol_mult retune of this volume-breakout
     catalog on the same windows after seeing that print.
+25. **PIT basis archive re-hunt (after #123).** Done this
+    session. See below and `pit-basis-archives.md`. Dual-print
+    basis still **UNAVAILABLE** (HL tape found; BitMEX missing).
+    Carry not re-scored. No fetcher. No pin.
 
 ## This session — BTC→ETH lead-lag (catalog frozen)
 
@@ -747,6 +759,56 @@ Empty dual-print set is success.
 **Cannot promote. No new `PAPER_PROMOTE_*` pin.**
 
 See `volume-breakout.md`.
+
+## This session — PIT basis archive re-hunt (after #123)
+
+Highest-leverage next step after the empty #123 volume print:
+re-hunt public PIT basis archives that could unlock
+basis-aware scoring of modeled `carry_hedged_sign`. #123
+volume-confirmed breakout dual-print passers: **0**. Do not
+re-run that catalog or #104 / #108 / #116–#122 on the same
+windows. Do not flip `PAPER_PROMOTE_*`. Empty / still
+UNAVAILABLE is success.
+
+### What changed vs #115
+
+HuggingFace `asiletto81/hyperliquid` now publishes official-shape
+daily `asset_ctxs/YYYYMMDD.csv.lz4` that this environment can
+GET without AWS keys. Probe (2026-09-12): **883 contiguous
+days** 2024-01-01 → 2026-06-01, 0 gaps. Decompressed header
+includes `mark_px` and `oracle_px` (not last-trade). BTC and
+ETH minute rows confirmed on the first and last files. That
+is a real ≥720d Hyperliquid mark−index tape.
+
+BitMEX still has no matching free tape. Public dump prefixes
+`data/instrument/`, `data/mark/`, `data/funding/` list **200**
+but are empty. Spot 1d spreads remain **150–603 bps**
+(`XBT_USDT`) and **~3500 bps** (`ETH_USDT`). Tardis
+`derivative_ticker` first-of-month CSVs have `mark_price` and
+`index_price` on **both** venues and are not a ≥720d daily
+tape; full history needs a key that is not invented. Coin
+Metrics / Dune / AlgoTick / requester-pays S3 stay closed.
+
+Chainticks/perp-data is now populated (was schema-only in
+#115) with true mark/index columns, but only **345**
+contiguous days (2023-05-20 → 2024-04-28). Below the 720-day
+bar.
+
+### Decision
+
+**No fetcher wired. Carry not re-scored.** Dual-print basis
+requires the requested construction on **both** venues.
+`basis_status` stays `skipped`. `can_promote` stays **false**.
+No `PAPER_PROMOTE_*` flip. No live.
+
+Operator recommendation: still blocked. Next concrete promote
+gate remaining is a public ≥720d **BitMEX** mark−index (or
+liquid perp-mid−spot-mid). When that exists, wire
+skip-not-invent on both venues (HL path is now
+`asiletto81/hyperliquid`) and re-score `carry_hedged_sign`
+with basis costs. Until then leave every pin **false**.
+
+See `pit-basis-archives.md`.
 
 ## This session — BTC−ETH relative-value residual
 
@@ -1236,7 +1298,7 @@ See `calendar-seasonality.md`.
 | `PAPER_PROMOTE_EMA_9_21` | false | stay false |
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
-| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; paper soak path ready; PIT basis archives UNAVAILABLE — do not add a pin |
+| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; paper soak path ready; HL PIT mark−index now readable (`asiletto81/hyperliquid`, 883d) but BitMEX still UNAVAILABLE — do not add a pin |
 | new relative-value pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; do not add a pin |
 | new cross-sectional momentum pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational `xs_mom_lo_vol_63` mean HO is ETH-carried (#96 FAIL); do not add a pin |
 | new Donchian pin | *(not added)* | dual-print passers 0 on Kraken 720 + Binance.US older-720; informational positive Kraken mean HO still fails #96 on BTC walk-forward; do not add a pin |

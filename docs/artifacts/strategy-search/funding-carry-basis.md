@@ -73,6 +73,21 @@ is trade+quote only (no mark dump). BitMEX perp-mid−spot-mid via
 community / empty HuggingFace schemas were skipped. Carry was
 **not** re-scored. See `pit-basis-archives.md`.
 
+## Archive re-hunt (after #123)
+
+Public archives were probed again 2026-09-12 after the empty
+#123 volume-confirmed breakout print (0 dual-print passers).
+**Dual-print basis still UNAVAILABLE.** Hyperliquid now has a
+readable ≥720d mark−index tape on HuggingFace
+(`asiletto81/hyperliquid` `asset_ctxs`, 883 contiguous days,
+`mark_px`/`oracle_px` confirmed; no AWS keys). BitMEX public
+dump prefixes `data/instrument/` / `data/mark/` list 200 but
+are empty. BitMEX spot books are still 150–600 / ~3500 bps.
+Tardis first-of-month `derivative_ticker` has mark+index on
+both venues and is not a ≥720d daily tape. No fetcher was
+wired. Carry was **not** re-scored. See
+`pit-basis-archives.md`.
+
 ## Promotion decision
 
 **No candidate is promoted.** PIT basis is UNAVAILABLE. The paper

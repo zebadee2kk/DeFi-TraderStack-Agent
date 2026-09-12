@@ -89,7 +89,8 @@ thresholds, funding-agree spot overlays, and modeled hedged
 cash-and-carry on BTC+ETH. Dual-print needs two independent funding
 venues (OKX + Hyperliquid + BitMEX when reachable; Binance/Bybit often
 geo-blocked). PIT basis is probed skip-not-invent (current mark/index
-only; public archives stay UNAVAILABLE — see
+only; dual-print archives stay UNAVAILABLE — HL now has a public
+≥720d `asset_ctxs` mirror, BitMEX still does not; see
 `docs/artifacts/strategy-search/pit-basis-archives.md`). A paper
 perp/hedge stub exists and cannot promote. One venue is
 single-print and cannot promote.
