@@ -32,7 +32,8 @@ without activating the venv.
 | `traderstack-second-print` | Second independent print for `ema_9_21_adx15` (and the other #99/#100 combined-passers). Kraken public OHLC cannot unlock a second 720; scores the holdout-blind prefix (same venue; not independent) and a pre-registered older Binance Spot daily 720 (BTCUSDT+ETHUSDT) ending before the primary Kraken first bar. Labeled non-Kraken / report-only; cannot enter the promotion average. Writes `docs/artifacts/strategy-search/ema-9-21-adx15-second-print.md`. Never flips `PAPER_PROMOTE_*`. An honest FAIL is success. |
 | `traderstack-dual-print-search` | Expanded daily catalog (frozen K before pull) scored under the **pre-registered dual-print bar**: Kraken primary 720 must clear #96+A+B+C **and** the #102 Binance.US older-720 must also clear those combined gates. Ranking key: Kraken mean holdout excess among dual-print passers. Venues are not averaged. Writes `docs/artifacts/strategy-search/dual-print-search.md`. Never flips `PAPER_PROMOTE_*`. An empty dual-print set is success. |
 | `traderstack-liq-regime-search` | Paper-only next slice after the empty #104 EMA dual-print: scores a frozen catalog **conditioned on** liquidation-z / funding-z / OI-z / cross-venue series when an aligned historical series exists, plus candle-only vol-regime wrappers. Public USDT-M liquidation REST is typically unusable and is skipped, not zero-filled. Dual-print only if historical liq exists on BTC+ETH **and** a second venue print is supplied; otherwise **single-print** and **cannot promote**. Writes `docs/artifacts/strategy-search/liq-regime-search.md`. Never flips `PAPER_PROMOTE_*`. Empty search is success. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-intraday-dual-print` | Paper-only 4h (default) or 1h hunt after empty daily EMA (#104), empty liq (#105), and empty Polymarket PIT (#106). Frozen **non-EMA** catalog (MA / momentum / mean-reversion / vol-regime; funding/OI only if aligned series exist). Same #96+A+B+C combined gates on Kraken public Spot **and** the #102-style Binance.US older-720 of the same interval. Ranking is Kraken mean holdout among dual-print passers. Writes `docs/artifacts/strategy-search/intraday-dual-print.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
@@ -680,6 +681,24 @@ series exists, plus candle-only vol-regime wrappers:
 ```
 
 See `docs/artifacts/strategy-search/liq-regime-search.md`.
+
+Daily EMA dual-print (#104), historical liquidation (#105), and
+Polymarket PIT tape (#106) were all empty. `traderstack-intraday-dual-print`
+is a **different family**: fee-aware #96+A+B+C on Kraken public Spot
+**4h** (default; `1h` is the alternate) BTC+ETH, plus the #102-style
+Binance.US older-720 of the same interval. The catalog is frozen
+non-EMA (MA / momentum / mean-reversion / vol-regime). Funding/OI
+variants instantiate only when an aligned series is fetched.
+
+```bash
+.venv/bin/traderstack-intraday-dual-print --live
+.venv/bin/traderstack-intraday-dual-print --live --interval 1h
+.venv/bin/traderstack-intraday-dual-print --live --no-binance
+```
+
+See `docs/artifacts/strategy-search/intraday-dual-print.md`. An empty
+dual-print set is success. Do not add a new `PAPER_PROMOTE_*` pin
+unless a committed report names a passer (default false if added).
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
 the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:

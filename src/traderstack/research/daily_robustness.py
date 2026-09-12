@@ -70,22 +70,25 @@ def is_yahoo_symbol(symbol: str) -> bool:
     return "-" in symbol and "/" not in symbol
 
 
-def is_promotion_series(row: SeriesCandidateMetrics) -> bool:
-    """Kraken daily BTC/USD or ETH/USD only. Yahoo and SOL do not gate."""
+def is_promotion_series(row: SeriesCandidateMetrics, *, interval: str = "1d") -> bool:
+    """Kraken BTC/USD or ETH/USD on the promotion interval. Yahoo and SOL do not gate."""
     return (
-        row.interval == "1d"
+        row.interval == interval
         and not is_yahoo_symbol(row.asset)
         and _base_asset(row.asset) in PROMOTION_ASSETS
     )
 
 
 def series_for_asset(
-    per_series: list[SeriesCandidateMetrics], asset: str
+    per_series: list[SeriesCandidateMetrics],
+    asset: str,
+    *,
+    interval: str = "1d",
 ) -> SeriesCandidateMetrics | None:
     wanted = _base_asset(asset)
     for row in per_series:
         if (
-            row.interval == "1d"
+            row.interval == interval
             and not is_yahoo_symbol(row.asset)
             and _base_asset(row.asset) == wanted
         ):
@@ -104,6 +107,7 @@ def _gate_reasons(
     *,
     min_trades: int,
     require_balanced_holdout: bool,
+    promotion_interval: str = "1d",
 ) -> list[str]:
     reasons: list[str] = []
     if row.mean_wf_total_return is None:
@@ -116,8 +120,8 @@ def _gate_reasons(
         reasons.append("holdout_missing")
     elif row.mean_holdout_excess_return <= 0:
         reasons.append("holdout_excess_return_not_positive")
-    btc = series_for_asset(row.per_series, "BTC/USD")
-    eth = series_for_asset(row.per_series, "ETH/USD")
+    btc = series_for_asset(row.per_series, "BTC/USD", interval=promotion_interval)
+    eth = series_for_asset(row.per_series, "ETH/USD", interval=promotion_interval)
     btc_wf = btc.walkforward_mean_total_return if btc is not None else None
     eth_wf = eth.walkforward_mean_total_return if eth is not None else None
     if btc_wf is None:
@@ -215,6 +219,7 @@ def run_daily_robustness(
     require_balanced_holdout: bool = True,
     now: datetime | None = None,
     data_notes: list[str] | None = None,
+    promotion_interval: str = "1d",
 ) -> DailyRobustnessReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -250,7 +255,7 @@ def run_daily_robustness(
             )
             for candles in histories.values()
         ]
-        gated = [row for row in per_series if is_promotion_series(row)]
+        gated = [row for row in per_series if is_promotion_series(row, interval=promotion_interval)]
         wf_excess = [
             row.walkforward_mean_excess_return
             for row in gated
@@ -286,6 +291,7 @@ def run_daily_robustness(
             result,
             min_trades=min_trades,
             require_balanced_holdout=require_balanced_holdout,
+            promotion_interval=promotion_interval,
         )
         result.eligible = not result.ineligible_reasons
         rows.append(result)
@@ -311,10 +317,16 @@ def run_daily_robustness(
     ema_clears_balanced = False
     if ema_row is not None:
         ema_clears_legacy = not _gate_reasons(
-            ema_row, min_trades=min_trades, require_balanced_holdout=False
+            ema_row,
+            min_trades=min_trades,
+            require_balanced_holdout=False,
+            promotion_interval=promotion_interval,
         )
         ema_clears_balanced = not _gate_reasons(
-            ema_row, min_trades=min_trades, require_balanced_holdout=True
+            ema_row,
+            min_trades=min_trades,
+            require_balanced_holdout=True,
+            promotion_interval=promotion_interval,
         )
     promoted_ids = [selected.candidate_id] if selected is not None and selected.promoted else []
     recommend_flag: str | None = None

@@ -144,13 +144,16 @@ def evaluate_magnitude_gate(
 
 
 def kraken_daily_candles(
-    histories: dict[str, tuple[Candle, ...]], asset: str
+    histories: dict[str, tuple[Candle, ...]],
+    asset: str,
+    *,
+    interval: str = "1d",
 ) -> tuple[Candle, ...] | None:
     wanted = asset.upper()
     for candles in histories.values():
         if (
             candles
-            and candles[0].interval == "1d"
+            and candles[0].interval == interval
             and candles[0].symbol.upper() == wanted
             and not is_yahoo_symbol(candles[0].symbol)
         ):
@@ -201,11 +204,12 @@ def score_multiwindow(
     window_count: int = MULTIWINDOW_COUNT,
     window_bars: int = MULTIWINDOW_BARS,
     min_passes: int = MULTIWINDOW_MIN_PASSES,
+    interval: str = "1d",
 ) -> tuple[bool, list[WindowScore], list[str]]:
     """Gate B. Missing windows or a short series fail closed."""
     labels = ("W1 oldest", "W2 middle", "W3 newest")
-    btc = kraken_daily_candles(histories, "BTC/USD")
-    eth = kraken_daily_candles(histories, "ETH/USD")
+    btc = kraken_daily_candles(histories, "BTC/USD", interval=interval)
+    eth = kraken_daily_candles(histories, "ETH/USD", interval=interval)
     reasons: list[str] = []
     if btc is None:
         reasons.append("btc_kraken_daily_missing")
@@ -304,7 +308,9 @@ def _window_wf_total(
     return report.mean_total_return
 
 
-def evaluate_fee_stress_gate(row: CandidateSearchResult) -> tuple[bool, list[str]]:
+def evaluate_fee_stress_gate(
+    row: CandidateSearchResult, *, interval: str = "1d"
+) -> tuple[bool, list[str]]:
     """Gate C: #96 balanced signs at the stressed fee print."""
     reasons: list[str] = []
     if row.mean_wf_total_return is None:
@@ -315,8 +321,8 @@ def evaluate_fee_stress_gate(row: CandidateSearchResult) -> tuple[bool, list[str
         reasons.append("holdout_missing")
     elif row.mean_holdout_excess_return <= 0:
         reasons.append("holdout_excess_return_not_positive")
-    btc = series_for_asset(row.per_series, "BTC/USD")
-    eth = series_for_asset(row.per_series, "ETH/USD")
+    btc = series_for_asset(row.per_series, "BTC/USD", interval=interval)
+    eth = series_for_asset(row.per_series, "ETH/USD", interval=interval)
     btc_wf = btc.walkforward_mean_total_return if btc is not None else None
     eth_wf = eth.walkforward_mean_total_return if eth is not None else None
     if btc_wf is None:
@@ -506,6 +512,7 @@ def run_harder_gates(
     catalog_name: str = "expanded",
     now: datetime | None = None,
     data_notes: list[str] | None = None,
+    promotion_interval: str = "1d",
 ) -> HarderGatesReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -527,6 +534,7 @@ def run_harder_gates(
         require_balanced_holdout=True,
         now=now,
         data_notes=data_notes,
+        promotion_interval=promotion_interval,
     )
     stress_fee = fee_bps * FEE_STRESS_MULTIPLIER
     stress_slip = slippage_bps * FEE_STRESS_MULTIPLIER
@@ -545,13 +553,14 @@ def run_harder_gates(
         require_balanced_holdout=True,
         now=now,
         data_notes=data_notes,
+        promotion_interval=promotion_interval,
     )
     by_id = {item.candidate_id: item for item in catalog}
     rows: list[CandidateHarderResult] = []
     for base in baseline.candidates:
         candidate = by_id[base.candidate_id]
-        btc = series_for_asset(base.per_series, "BTC/USD")
-        eth = series_for_asset(base.per_series, "ETH/USD")
+        btc = series_for_asset(base.per_series, "BTC/USD", interval=promotion_interval)
+        eth = series_for_asset(base.per_series, "ETH/USD", interval=promotion_interval)
         btc_ho = _holdout_excess(btc)
         eth_ho = _holdout_excess(eth)
         gate_a, ratio, reasons_a = evaluate_magnitude_gate(btc_ho, eth_ho)
@@ -564,6 +573,7 @@ def run_harder_gates(
             train_size=train_size,
             test_size=test_size,
             step_size=step_size,
+            interval=promotion_interval,
         )
         stress_row = _row_by_id(stressed, base.candidate_id)
         if stress_row is None:
@@ -572,9 +582,13 @@ def run_harder_gates(
             stress_btc_ho = stress_eth_ho = None
             stress_wf = None
         else:
-            gate_c, reasons_c = evaluate_fee_stress_gate(stress_row)
-            stress_btc_s = series_for_asset(stress_row.per_series, "BTC/USD")
-            stress_eth_s = series_for_asset(stress_row.per_series, "ETH/USD")
+            gate_c, reasons_c = evaluate_fee_stress_gate(stress_row, interval=promotion_interval)
+            stress_btc_s = series_for_asset(
+                stress_row.per_series, "BTC/USD", interval=promotion_interval
+            )
+            stress_eth_s = series_for_asset(
+                stress_row.per_series, "ETH/USD", interval=promotion_interval
+            )
             stress_btc = (
                 stress_btc_s.walkforward_mean_total_return if stress_btc_s is not None else None
             )
