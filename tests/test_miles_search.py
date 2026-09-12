@@ -275,7 +275,9 @@ def test_mixed_intervals_rank_on_daily_only() -> None:
     daily_only = _search({"BTC/USD@1d": daily})
     assert mixed.promotion_interval == "1d"
     assert mixed.selected_candidate_id == daily_only.selected_candidate_id
-    mixed_sel = next(row for row in mixed.candidates if row.candidate_id == mixed.selected_candidate_id)
+    mixed_sel = next(
+        row for row in mixed.candidates if row.candidate_id == mixed.selected_candidate_id
+    )
     daily_sel = next(
         row for row in daily_only.candidates if row.candidate_id == daily_only.selected_candidate_id
     )
