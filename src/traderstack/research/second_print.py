@@ -82,7 +82,12 @@ KRAKEN_PREFIX_RULE = "holdout_blind_prefix"
 BINANCE_SLICE_RULE = "older_720_ending_before_primary_first_bar"
 CAN_ENTER_PROMOTION_AVERAGE = False
 MULTI_VENUE_BAR_PREREGISTERED = False
-BINANCE_TO_SCORE_SYMBOL = {"BTCUSDT": "BTC/USD", "ETHUSDT": "ETH/USD"}
+BINANCE_TO_SCORE_SYMBOL = {
+    "BTCUSDT": "BTC/USD",
+    "ETHUSDT": "ETH/USD",
+    # --- cross-sectional momentum (SOL reported; not a #102 gate) ---
+    "SOLUSDT": "SOL/USD",
+}
 
 SECOND_PRINT_RULES = (
     "Pre-registered before any second-print score (do not retune after "
@@ -225,6 +230,8 @@ class SliceMeta(BaseModel):
     available: bool
     bars_btc: int = 0
     bars_eth: int = 0
+    # --- cross-sectional momentum (SOL reported; not a #102 gate) ---
+    bars_sol: int = 0
     first: str | None = None
     last: str | None = None
     overlaps_primary_window: bool = False

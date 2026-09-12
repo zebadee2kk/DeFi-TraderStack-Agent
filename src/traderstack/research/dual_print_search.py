@@ -118,6 +118,9 @@ class DualPrintRow(BaseModel):
     binance_mean_holdout_excess: float | None = None
     kraken_btc_holdout: float | None = None
     kraken_eth_holdout: float | None = None
+    # --- cross-sectional momentum (SOL reported; not a gate) ---
+    kraken_sol_holdout: float | None = None
+    binance_sol_holdout: float | None = None
     kraken_holdout_ratio: float | None = None
     kraken_btc_wf: float | None = None
     kraken_eth_wf: float | None = None
@@ -246,6 +249,8 @@ def _binance_slice_meta(
 ) -> SliceMeta:
     score_btc = remapped.get("BTC/USD@1d")
     score_eth = remapped.get("ETH/USD@1d")
+    # --- cross-sectional momentum (SOL reported; not a #102 gate) ---
+    score_sol = remapped.get("SOL/USD@1d")
     short = (
         score_btc is None
         or score_eth is None
@@ -273,6 +278,7 @@ def _binance_slice_meta(
         available=available,
         bars_btc=len(score_btc or ()),
         bars_eth=len(score_eth or ()),
+        bars_sol=len(score_sol or ()),
         first=first,
         last=last,
         overlaps_primary_window=overlap,
@@ -311,6 +317,9 @@ def _merge_row(
         binance_mean_holdout_excess=binance_row.mean_holdout_excess,
         kraken_btc_holdout=kraken_row.baseline_btc_holdout,
         kraken_eth_holdout=kraken_row.baseline_eth_holdout,
+        # --- cross-sectional momentum (SOL reported; not a gate) ---
+        kraken_sol_holdout=kraken_row.baseline_sol_holdout,
+        binance_sol_holdout=binance_row.baseline_sol_holdout,
         kraken_holdout_ratio=kraken_row.holdout_magnitude_ratio,
         kraken_btc_wf=kraken_row.baseline_btc_wf,
         kraken_eth_wf=kraken_row.baseline_eth_wf,

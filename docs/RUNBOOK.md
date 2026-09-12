@@ -35,7 +35,8 @@ without activating the venv.
 | `traderstack-intraday-dual-print` | Paper-only 4h (default) or 1h hunt after empty daily EMA (#104), empty liq (#105), and empty Polymarket PIT (#106). Frozen **non-EMA** catalog (MA / momentum / mean-reversion / vol-regime; funding/OI only if aligned series exist). Same #96+A+B+C combined gates on Kraken public Spot **and** the #102-style Binance.US older-720 of the same interval. Ranking is Kraken mean holdout among dual-print passers. Writes `docs/artifacts/strategy-search/intraday-dual-print.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
 | `traderstack-funding-carry` | Paper-only funding-z threshold + hedged cash-and-carry catalog on BTC+ETH. Aligns Kraken public Spot (default 4h) to public funding-rate history (OKX + Hyperliquid + BitMEX when reachable; Binance/Bybit probed and skipped if geo-blocked). Dual-print only if two **independent funding venues** cover BTC and ETH; one venue is **single-print** and **cannot promote**. Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars exist on **each** venue. Writes `docs/artifacts/strategy-search/funding-carry.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
 | `traderstack-relative-value` | Paper-only BTC−ETH relative-value residual: fade/follow daily `r_BTC − r_ETH` at frozen \|z\| ≥ 1.0 / 1.5 / 2.0 (lookback 20). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/btc-eth-relative-value.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA reprint. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-xs-momentum` | Paper-only BTC+ETH+SOL cross-sectional momentum: long top-1 / optional short bottom-1 by trailing N-day return (N in {21, 63, 126}; optional vol-scaled ranking; `ls` dollar-neutral or `lo` long-only). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH/SOL. Writes `docs/artifacts/strategy-search/cross-sectional-momentum.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA or residual reprint. |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
@@ -794,6 +795,40 @@ dual-print (#104 / #108).
 ```
 
 See `docs/artifacts/strategy-search/btc-eth-relative-value.md` and
+the 2026-09-12 status memo
+`docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
+
+## BTC+ETH+SOL cross-sectional momentum
+
+#116 left the BTC−ETH residual dual-print empty (every Kraken RV
+holdout negative). `traderstack-xs-momentum` is the next
+**non-carry / non-EMA / non-residual** family: long the top-1
+(and optionally short the bottom-1) among {BTC, ETH, SOL} by a
+**pre-registered** trailing N-day return. Not another residual
+retune.
+
+- Same #96+A+B+C combined bar on Kraken public Spot **daily** 720
+  **and** the #102 Binance.US older-720 (non-overlapping).
+- Multi-asset rule (frozen before scoring): BTC and ETH WF/holdout
+  signs as before; SOL is reported and is **not** a gate.
+  Equal-weight portfolio metrics are not used.
+- Ranking key (frozen): Kraken BTC+ETH mean holdout excess among
+  dual-print passers. Venues are not averaged. The informational
+  control `ma_cross_10_30` cannot enter the passer set.
+- A ranking day needs all three venue-local closes. A missing
+  asset day is skipped, not ranked on a two-asset subset.
+- Paper-executable on Kraken spot (`BTC/USD` + `ETH/USD` +
+  `SOL/USD`).
+- This command never flips `PAPER_PROMOTE_*` and does not add a
+  new pin unless a committed report names a dual-print passer
+  (default false if added). Empty dual-print set is success.
+
+```bash
+.venv/bin/traderstack-xs-momentum --live
+.venv/bin/traderstack-xs-momentum --live --no-binance
+```
+
+See `docs/artifacts/strategy-search/cross-sectional-momentum.md` and
 the 2026-09-12 status memo
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 

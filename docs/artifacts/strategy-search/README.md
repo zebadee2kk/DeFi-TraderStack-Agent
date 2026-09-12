@@ -536,3 +536,40 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `btc-eth-relative-value.md`.
 
+## Cross-sectional momentum (`traderstack-xs-momentum`)
+
+#116 left the BTC−ETH residual dual-print empty. This command is a
+**different family**: long top-1 / optional short bottom-1 among
+{BTC, ETH, SOL} by frozen trailing N-day return (N in {21, 63,
+126}; `ls` dollar-neutral or `lo` long-only; optional vol-scaled
+ranking).
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | public Spot daily; #96+A+B+C on BTC+ETH (SOL reported); rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same #102 slice; must combined-PASS | no (gate only) |
+
+Catalog is frozen (K=13): twelve momentum books plus informational
+`ma_cross_10_30` (cannot promote). A ranking day needs all three
+venue-local closes; unpaired days are skipped, not invented as a
+two-asset book. Multi-asset bar (frozen): BTC and ETH signs as
+#96+A+B+C; SOL reported, not a gate. Equal-weight portfolio
+metrics are not used. Paper-executable on Kraken spot BTC/ETH/SOL.
+Empty dual-print set is success. `PAPER_PROMOTE_*` stays false.
+No new pin unless a committed report names a passer (default
+false if added).
+
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720). Aligned
+  triple-days: 720.
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Aligned triple-days: 720. Labeled Binance.US.
+- Kraken combined-passers: **0**.
+- Binance.US combined-passers: **0**.
+- Informational `xs_mom_lo_vol_63` Kraken mean HO +7.13% /
+  Binance +9.55% with BTC holdout −16.52% — #96 FAIL, not an edge.
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
+See `cross-sectional-momentum.md`.
+

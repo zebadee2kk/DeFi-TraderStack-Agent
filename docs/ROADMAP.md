@@ -96,7 +96,12 @@ single-print and cannot promote.
 `traderstack-relative-value` is the post-#115 non-carry slice:
 fade/follow daily BTC−ETH residual at frozen |z| thresholds on the
 same #96+A+B+C Kraken 720 + Binance.US older-720 bar. Paper-executable
-on Kraken spot. Empty dual-print is success. **Freqtrade
+on Kraken spot. Empty dual-print is success.
+`traderstack-xs-momentum` is the post-#116 slice: long top-1 /
+optional short bottom-1 among {BTC, ETH, SOL} by frozen trailing
+N-day return on that same dual-print bar. SOL is reported, not a
+gate. Paper-executable on Kraken spot. Empty dual-print is success.
+**Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.

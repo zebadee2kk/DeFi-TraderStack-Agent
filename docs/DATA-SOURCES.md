@@ -81,6 +81,15 @@ it is relied upon.
   aligned `opened_at`; a missing pair day is skipped, not
   zero-filled. No exogenous series. Input to
   `traderstack-relative-value`.
+- **BTC+ETH+SOL cross-sectional momentum (research only):** built
+  from the same public Spot daily closes — Kraken
+  `GET /0/public/OHLC` (720-bar cap) and Binance.US older-720
+  (`api.binance.us` when `api.binance.com` is HTTP 451), now
+  including `SOL/USD` / `SOLUSDT`. Ranking uses venue-local
+  trailing N-day returns; a day missing any of the three closes
+  is skipped, not zero-filled and not ranked on a two-asset
+  subset. No exogenous series. Input to
+  `traderstack-xs-momentum`.
 
 ## Robinhood Chain
 
