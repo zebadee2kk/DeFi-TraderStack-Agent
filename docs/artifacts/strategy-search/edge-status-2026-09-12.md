@@ -181,29 +181,112 @@ numbers are not the same bet. **Cannot promote. No new Settings pin**
 
 See `funding-carry.md`.
 
+## This session — daily resample / hard-gate honesty
+
+Highest-leverage next step after #110: evaluate `carry_hedged_sign`
+on a **daily** aligned series (UTC-day sums of settlements; empty
+days omitted, never zero-filled) long enough for #96+A+B+C, or
+document why the gates stay UNAVAILABLE. Explicitly skip basis
+unless a PIT perp−spot series exists. Document the missing
+paper-executable path. Still no Settings pin.
+
+### Standing constraints (do not wish away)
+
+- Hard gates need 720 aligned **daily** bars on **each** venue in a
+  dual-print. Hyperliquid can cover a Kraken 720-bar daily window
+  if enough `fundingHistory` pages are fetched (~800d lookback).
+  OKX public history is still ~90d of 8h prints → ~90 daily sums.
+- Hyperliquid `fundingHistory.premium` is the funding-formula input,
+  **not** a PIT perp−spot mid. Last-trade is not basis. Skip.
+- Paper fills are Kraken spot only (`paper_simulate_fills`). There
+  is no paper perp simulator and no hedged spot+perp book.
+
+### Live daily print (2026-09-12)
+
+`traderstack-funding-carry --live --interval 1d` (Kraken public Spot
+1d BTC+ETH, 720-bar cap 2024-09-22 → 2026-09-11 UTC; costs 10+5 bps).
+Hyperliquid lookback 800d with 429 backoff. First attempt: BTC 19199
+hourly ok, ETH HTTP 429 → venue dropped (skip-not-invent; not dual).
+Retry with page/symbol pause: both coins 19199 hourly.
+
+| series | status |
+| --- | --- |
+| Binance USDT-M funding | **skipped** — HTTP 451 |
+| Bybit linear funding | **skipped** — HTTP 403 CloudFront |
+| OKX funding | **ok** — 290 8h prints → **97** UTC daily sums per BTC and ETH |
+| Hyperliquid funding | **ok** — 19199 hourly prints → **801** UTC daily sums per BTC and ETH |
+| Print kind | **dual_print** (Hyperliquid primary, OKX second) |
+| Aligned daily bars | primary **720** (Kraken ∩ HL); second **96** (Kraken ∩ OKX) |
+| Hard gates (#96+A+B+C) | **UNAVAILABLE** (second venue 96 < 720) |
+| Basis | **skipped** (no PIT perp−spot series) |
+| Paper path | **false** (Kraken spot fills only) |
+| Spot-signal dual-print passers | **0** |
+| Modeled dual-print passers | **0** |
+
+Spot-signal / overlay (Hyperliquid primary, 720 daily; every name
+**ineligible**). Informational top-1 is the control:
+
+| rank | id | WF excess | WF total | holdout excess |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | `ma_cross_10_30` (control) | −4.41% | +7.80% | +4.94% |
+| 2 | `funding_z_follow_1_5` | −7.71% | +4.50% | −20.64% |
+
+OKX second-print spot overlays: all **n/a** (96 daily bars cannot
+form a walk-forward fold). Skip, not a shorter bar.
+
+Modeled hedged carry (basis skipped; **not** paper-spot executable):
+
+| id | HL WF / HO / full | OKX WF / HO / full | both? |
+| --- | ---: | ---: | :---: |
+| `carry_hedged_sign` | +1.72% / +3.32% / +27.70% | n/a / +0.31% / +0.94% | no |
+| `carry_hedged_abs_1bp` | −1.36% / −8.17% / −18.98% | n/a / −0.93% / −5.82% | no |
+| `carry_hedged_abs_3bp` | −2.42% / −4.82% / −21.50% | n/a / −0.57% / −1.38% | no |
+| `carry_hedged_z_1_5` | −2.88% / −8.72% / −32.95% | n/a / −0.87% / −5.62% | no |
+
+OKX daily WF is **n/a** (`walkforward_insufficient_prints`): 97
+daily sums with a 20% holdout leave ~77 research prints, below the
+frozen 80+40 short bar. Do not shorten the bar after seeing that.
+
+Carry hard-gate analog (daily funding, not a Settings unlock):
+
+| venue | available | #96 | A | B | C | combined |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| Hyperliquid (801 daily) | yes | true | true (ratio 0.87) | true (3/3) | true | **true** |
+| OKX (97 daily) | **no** | — | — | — | — | UNAVAILABLE |
+
+The long Hyperliquid tape can run #96+A+B+C and `carry_hedged_sign`
+clears that analog **on one venue**. That is not dual-print, not
+basis-aware, and not paper-executable. The 4h #110 dual-print
+passer **does not survive** daily resample: OKX cannot form WF
+folds. Empty dual-print set is success.
+
+**Cannot promote. No new Settings pin.**
+
+See `funding-carry-daily.md`.
+
 ## Next falsifiable experiments
 
-Do not rerun #104 / #105 / #106 / #108 on the same windows.
+Do not rerun #104 / #105 / #106 / #108 / the 4h #110 funding print
+on the same windows.
 
-1. **Second independent funding tape.** Done this session:
-   Hyperliquid public `fundingHistory` is reachable and wired.
-   Dual-print ran (HL + OKX). Spot-signal passers: **0**. Modeled
-   `carry_hedged_sign` cleared fee-aware signs on both tapes and
-   still cannot promote (not paper-spot executable; basis not
-   modeled; hard gates UNAVAILABLE). Binance remains HTTP 451; Bybit
-   remains HTTP 403.
-2. **Basis-aware carry, only if a PIT perp−spot series exists.** Do
-   not invent basis from last-trade or from funding itself. Skip if
-   the series is missing.
-3. **Longer funding overlap that can actually run #96+A+B+C.** That
-   means 720 aligned **daily** bars of funding on BTC and ETH, on two
-   venues. Hyperliquid is long enough; OKX is still ~90d. Not a 4h
-   90d reprint labeled as daily. Do not promote on a single long tape.
-4. **Not** another daily-EMA catalog expansion on the same Kraken 720
+1. **Second independent funding tape.** Done in #110: Hyperliquid +
+   OKX dual-print. Spot-signal passers: **0**. Modeled
+   `carry_hedged_sign` cleared fee-aware signs on both 4h-aligned
+   tapes and still cannot promote.
+2. **Daily resample / #96+A+B+C honesty.** This session. See above
+   and `funding-carry-daily.md`.
+3. **Basis-aware carry, only if a PIT perp−spot series exists on
+   both venues.** Do not invent basis from last-trade or from
+   funding itself. Skip if the series is missing.
+4. **Paper-executable path (still `TRADING_MODE=paper`).** A paper
+   perp simulator that applies venue funding at each settlement,
+   and/or a two-leg paper hedge book, plus PIT basis mark-to-market.
+   Do not add a Settings pin that implies this path exists.
+5. **Not** another daily-EMA catalog expansion on the same Kraken 720
    + Binance.US older-720 pair.
-5. **Not** liquidation-conditioned promotion until a public historical
+6. **Not** liquidation-conditioned promotion until a public historical
    liquidation aggregate exists (it does not today).
-6. **Not** Polymarket weather promotion until a PIT CLOB mid +
+7. **Not** Polymarket weather promotion until a PIT CLOB mid +
    official station-high tape exists (it does not today).
 
 ## Pins
@@ -214,6 +297,6 @@ Do not rerun #104 / #105 / #106 / #108 on the same windows.
 | `PAPER_PROMOTE_EMA_9_21` | false | stay false |
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
-| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled dual-print passer only; not paper-spot executable — do not add a pin |
+| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled 4h dual-print passer only; daily hard gates / PIT basis / paper path are not all clear — do not add a pin |
 
 `TRADING_MODE=paper`. No live.

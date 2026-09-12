@@ -3,9 +3,12 @@
 Scores the frozen funding-z threshold + spot-overlay + hedged-carry
 catalog on Kraken public Spot (default 4h) aligned to public
 funding-rate history. Probes Binance, Bybit, OKX, and Hyperliquid
-independently (skip-not-invent; do not blend). Dual-print only if two
-independent funding venues cover BTC and ETH. Otherwise SINGLE-PRINT
-and cannot promote. Never flips ``PAPER_PROMOTE_*``. Empty search is
+independently (skip-not-invent; do not blend). ``--interval 1d``
+resamples funding to UTC daily sums (empty days omitted) so the
+#96+A+B+C bar can be evaluated or recorded UNAVAILABLE. Dual-print
+only if two independent funding venues cover BTC and ETH. Basis is
+skipped unless a PIT series is supplied. Otherwise SINGLE-PRINT and
+cannot promote. Never flips ``PAPER_PROMOTE_*``. Empty search is
 success. No live.
 """
 
@@ -26,6 +29,10 @@ from traderstack.research.edge_series import (
     BINANCE_FAPI_BASE,
     BYBIT_BASE,
     HYPERLIQUID_BASE,
+    HYPERLIQUID_DAILY_LIMIT_PAGES,
+    HYPERLIQUID_DAILY_LOOKBACK_DAYS,
+    HYPERLIQUID_DEFAULT_LOOKBACK_DAYS,
+    HYPERLIQUID_SYMBOL_PAUSE_SECONDS,
     OKX_BASE,
     fetch_binance_funding,
     fetch_bybit_funding,
@@ -57,8 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Score a pre-registered funding-z / carry catalog on Kraken "
             "public Spot (default 4h) aligned to public funding-rate "
             "history (OKX + Hyperliquid when reachable; Binance/Bybit "
-            "probed and skipped if geo-blocked). Dual-print only if two "
-            "independent funding venues cover BTC and ETH. Otherwise "
+            "probed and skipped if geo-blocked). --interval 1d resamples "
+            "funding to UTC daily sums (empty days omitted) so #96+A+B+C "
+            "can be evaluated or recorded UNAVAILABLE honestly. Dual-print "
+            "only if two independent funding venues cover BTC and ETH. "
+            "Basis is skipped unless a PIT series is supplied. Otherwise "
             "SINGLE-PRINT and cannot promote. Does not flip "
             "PAPER_PROMOTE_*. Empty search is success."
         )
@@ -84,7 +94,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--interval",
         choices=ALLOWED_INTERVALS,
         default=DEFAULT_INTERVAL,
-        help="Kraken interval (default 4h so a ~90d tape can walk-forward)",
+        help=(
+            "Kraken interval (default 4h so a ~90d tape can walk-forward; "
+            "1d resamples funding to UTC daily sums for the hard-gate bar)"
+        ),
     )
     parser.add_argument(
         "--symbol",
@@ -119,6 +132,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="optional second independent funding series (offline dual-print)",
+    )
+    parser.add_argument(
+        "--basis",
+        type=Path,
+        default=None,
+        help=(
+            "optional PIT perp−spot basis [{opened_at, value}] series. "
+            "Omitted = skip-not-invent; do not pass last-trade or funding "
+            "premium as a substitute"
+        ),
     )
     parser.add_argument(
         "--output-json",
@@ -187,6 +210,8 @@ async def fetch_funding_venues(
     symbols: tuple[str, ...],
     *,
     timeout: float = 20.0,
+    hyperliquid_lookback_days: int = HYPERLIQUID_DEFAULT_LOOKBACK_DAYS,
+    hyperliquid_limit_pages: int = 16,
 ) -> tuple[dict[str, dict[str, tuple]], list[dict[str, str]]]:
     """Fetch each venue independently. Do not blend the tapes."""
     venue_maps: dict[str, dict[str, tuple]] = {
@@ -214,9 +239,16 @@ async def fetch_funding_venues(
             notes.append(result.as_note())
             if result.status == "ok":
                 venue_maps["okx"][symbol.upper()] = result.points
-    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=timeout) as client:
-        for symbol in symbols:
-            result = await fetch_hyperliquid_funding(symbol, client=client)
+    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=max(timeout, 30.0)) as client:
+        for index, symbol in enumerate(symbols):
+            if index:
+                await asyncio.sleep(HYPERLIQUID_SYMBOL_PAUSE_SECONDS)
+            result = await fetch_hyperliquid_funding(
+                symbol,
+                client=client,
+                lookback_days=hyperliquid_lookback_days,
+                limit_pages=hyperliquid_limit_pages,
+            )
             notes.append(result.as_note())
             if result.status == "ok":
                 venue_maps["hyperliquid"][symbol.upper()] = result.points
@@ -251,8 +283,16 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
         histories, notes = _load_candle_files(args.candles, interval=args.interval)
     history_notes = _as_history_notes(notes)
 
+    if args.interval == "1d" and args.output_md == Path(
+        "docs/artifacts/strategy-search/funding-carry.md"
+    ):
+        args.output_md = Path("docs/artifacts/strategy-search/funding-carry-daily.md")
+    if args.interval == "1d" and args.output_json == Path("var/ops/funding_carry.json"):
+        args.output_json = Path("var/ops/funding_carry_daily.json")
+
     funding = _parse_feature_series(args.funding_z) if args.funding_z else None
     second_funding = _parse_feature_series(args.second_funding_z) if args.second_funding_z else None
+    basis = _parse_feature_series(args.basis) if args.basis else None
     funding_by_symbol = None
     second_funding_by_symbol = None
     primary_venue: str | None = "file" if funding is not None else None
@@ -261,7 +301,19 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
 
     fetch_funding = args.fetch_funding if args.fetch_funding is not None else bool(args.live)
     if fetch_funding:
-        venue_maps, edge_notes = asyncio.run(fetch_funding_venues(symbols))
+        hl_lookback = (
+            HYPERLIQUID_DAILY_LOOKBACK_DAYS
+            if args.interval == "1d"
+            else HYPERLIQUID_DEFAULT_LOOKBACK_DAYS
+        )
+        hl_pages = HYPERLIQUID_DAILY_LIMIT_PAGES if args.interval == "1d" else 16
+        venue_maps, edge_notes = asyncio.run(
+            fetch_funding_venues(
+                symbols,
+                hyperliquid_lookback_days=hl_lookback,
+                hyperliquid_limit_pages=hl_pages,
+            )
+        )
         primary_map, primary_venue, second_map, second_venue = _pick_venues(venue_maps)
         funding_by_symbol = primary_map
         second_funding_by_symbol = second_map
@@ -315,6 +367,7 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
         second_venue=second_venue,
         history_notes=history_notes,
         edge_notes=edge_notes,
+        basis=basis,
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)

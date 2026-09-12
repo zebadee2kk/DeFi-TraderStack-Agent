@@ -398,8 +398,11 @@ OKX public funding-rate-history is typically ~90d of 8h prints.
 Hyperliquid `fundingHistory` is hourly and typically reachable here.
 Binance USDT-M is often HTTP 451; Bybit linear is often HTTP 403.
 Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars
-exist on two venues. Hedged carry does not invent basis.
-`PAPER_PROMOTE_*` stays false. Empty dual-print is success.
+exist on **each** participating venue. `--interval 1d` resamples
+funding to UTC daily sums (empty days omitted). Hedged carry does not
+invent basis (Hyperliquid funding premium is not a PIT perp−spot mid).
+There is no paper perp / hedge path. `PAPER_PROMOTE_*` stays false.
+Empty / cannot-promote is success.
 
 On the 2026-09-12 live run (catalog committed first):
 
@@ -424,6 +427,22 @@ Follow-up the same day (Hyperliquid wired as the second tape):
   UNAVAILABLE. **No new pin.**
 - `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
-See `funding-carry.md` and the 2026-09-12 status memo
-`edge-status-2026-09-12.md`.
+Follow-up the same day (daily resample / hard-gate honesty):
+
+- `traderstack-funding-carry --live --interval 1d`: Kraken 1d 720
+  (2024-09-22 → 2026-09-11 UTC). HL 19199 hourly → **801** daily
+  sums; OKX 290 8h → **97** daily sums. Dual-print. Hard gates
+  **UNAVAILABLE** (aligned 720 / 96). Basis skipped. Paper path
+  false.
+- Spot-signal dual-print passers: **0**. Informational HL top-1 is
+  the control `ma_cross_10_30` (WF excess −4.41%).
+- Modeled `carry_hedged_sign` HL WF +1.72% / HO +3.32% (eligible on
+  that tape) and clears the one-venue #96+A+B+C analog. OKX WF
+  **n/a** (97 daily prints cannot form the frozen short bar).
+  Dual-print carry passers: **0**. The 4h #110 passer does not
+  survive daily resample. **No new pin.** See
+  `funding-carry-daily.md`.
+
+See `funding-carry.md`, `funding-carry-daily.md`, and the 2026-09-12
+status memo `edge-status-2026-09-12.md`.
 

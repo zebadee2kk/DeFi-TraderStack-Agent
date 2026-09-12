@@ -18,15 +18,26 @@ Investigation (do not invent a series):
 * Splitting one OKX tape into prefix/suffix is the same venue — not
   dual-print.
 * Perp-spot basis is not on the public funding REST path and is not
-  invented. Hedged carry PnL is funding income minus two-leg fees.
+  invented. Hyperliquid ``fundingHistory.premium`` is the funding-formula
+  input, not a PIT perp−spot mid — do not treat it as basis. Hedged
+  carry PnL is funding income minus two-leg fees unless a PIT basis
+  series is supplied (skip-not-invent when missing).
+* A 4h / hourly funding tape is **not** a daily hard-gate window.
+  Daily evaluation resamples by summing UTC-day settlements and omits
+  days with no print (never zero-filled).
 
 Print policy (frozen):
 
 * Dual-print requires two **independent funding venues** (e.g. OKX and
   Hyperliquid) each covering BTC and ETH with a usable point count.
 * Absent that, the run is **single-print** and **cannot promote**.
-* #96+A+B+C hard gates need 720 aligned **daily** bars. A ~90d funding
-  overlap cannot unlock them; they are recorded UNAVAILABLE, not faked.
+* #96+A+B+C hard gates need 720 aligned **daily** bars on **each**
+  venue that participates. A ~90d OKX tape cannot unlock them after
+  daily resample; they are recorded UNAVAILABLE, not faked.
+* A Settings pin additionally requires a paper-executable path (paper
+  perp simulator and/or hedged spot+perp book). That path does not
+  exist: paper fills are Kraken spot only. Do not add a pin that
+  implies it.
 * ``PAPER_PROMOTE_*`` stays default false. No live. Empty search is
   success. This module never writes a Settings pin.
 """
@@ -69,6 +80,14 @@ DEFAULT_INTERVAL = "4h"
 ALLOWED_INTERVALS = ("4h", "1d", "1h")
 CARRY_LEGS = 2
 Z_LOOKBACK = 20
+# Paper runtime has no perp book and no funding credit/debit. A pin
+# that implied otherwise would be dishonest. Keep this False.
+PAPER_CARRY_PATH_READY = False
+MULTIWINDOW_COUNT = 3
+MULTIWINDOW_BARS = 240
+MULTIWINDOW_MIN_PASSES = 2
+FEE_STRESS_MULTIPLIER = 2.0
+MAGNITUDE_RATIO_MIN = 0.25
 
 DEFAULT_TRAIN_SIZE = 180
 DEFAULT_TEST_SIZE = 60
@@ -114,10 +133,41 @@ FUNDING_CARRY_RULES = (
     "requires two independent funding venues (e.g. OKX and Hyperliquid) each "
     "covering BTC and ETH. A second candle venue without a second funding "
     "tape is not dual-print. Same-venue prefix/suffix is not independent. "
-    "Hard gates (#96+A+B+C) need 720 aligned daily bars; a ~90d OKX tape "
-    "cannot unlock them. Absent two venues this run is SINGLE-PRINT and "
-    "cannot promote. PAPER_PROMOTE_* stays default false. No live. "
-    "Empty search is success."
+    "Hard gates (#96+A+B+C) need 720 aligned daily bars on each funding "
+    "venue; a ~90d OKX tape cannot unlock them (including after UTC-day "
+    "resample). Daily evaluation sums settlements per UTC day and omits "
+    "empty days — never zero-filled. Perp-spot basis is skipped unless a "
+    "PIT mark−index / perp-mid−spot-mid series is supplied; funding "
+    "premium and last-trade are not basis. Hedged carry is not paper-spot "
+    "executable (no paper perp simulator / hedge book). Absent two venues "
+    "this run is SINGLE-PRINT and cannot promote. A pin requires "
+    "dual-print + hard gates + PIT basis + a paper-executable path. "
+    "PAPER_PROMOTE_* stays default false. No live. Empty search is success."
+)
+
+BASIS_SKIP_NOTE = (
+    "Perp-spot basis skipped, not invented. No PIT mark−index (or perp "
+    "mid − spot mid) series was supplied. Hyperliquid fundingHistory "
+    "premium is the funding-formula input, not a PIT perp−spot mid, and "
+    "is not used. Last-trade and funding-implied basis are circular / "
+    "look-ahead. Carry PnL stays received |funding| minus two-leg fees. "
+    "Cannot promote on a basis-unaware model."
+)
+
+PAPER_EXECUTABLE_PATH_NOTE = (
+    "A paper-executable path for carry_hedged_sign does not exist. The "
+    "paper runtime is Kraken spot via paper_simulate_fills: one spot leg, "
+    "no perp book, no funding credit/debit, no hedge ledger. Promoting "
+    "this name would imply a path that is not wired. Still "
+    "TRADING_MODE=paper (no live), a paper path would require: (1) a "
+    "paper perp simulator that applies the venue funding print at each "
+    "settlement, with ledger-backed client order ids before any "
+    "simulated fill, and/or a two-leg paper hedge (spot + perp) that can "
+    "hold cash-and-carry; (2) a PIT perp−spot basis series for "
+    "mark-to-market — not invented from last-trade or from funding; "
+    "(3) dual-print + #96+A+B+C on 720 aligned daily bars on both "
+    "funding venues. None of those are true. can_promote stays false. "
+    "Do not add a Settings pin."
 )
 
 FUNDING_CARRY_CATALOG_NOTE = (
@@ -126,7 +176,8 @@ FUNDING_CARRY_CATALOG_NOTE = (
     "funding-agree overlays; hedged carry always-on plus |rate|>=1bp / "
     "3bp and |z|>=1.5; informational control ma_cross_10_30 on the same "
     "funding-overlap window. Do not grow this list after seeing PnL. "
-    "Hedged carry is not paper-spot executable."
+    "Hedged carry is not paper-spot executable and is not basis-aware "
+    "unless a PIT basis series is supplied."
 )
 
 
@@ -198,8 +249,58 @@ def choose_walkforward(
     return None
 
 
-def hard_gates_available(*, interval: str, aligned_bars: int) -> bool:
-    return interval == "1d" and aligned_bars >= HARD_GATE_MIN_DAILY_BARS
+def hard_gates_available(
+    *,
+    interval: str,
+    aligned_bars: int,
+    second_aligned_bars: int | None = None,
+) -> bool:
+    """True only when every participating print has 720 aligned daily bars.
+
+    A dual-print second venue that is shorter than 720 keeps the gates
+    UNAVAILABLE — do not unlock them on the long tape alone.
+    """
+    if interval != "1d" or aligned_bars < HARD_GATE_MIN_DAILY_BARS:
+        return False
+    return second_aligned_bars is None or second_aligned_bars >= HARD_GATE_MIN_DAILY_BARS
+
+
+def utc_day_open(ts: datetime) -> datetime:
+    return ts.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def resample_funding_to_daily(
+    series: tuple[tuple[datetime, float], ...] | None,
+) -> tuple[tuple[datetime, float], ...]:
+    """Sum settlement rates into UTC days. Days with no print are omitted."""
+    if not series:
+        return ()
+    buckets: dict[datetime, float] = {}
+    for ts, rate in series:
+        day = utc_day_open(ts)
+        buckets[day] = buckets.get(day, 0.0) + rate
+    return tuple(sorted(buckets.items()))
+
+
+def resample_funding_map(
+    mapping: dict[str, tuple[tuple[datetime, float], ...]] | None,
+) -> dict[str, tuple[tuple[datetime, float], ...]] | None:
+    if mapping is None:
+        return None
+    return {key: resample_funding_to_daily(series) for key, series in mapping.items()}
+
+
+def _resample_note(name: str, before: int, after: int) -> dict[str, str]:
+    return {
+        "name": name,
+        "status": "ok" if after else "skipped",
+        "reason": (
+            f"resampled {before} prints → {after} UTC daily sums "
+            "(empty days omitted, not zero-filled)"
+        ),
+        "source": "funding_carry.resample_daily",
+        "points": str(after),
+    }
 
 
 def slice_to_funding_overlap(
@@ -462,6 +563,52 @@ def _compound(returns: list[float]) -> float:
     return equity - 1.0
 
 
+def _hedged_carry_per_print(
+    series: tuple[tuple[datetime, float], ...],
+    *,
+    abs_threshold: float | None,
+    z_threshold: float | None,
+    fee_bps: float,
+    slippage_bps: float,
+    legs: int = CARRY_LEGS,
+    basis: tuple[tuple[datetime, float], ...] | None = None,
+) -> tuple[list[float], int, int]:
+    """Return (per-print net, flips, basis_days_applied).
+
+    Decision at print *i* uses only prints ``[:i]``. Basis PnL is applied
+    only when both the current and previous day have a PIT value — missing
+    days are skipped, not zero-filled. Short-perp / long-spot earns
+    ``prev_basis - current_basis`` while harvesting.
+    """
+    cost = legs * (fee_bps + slippage_bps) / 10_000.0
+    basis_by_ts = {utc_day_open(ts): value for ts, value in (basis or ())}
+    position = False
+    flips = 0
+    basis_days = 0
+    prev_basis: float | None = None
+    per_print: list[float] = []
+    for index, (ts, rate) in enumerate(series):
+        history = [value for _when, value in series[:index]]
+        want = _want_harvest(history, abs_threshold=abs_threshold, z_threshold=z_threshold)
+        income = 0.0
+        fee = 0.0
+        basis_pnl = 0.0
+        if want != position:
+            fee = cost
+            flips += 1
+            position = want
+        if position:
+            income = abs(rate)
+            current_basis = basis_by_ts.get(utc_day_open(ts))
+            if prev_basis is not None and current_basis is not None:
+                basis_pnl = prev_basis - current_basis
+                basis_days += 1
+            if current_basis is not None:
+                prev_basis = current_basis
+        per_print.append(income - fee + basis_pnl)
+    return per_print, flips, basis_days
+
+
 def score_hedged_carry(
     series: tuple[tuple[datetime, float], ...],
     *,
@@ -475,28 +622,23 @@ def score_hedged_carry(
     test_size: int = DEFAULT_TEST_SIZE,
     step_size: int = DEFAULT_STEP_SIZE,
     min_trades: int = 1,
+    basis: tuple[tuple[datetime, float], ...] | None = None,
 ) -> dict[str, float | int | str | None]:
     """Point-in-time hedged carry on a single funding tape.
 
     Decision at print *i* uses only prints ``[:i]`` (the current rate is
-    collected only if already in). Basis is not modeled.
+    collected only if already in). Basis is modeled only when a PIT series
+    is supplied; otherwise it is skipped, not invented.
     """
-    cost = legs * (fee_bps + slippage_bps) / 10_000.0
-    position = False
-    flips = 0
-    per_print: list[float] = []
-    for index, (_ts, rate) in enumerate(series):
-        history = [value for _when, value in series[:index]]
-        want = _want_harvest(history, abs_threshold=abs_threshold, z_threshold=z_threshold)
-        income = 0.0
-        fee = 0.0
-        if want != position:
-            fee = cost
-            flips += 1
-            position = want
-        if position:
-            income = abs(rate)
-        per_print.append(income - fee)
+    per_print, flips, basis_days = _hedged_carry_per_print(
+        series,
+        abs_threshold=abs_threshold,
+        z_threshold=z_threshold,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+        legs=legs,
+        basis=basis,
+    )
 
     if len(per_print) < 2:
         return {
@@ -551,7 +693,182 @@ def score_hedged_carry(
         "total_holdout_trades": min_trades if holdout else 0,
         "full_sample_total_return": _compound(per_print),
         "fold_count": len(fold_totals),
+        "basis_days_applied": basis_days,
+        "basis_modeled": bool(basis) and basis_days > 0,
     }
+
+
+def _window_wf_mean(
+    per_print: list[float],
+    *,
+    train_size: int = DEFAULT_TRAIN_SIZE,
+    test_size: int = DEFAULT_TEST_SIZE,
+    step_size: int = DEFAULT_STEP_SIZE,
+) -> float | None:
+    sizes = choose_walkforward(
+        len(per_print),
+        train_size=train_size,
+        test_size=test_size,
+        step_size=step_size,
+        warmup=0,
+    )
+    if sizes is None:
+        return None
+    train, test, step, _warmup = sizes
+    fold_totals: list[float] = []
+    start = 0
+    while True:
+        test_start = start + train
+        test_end = test_start + test
+        if test_end > len(per_print):
+            break
+        fold_totals.append(_compound(per_print[test_start:test_end]))
+        start += step
+    if not fold_totals:
+        return None
+    return sum(fold_totals) / len(fold_totals)
+
+
+def _asset_sign(metrics: dict[str, float | int | str | None], key: str) -> bool:
+    value = metrics.get(key)
+    return isinstance(value, float) and value > 0
+
+
+class CarryHardGates(BaseModel):
+    available: bool
+    note: str
+    daily_funding_points: int = 0
+    eligible_96: bool | None = None
+    gate_a: bool | None = None
+    gate_b: bool | None = None
+    gate_c: bool | None = None
+    combined: bool = False
+    magnitude_ratio: float | None = None
+    multiwindow_passes: int | None = None
+
+
+def evaluate_carry_hard_gates(
+    funding_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None,
+    *,
+    fee_bps: float,
+    slippage_bps: float,
+    holdout_fraction: float,
+    candidate_id: str = "carry_hedged_sign",
+    abs_threshold: float | None = None,
+    z_threshold: float | None = None,
+    basis: tuple[tuple[datetime, float], ...] | None = None,
+    required: tuple[str, ...] = REQUIRED_SYMBOLS,
+) -> CarryHardGates:
+    """#96+A+B+C analog on a daily resampled carry tape. Fail closed."""
+    if not funding_usable(funding_by_symbol=funding_by_symbol, required=required):
+        return CarryHardGates(
+            available=False,
+            note="UNAVAILABLE: no usable BTC+ETH funding series",
+        )
+    assert funding_by_symbol is not None
+    lengths = [len(_lookup_series(funding_by_symbol, symbol) or ()) for symbol in required]
+    min_points = min(lengths) if lengths else 0
+    if min_points < HARD_GATE_MIN_DAILY_BARS:
+        return CarryHardGates(
+            available=False,
+            note=(
+                f"UNAVAILABLE: need >={HARD_GATE_MIN_DAILY_BARS} daily funding "
+                f"prints on BTC and ETH; shortest tape has {min_points}"
+            ),
+            daily_funding_points=min_points,
+        )
+
+    per_asset_base: dict[str, dict[str, float | int | str | None]] = {}
+    per_asset_stress: dict[str, dict[str, float | int | str | None]] = {}
+    per_print_by_symbol: dict[str, list[float]] = {}
+    for symbol in required:
+        series = _lookup_series(funding_by_symbol, symbol)
+        if series is None:
+            continue
+        per_asset_base[symbol] = score_hedged_carry(
+            series,
+            abs_threshold=abs_threshold,
+            z_threshold=z_threshold,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+            holdout_fraction=holdout_fraction,
+            basis=basis,
+        )
+        per_asset_stress[symbol] = score_hedged_carry(
+            series,
+            abs_threshold=abs_threshold,
+            z_threshold=z_threshold,
+            fee_bps=fee_bps * FEE_STRESS_MULTIPLIER,
+            slippage_bps=slippage_bps * FEE_STRESS_MULTIPLIER,
+            holdout_fraction=holdout_fraction,
+            basis=basis,
+        )
+        prints, _flips, _basis_days = _hedged_carry_per_print(
+            series,
+            abs_threshold=abs_threshold,
+            z_threshold=z_threshold,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+            basis=basis,
+        )
+        per_print_by_symbol[symbol] = prints
+
+    btc = per_asset_base.get("BTC/USD") or {}
+    eth = per_asset_base.get("ETH/USD") or {}
+    eligible_96 = all(
+        _asset_sign(btc, key) and _asset_sign(eth, key)
+        for key in ("mean_wf_total_return", "mean_holdout_total_return")
+    )
+    btc_ho = btc.get("mean_holdout_total_return")
+    eth_ho = eth.get("mean_holdout_total_return")
+    ratio: float | None = None
+    if isinstance(btc_ho, float) and isinstance(eth_ho, float) and btc_ho > 0 and eth_ho > 0:
+        larger = max(btc_ho, eth_ho)
+        ratio = min(btc_ho, eth_ho) / larger if larger > 0 else None
+    gate_a = ratio is not None and ratio >= MAGNITUDE_RATIO_MIN
+
+    window_passes = 0
+    window_notes: list[str] = []
+    for offset in range(MULTIWINDOW_COUNT):
+        start = -(MULTIWINDOW_COUNT - offset) * MULTIWINDOW_BARS
+        stop = start + MULTIWINDOW_BARS
+        end: int | None = None if stop == 0 else stop
+        btc_prints = per_print_by_symbol.get("BTC/USD") or []
+        eth_prints = per_print_by_symbol.get("ETH/USD") or []
+        btc_slice = btc_prints[start:end]
+        eth_slice = eth_prints[start:end]
+        btc_wf = _window_wf_mean(btc_slice)
+        eth_wf = _window_wf_mean(eth_slice)
+        passed = btc_wf is not None and eth_wf is not None and btc_wf > 0 and eth_wf > 0
+        if passed:
+            window_passes += 1
+        window_notes.append(f"w{offset + 1}: BTC={btc_wf} ETH={eth_wf} pass={str(passed).lower()}")
+    gate_b = window_passes >= MULTIWINDOW_MIN_PASSES
+
+    btc_stress = per_asset_stress.get("BTC/USD") or {}
+    eth_stress = per_asset_stress.get("ETH/USD") or {}
+    gate_c = all(
+        _asset_sign(btc_stress, key) and _asset_sign(eth_stress, key)
+        for key in ("mean_wf_total_return", "mean_holdout_total_return")
+    )
+    combined = eligible_96 and gate_a and gate_b and gate_c
+    return CarryHardGates(
+        available=True,
+        note=(
+            f"{candidate_id} daily hard gates: #96={str(eligible_96).lower()} "
+            f"A={str(gate_a).lower()} (ratio={ratio}) "
+            f"B={str(gate_b).lower()} ({window_passes}/{MULTIWINDOW_COUNT}) "
+            f"C={str(gate_c).lower()} combined={str(combined).lower()}. " + "; ".join(window_notes)
+        ),
+        daily_funding_points=min_points,
+        eligible_96=eligible_96,
+        gate_a=gate_a,
+        gate_b=gate_b,
+        gate_c=gate_c,
+        combined=combined,
+        magnitude_ratio=ratio,
+        multiwindow_passes=window_passes,
+    )
 
 
 class CarryCandidateResult(BaseModel):
@@ -559,6 +876,7 @@ class CarryCandidateResult(BaseModel):
     family: str = "carry"
     label: str
     executable_on_paper_spot: bool = False
+    basis_modeled: bool = False
     per_asset: dict[str, dict[str, float | int | str | None]] = Field(default_factory=dict)
     mean_wf_total_return: float | None = None
     mean_wf_excess_return: float | None = None
@@ -577,8 +895,17 @@ class FundingCarryReport(BaseModel):
     print_kind: Literal["single_print", "dual_print"]
     primary_venue: str | None = None
     second_venue: str | None = None
+    funding_resampled_to: str | None = None
+    primary_aligned_bars: int = 0
+    second_aligned_bars: int = 0
     hard_gates_available: bool
     hard_gates_note: str
+    primary_carry_hard_gates: CarryHardGates | None = None
+    second_carry_hard_gates: CarryHardGates | None = None
+    basis_status: Literal["ok", "skipped"] = "skipped"
+    basis_note: str = BASIS_SKIP_NOTE
+    paper_executable_path: str = PAPER_EXECUTABLE_PATH_NOTE
+    paper_path_ready: bool = False
     wf_adapted: bool
     wf_train_size: int | None = None
     wf_test_size: int | None = None
@@ -648,6 +975,7 @@ def _score_carry_catalog(
     step_size: int,
     min_trades: int,
     required: tuple[str, ...] = REQUIRED_SYMBOLS,
+    basis: tuple[tuple[datetime, float], ...] | None = None,
 ) -> list[CarryCandidateResult]:
     rows: list[CarryCandidateResult] = []
     for candidate_id, label, abs_threshold, z_threshold in CARRY_CATALOG:
@@ -668,6 +996,7 @@ def _score_carry_catalog(
                 test_size=test_size,
                 step_size=step_size,
                 min_trades=min_trades,
+                basis=basis,
             )
         wf_total: list[float] = []
         ho_total: list[float] = []
@@ -706,6 +1035,8 @@ def _score_carry_catalog(
                 rankable=mean_wf is not None,
                 eligible=not reasons,
                 ineligible_reasons=reasons,
+                basis_modeled=bool(basis)
+                and any(metrics.get("basis_modeled") is True for metrics in per_asset.values()),
             )
         )
     return rows
@@ -734,9 +1065,39 @@ def run_funding_carry(
     history_notes: list[dict[str, str]] | None = None,
     edge_notes: list[dict[str, str]] | None = None,
     now: datetime | None = None,
+    basis: tuple[tuple[datetime, float], ...] | None = None,
 ) -> FundingCarryReport:
     if not histories:
         raise ValueError("no candle histories provided")
+
+    notes = list(edge_notes or [])
+    resampled_to: str | None = None
+    if interval == "1d":
+        resampled_to = "1d"
+        if funding is not None:
+            before = len(funding)
+            funding = resample_funding_to_daily(funding)
+            notes.append(_resample_note("funding", before, len(funding)))
+        if funding_by_symbol is not None:
+            resampled_primary: dict[str, tuple[tuple[datetime, float], ...]] = {}
+            for key, series in funding_by_symbol.items():
+                resampled_primary[key] = resample_funding_to_daily(series)
+                notes.append(
+                    _resample_note(f"funding:{key}", len(series), len(resampled_primary[key]))
+                )
+            funding_by_symbol = resampled_primary
+        if second_funding is not None:
+            before = len(second_funding)
+            second_funding = resample_funding_to_daily(second_funding)
+            notes.append(_resample_note("second_funding", before, len(second_funding)))
+        if second_funding_by_symbol is not None:
+            resampled_second: dict[str, tuple[tuple[datetime, float], ...]] = {}
+            for key, series in second_funding_by_symbol.items():
+                resampled_second[key] = resample_funding_to_daily(series)
+                notes.append(
+                    _resample_note(f"second_funding:{key}", len(series), len(resampled_second[key]))
+                )
+            second_funding_by_symbol = resampled_second
 
     have_primary = funding_usable(funding, funding_by_symbol)
     have_second = funding_usable(second_funding, second_funding_by_symbol)
@@ -750,7 +1111,21 @@ def run_funding_carry(
         slice_histories_to_funding(histories, funding_by_symbol, funding) if have_primary else {}
     )
     aligned_bars = min((len(item) for item in sliced.values()), default=0)
-    gates_ok = hard_gates_available(interval=interval, aligned_bars=aligned_bars)
+    second_sliced = (
+        slice_histories_to_funding(
+            second_histories or histories,
+            second_funding_by_symbol,
+            second_funding,
+        )
+        if have_second
+        else {}
+    )
+    second_aligned_bars = min((len(item) for item in second_sliced.values()), default=0)
+    gates_ok = hard_gates_available(
+        interval=interval,
+        aligned_bars=aligned_bars,
+        second_aligned_bars=second_aligned_bars if have_second else None,
+    )
     n_research = int(aligned_bars * (1.0 - holdout_fraction)) if aligned_bars else 0
     sizes = choose_walkforward(
         n_research,
@@ -789,7 +1164,7 @@ def run_funding_carry(
                 min_trades=min_trades,
                 candidates=catalog,
                 history_notes=history_notes,
-                edge_notes=edge_notes,
+                edge_notes=notes,
                 now=now,
                 include_feature_candidates=False,
             )
@@ -808,6 +1183,7 @@ def run_funding_carry(
             test_size=use_test,
             step_size=use_step,
             min_trades=min_trades,
+            basis=basis,
         )
         if have_primary
         else []
@@ -853,6 +1229,7 @@ def run_funding_carry(
             test_size=use_test,
             step_size=use_step,
             min_trades=min_trades,
+            basis=basis,
         )
         primary_eligible = {
             row.candidate_id
@@ -872,7 +1249,60 @@ def run_funding_carry(
         funding=funding if have_primary else None,
         funding_by_symbol=funding_by_symbol if have_primary else None,
     )
+    basis_status: Literal["ok", "skipped"] = "ok" if basis else "skipped"
+    basis_note = (
+        "PIT basis series supplied and applied only on days where both the "
+        "current and previous print have a value (missing days skipped)."
+        if basis
+        else BASIS_SKIP_NOTE
+    )
+    if basis_status == "skipped":
+        notes.append(
+            {
+                "name": "perp_spot_basis",
+                "status": "skipped",
+                "reason": BASIS_SKIP_NOTE,
+                "source": "funding_carry.basis",
+                "points": "0",
+            }
+        )
+    primary_carry_gates = (
+        evaluate_carry_hard_gates(
+            funding_by_symbol,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+            holdout_fraction=holdout_fraction,
+            basis=basis,
+        )
+        if have_primary and interval == "1d"
+        else None
+    )
+    second_carry_gates = (
+        evaluate_carry_hard_gates(
+            second_funding_by_symbol,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+            holdout_fraction=holdout_fraction,
+            basis=basis,
+        )
+        if have_second and interval == "1d"
+        else None
+    )
+    paper_path_ready = PAPER_CARRY_PATH_READY
+    can_promote = (
+        print_kind == PRINT_DUAL
+        and gates_ok
+        and basis_status == "ok"
+        and paper_path_ready
+        and bool(dual_passers)
+    )
+
     honesty = FUNDING_CARRY_RULES
+    if resampled_to:
+        honesty += (
+            f" Funding tapes were resampled to UTC {resampled_to} sums "
+            "(empty days omitted, not zero-filled)."
+        )
     if print_kind == PRINT_SINGLE:
         honesty += (
             " This run is labeled SINGLE-PRINT and cannot promote, even if a "
@@ -883,8 +1313,20 @@ def run_funding_carry(
     if not gates_ok:
         honesty += (
             " Hard gates (#96+A+B+C) are UNAVAILABLE on this overlap "
-            f"(interval={interval}, aligned_bars={aligned_bars}; need 1d and "
-            f">={HARD_GATE_MIN_DAILY_BARS})."
+            f"(interval={interval}, primary_aligned_bars={aligned_bars}, "
+            f"second_aligned_bars={second_aligned_bars if have_second else 'n/a'}; "
+            f"need 1d and >={HARD_GATE_MIN_DAILY_BARS} on each participating venue)."
+        )
+    if primary_carry_gates is not None:
+        honesty += f" Primary carry hard gates: {primary_carry_gates.note}."
+    if second_carry_gates is not None:
+        honesty += f" Second carry hard gates: {second_carry_gates.note}."
+    if basis_status == "skipped":
+        honesty += " Basis skipped (no PIT series)."
+    if not paper_path_ready:
+        honesty += (
+            " Paper-executable path is missing (Kraken spot fills only; "
+            "no paper perp / hedge book). Do not add a Settings pin."
         )
     if wf_adapted:
         honesty += (
@@ -897,6 +1339,22 @@ def run_funding_carry(
             f" Dual-print eligible names ({', '.join(dual_passers)}) are "
             "informational only; leave every PAPER_PROMOTE_* false."
         )
+    if not can_promote:
+        honesty += (
+            " can_promote stays false unless dual-print AND hard gates AND "
+            "PIT basis AND a paper-executable path all clear."
+        )
+
+    hard_gates_note = (
+        "available"
+        if gates_ok
+        else (
+            f"UNAVAILABLE: need interval=1d and >={HARD_GATE_MIN_DAILY_BARS} "
+            f"aligned bars on each participating venue; got interval={interval}, "
+            f"primary_aligned_bars={aligned_bars}"
+            + (f", second_aligned_bars={second_aligned_bars}" if have_second else "")
+        )
+    )
 
     generated_at = search.generated_at if search is not None else (now or generated)
     selected = search.selected_candidate_id if search is not None else None
@@ -906,21 +1364,23 @@ def run_funding_carry(
         print_kind=print_kind,
         primary_venue=primary_venue,
         second_venue=second_venue if have_second else None,
+        funding_resampled_to=resampled_to,
+        primary_aligned_bars=aligned_bars,
+        second_aligned_bars=second_aligned_bars if have_second else 0,
         hard_gates_available=gates_ok,
-        hard_gates_note=(
-            "available"
-            if gates_ok
-            else (
-                f"UNAVAILABLE: need interval=1d and >={HARD_GATE_MIN_DAILY_BARS} "
-                f"aligned bars; got interval={interval}, aligned_bars={aligned_bars}"
-            )
-        ),
+        hard_gates_note=hard_gates_note,
+        primary_carry_hard_gates=primary_carry_gates,
+        second_carry_hard_gates=second_carry_gates,
+        basis_status=basis_status,
+        basis_note=basis_note,
+        paper_executable_path=PAPER_EXECUTABLE_PATH_NOTE,
+        paper_path_ready=paper_path_ready,
         wf_adapted=wf_adapted,
         wf_train_size=use_train if have_primary else None,
         wf_test_size=use_test if have_primary else None,
         wf_step_size=use_step if have_primary else None,
         wf_warmup=use_warmup if have_primary else None,
-        can_promote=False,
+        can_promote=can_promote,
         honesty=honesty,
         catalog_note=FUNDING_CARRY_CATALOG_NOTE,
         print_rules=FUNDING_CARRY_RULES,
@@ -928,7 +1388,7 @@ def run_funding_carry(
         scored_ids=scored_ids,
         control_ids=sorted(CONTROL_IDS),
         skipped_feature_families=skipped,
-        edge_notes=list(edge_notes or []),
+        edge_notes=notes,
         history_notes=list(history_notes or []),
         search=search,
         carry=carry_rows,
@@ -969,6 +1429,8 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
             f"second_venue=`{report.second_venue or 'none'}`; "
             f"hard_gates_available=`{str(report.hard_gates_available).lower()}`; "
             f"can_promote=`{str(report.can_promote).lower()}`; "
+            f"basis_status=`{report.basis_status}`; "
+            f"paper_path_ready=`{str(report.paper_path_ready).lower()}`; "
             f"`keep_flag_false={str(report.keep_flag_false).lower()}`."
         ),
         (
@@ -978,7 +1440,12 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
         (
             f"Costs: fee={report.fee_bps:g} bps + slippage={report.slippage_bps:g} bps "
             f"(spot overlays); hedged carry pays {report.carry_legs} legs × "
-            f"(fee+slip) on each flip. Basis is not modeled."
+            f"(fee+slip) on each flip. "
+            + (
+                "PIT basis is modeled (skip missing days)."
+                if report.basis_status == "ok"
+                else "Basis is skipped, not invented."
+            )
         ),
         (
             "Walk-forward: "
@@ -992,6 +1459,19 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
             + "."
         ),
         f"Hard gates: {report.hard_gates_note}.",
+        (
+            "Funding resample: "
+            + (
+                f"UTC `{report.funding_resampled_to}` sums; empty days omitted."
+                if report.funding_resampled_to
+                else "not resampled (native print cadence)."
+            )
+        ),
+        (
+            f"Aligned bars: primary={report.primary_aligned_bars}"
+            + (f", second={report.second_aligned_bars}" if report.second_venue else "")
+            + "."
+        ),
         "",
         "## What this does / does not claim",
         "",
@@ -1002,6 +1482,21 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
             "not a reason to flip `PAPER_PROMOTE_*` or `TRADING_MODE`. "
             "Hedged carry is **not** executable on the Kraken paper-spot path."
         ),
+        "",
+        "## Basis (skip-not-invent)",
+        "",
+        f"Status: **{report.basis_status}**.",
+        report.basis_note,
+        "",
+        "## Paper-executable path",
+        "",
+        (
+            f"Ready: **{str(report.paper_path_ready).lower()}**. "
+            "A Settings pin is not added unless this is true **and** "
+            "dual-print **and** hard gates **and** PIT basis all clear."
+        ),
+        "",
+        report.paper_executable_path,
         "",
         "## Honesty / pre-registered rules",
         "",
@@ -1114,7 +1609,8 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
                 "PnL = received |funding| while harvesting, minus two-leg "
                 "(fee+slippage) on each flip. Decision at print *i* uses only "
                 "prints before *i*. Excess is versus cash (0), not versus spot "
-                "buy-and-hold. Not paper-spot executable."
+                "buy-and-hold. Not paper-spot executable. Basis is included "
+                "only when a PIT series was supplied."
             ),
             "",
             "| id | WF total | holdout total | full-sample | eligible |",
@@ -1191,6 +1687,38 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
                     f"{_pct(carry_row.full_sample_total_return)} | "
                     f"{'yes' if carry_row.eligible else 'no'} |"
                 )
+
+    if report.primary_carry_hard_gates is not None or report.second_carry_hard_gates is not None:
+        lines.extend(
+            [
+                "",
+                "## Carry hard gates (#96+A+B+C analog on daily funding)",
+                "",
+                (
+                    "Evaluated only on a UTC-daily resampled tape. UNAVAILABLE "
+                    "when a venue has fewer than 720 daily prints. Combined "
+                    "requires #96 (BTC and ETH WF total > 0 and holdout > 0), "
+                    "A (holdout magnitude ratio >= 0.25), B (2 of 3 recent "
+                    "240-day windows with BTC and ETH WF total > 0), and C "
+                    "(2× fees still clear #96). This is informational and "
+                    "cannot unlock a Settings pin without PIT basis and a "
+                    "paper-executable path."
+                ),
+                "",
+            ]
+        )
+        if report.primary_carry_hard_gates is not None:
+            gates = report.primary_carry_hard_gates
+            lines.append(
+                f"- Primary (`{report.primary_venue or 'unknown'}`): "
+                f"available=`{str(gates.available).lower()}`; {gates.note}"
+            )
+        if report.second_carry_hard_gates is not None:
+            gates = report.second_carry_hard_gates
+            lines.append(
+                f"- Second (`{report.second_venue or 'unknown'}`): "
+                f"available=`{str(gates.available).lower()}`; {gates.note}"
+            )
 
     lines.extend(["", "## Dual-print passers", ""])
     if report.print_kind != PRINT_DUAL:

@@ -243,10 +243,13 @@ live tape is empty (no PIT mid + official station high). Default
 `docs/artifacts/strategy-search/polymarket-weather-eval.md`.
 `traderstack-funding-carry` scores a frozen funding-z / carry catalog
 on BTC+ETH aligned to public funding-rate history (OKX + Hyperliquid
-when reachable; Binance/Bybit skipped if geo-blocked). One venue is
-**single-print** and **cannot promote**. Empty dual-print is success.
-Default `PAPER_PROMOTE_*` stays false. Reports:
+when reachable; Binance/Bybit skipped if geo-blocked). `--interval 1d`
+resamples funding to UTC daily sums so #96+A+B+C can be evaluated or
+recorded UNAVAILABLE. Basis is skipped without a PIT series. One venue
+is **single-print** and **cannot promote**. Empty / cannot-promote is
+success. Default `PAPER_PROMOTE_*` stays false. Reports:
 `docs/artifacts/strategy-search/funding-carry.md`,
+`docs/artifacts/strategy-search/funding-carry-daily.md`,
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default)
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but

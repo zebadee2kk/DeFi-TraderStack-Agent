@@ -56,9 +56,11 @@ it is relied upon.
   HTTP 451). Bybit `GET /v5/market/funding/history` is often HTTP 403
   (CloudFront country block) from this environment. These are
   skip-not-invent inputs for `traderstack-funding-carry`. One venue /
-  one history length is single-print and cannot promote. Perp-spot
-  basis is not on those endpoints and must not be invented. Deribit
-  restates 8h interest every hour — not wired (would invent 8× carry).
+  one history length is single-print and cannot promote. Daily
+  evaluation sums settlements per UTC day and omits empty days.
+  Perp-spot basis is not on those endpoints and must not be invented
+  from last-trade or from `fundingHistory.premium`. Deribit restates
+  8h interest every hour — not wired (would invent 8× carry).
 
 ## Robinhood Chain
 

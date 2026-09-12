@@ -149,6 +149,8 @@ def test_funding_carry_is_report_only() -> None:
     assert "PAPER_PROMOTE_*" in item.detail
     assert "single-print cannot promote" in item.detail
     assert "Hyperliquid" in item.detail
+    assert "1d resamples" in item.detail
+    assert "paper path" in item.detail
 
 
 def test_promote_without_report_is_unsafe() -> None:

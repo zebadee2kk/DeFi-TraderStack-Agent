@@ -724,14 +724,21 @@ hedged cash-and-carry on BTC+ETH.
   and recorded as skips when geo-blocked.
 - Otherwise the run is labeled **single-print** and **cannot promote**.
 - OKX public funding-rate-history is typically ~90d of 8h prints.
-  Hyperliquid `fundingHistory` is hourly and typically reachable.
-  Hard gates (#96+A+B+C) need 720 aligned daily bars and stay
-  UNAVAILABLE on a short overlap — they are not faked.
+  Hyperliquid `fundingHistory` is hourly and typically reachable
+  (daily runs request ~800d so a Kraken 720-bar daily window can be
+  covered on that one tape). Hard gates (#96+A+B+C) need 720 aligned
+  **daily** bars on **each** participating venue and stay UNAVAILABLE
+  on a short overlap — they are not faked. `--interval 1d` resamples
+  funding to UTC daily sums (empty days omitted, never zero-filled).
 - Hedged carry PnL is received |funding| minus two-leg fees. Perp-spot
-  basis is not invented. That family is not paper-spot executable.
+  basis is skipped unless a PIT mark−index / perp-mid−spot-mid series
+  is supplied. Hyperliquid `fundingHistory.premium` is not basis.
+  That family is not paper-spot executable (no paper perp simulator
+  or hedge book). A Settings pin requires dual-print + hard gates +
+  PIT basis + a paper-executable path.
 - This command never flips `PAPER_PROMOTE_*` and does not add a new
-  pin unless a committed report names a dual-print passer (default
-  false if added).
+  pin unless those four are all true (default false if a pin is ever
+  added). Empty / cannot-promote is success.
 
 ```bash
 .venv/bin/traderstack-funding-carry --live
@@ -742,8 +749,9 @@ hedged cash-and-carry on BTC+ETH.
   --interval 1h
 ```
 
-See `docs/artifacts/strategy-search/funding-carry.md` and the
-2026-09-12 status memo
+See `docs/artifacts/strategy-search/funding-carry.md` (4h dual-print),
+`docs/artifacts/strategy-search/funding-carry-daily.md` (daily
+resample / hard-gate print), and the 2026-09-12 status memo
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
