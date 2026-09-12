@@ -88,9 +88,9 @@ def evaluate_position_exits(
         return None
     if mark_price_usd <= 0 or position.quantity <= 0:
         return None
-    exposure = (
-        position.exposure_usd if position.exposure_usd > 0 else (position.quantity * mark_price_usd)
-    )
+    # Size at the live mark so the planner's notional/price conversion
+    # cannot invent more quantity than is held.
+    exposure = position.quantity * mark_price_usd
     side = reducing_side(exposure)
     if side is None or exposure <= 0:
         return None

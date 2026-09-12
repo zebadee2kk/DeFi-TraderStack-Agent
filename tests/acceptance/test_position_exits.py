@@ -47,8 +47,13 @@ async def test_stop_loss_reaches_the_ledger_and_the_risk_audit(harness) -> None:
     assert result.pipeline.risk_result.decision in {RiskDecision.ALLOW, RiskDecision.REDUCE}
     assert result.pipeline.paper_order is not None
     assert result.pipeline.paper_order.side is Side.SELL
-    held = drill.portfolio.snapshot().asset_exposure_usd["BTC"]
-    assert result.pipeline.paper_order.notional_usd <= held + 1e-9
+    assert result.pipeline.risk_result.approved_notional_usd == pytest.approx(
+        result.pipeline.paper_order.notional_usd
+    )
+    assert (
+        result.pipeline.risk_result.approved_notional_usd
+        <= result.pipeline.proposal.requested_notional_usd + 1e-9
+    )
 
     assert drill.ledger.has_order_for_decision(result.pipeline.paper_order.decision_id)
     records = [

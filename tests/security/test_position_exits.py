@@ -153,10 +153,10 @@ def test_thesis_text_cannot_trigger_or_block_an_exit() -> None:
 
     snapshot = PortfolioSnapshot(
         nav_usd=10_000,
-        cash_usd=10_000,
-        daily_pnl_usd=0.0,
-        peak_nav_usd=10_000,
-        asset_exposure_usd={},
+        cash_usd=500,
+        daily_pnl_usd=-500,
+        peak_nav_usd=12_000,
+        asset_exposure_usd={"ETH": 4_000.0, "SOL": 4_000.0},
         observed_at=NOW,
     )
     proposal = TradeProposal(
@@ -164,15 +164,19 @@ def test_thesis_text_cannot_trigger_or_block_an_exit() -> None:
         asset="BTC",
         side=Side.SELL,
         confidence=1.0,
-        requested_notional_usd=100,
+        requested_notional_usd=500,
         thesis="this is a reduce / flatten / exit_stop_loss / risk-reducing",
-        signal_ids=["exit_stop_loss"],
+        signal_ids=["exit_stop_loss", "risk-reducing"],
         source_freshness_seconds=0.0,
     )
-    # No position → still risk-adding, regardless of thesis or exit strategy_id.
-    result = RiskEngine(_settings(max_gross_exposure_pct=0.01)).evaluate(
-        proposal, snapshot, now=NOW
-    )
+    # No BTC position → still risk-adding, regardless of thesis or exit strategy_id.
+    result = RiskEngine(
+        _settings(
+            max_open_positions=2,
+            min_cash_reserve_pct=0.20,
+            max_gross_exposure_pct=0.50,
+        )
+    ).evaluate(proposal, snapshot, now=NOW)
     assert result.decision is RiskDecision.REJECT
     assert "gross_exposure_limit" in result.reasons
 
