@@ -263,3 +263,26 @@ On the 2026-09-12 run (primary Kraken first bar 2024-09-22, last
 
 See `ema-9-21-adx15-second-print.md`.
 
+## Dual-print search (`traderstack-dual-print-search`)
+
+#102 failed the Binance.US older-720 for every #99 combined-passer, and
+that print could not enter a promotion average because a multi-venue
+bar had not been pre-registered. This command freezes the dual-print
+bar **before** the pull:
+
+| print | rule | enters ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | #96+A+B+C; rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same #102 slice; must combined-PASS | no (gate only) |
+
+Catalog is a frozen superset of the #99 grid (K=65 core / 70 with BTC
+overlay): more EMA/ADX, SMA100/200 risk-off, dual-mom, dip+vol, and
+candle-only vol-regime wrappers. Liquidation / funding / OI stay
+skipped on public Spot OHLC. A Kraken-only combined-passer cannot
+promote. Empty dual-print set is success.
+`PAPER_PROMOTE_*` stays false. No new pin unless a committed report
+names a passer (default false if added).
+
+See `dual-print-search.md` (written by the live run after this catalog
+is committed).
+

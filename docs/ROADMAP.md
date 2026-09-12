@@ -66,7 +66,11 @@ documented pin defaults false.
 WF maxDD vs 0.30, multi-window) without flipping the pin.
 `traderstack-second-print` scores a pre-registered older Binance Spot
 daily 720 (report-only) after documenting that Kraken public OHLC
-cannot unlock a second 720. **Freqtrade
+cannot unlock a second 720.
+`traderstack-dual-print-search` expands the daily catalog and
+pre-registers the dual-print bar (Kraken primary combined **and**
+Binance.US older-720 combined); ranking is among dual-print passers.
+An empty set is success. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.
