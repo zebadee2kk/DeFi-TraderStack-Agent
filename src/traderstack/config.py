@@ -162,6 +162,14 @@ class Settings(BaseSettings):
     pretrade_fee_bps: float = Field(default=10.0, ge=0)
     pretrade_slippage_bps: float = Field(default=5.0, ge=0)
 
+    # --- paper research mode ---
+    # Documented paper default. When TRADING_MODE=paper, the pre-trade ensemble
+    # includes a candle-only baseline voter so a dry-run can reach an
+    # intentional risk decision from Kraken OHLC alone (empty intel, no Crucix,
+    # no edge fields). Live/shadow ignore this flag — see paper_research_active.
+    # Does not bypass RiskEngine, the kill switch, or raise notionals.
+    paper_research_mode: bool = True
+
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue
     # orders/fills and NAV on this interval; a failed pass or NAV drift beyond
@@ -205,3 +213,28 @@ class Settings(BaseSettings):
     @property
     def assets(self) -> tuple[str, ...]:
         return tuple(x.strip().upper() for x in self.mvp_assets.split(",") if x.strip())
+
+    # --- paper research mode ---
+    def _secret_configured(self, value: SecretStr | None) -> bool:
+        return value is not None and bool(value.get_secret_value().strip())
+
+    @property
+    def optional_intelligence_configured(self) -> bool:
+        """True when at least one optional intel/edge provider has usable credentials.
+
+        Crucix and other unset edge slots are treated the same as a missing key:
+        they do not count. Used only to decide the paper-research min-voter
+        rule; it never feeds the risk engine.
+        """
+        return (
+            (self._secret_configured(self.dune_api_key) and bool(self.dune_query_ids.strip()))
+            or self._secret_configured(self.lunarcrush_api_key)
+            or self._secret_configured(self.cryptopanic_api_key)
+            or self._secret_configured(self.perplexity_api_key)
+            or self._secret_configured(self.altfins_api_key)
+        )
+
+    @property
+    def paper_research_active(self) -> bool:
+        """Paper-research looseness applies only on the paper path."""
+        return self.trading_mode == "paper" and self.paper_research_mode

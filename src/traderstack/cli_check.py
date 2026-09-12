@@ -106,6 +106,38 @@ def build_report(settings: Settings) -> ConfigReport:
             "risk engine's hard limits still apply, but this reduces defense in depth."
         )
 
+    # --- paper research mode ---
+    if settings.paper_research_active:
+        min_voters = 1 if not settings.optional_intelligence_configured else 2
+        items.append(
+            CheckItem(
+                "Paper research mode",
+                "active",
+                f"candle-only baseline voter; min agreeing strategies={min_voters}",
+            )
+        )
+    elif settings.paper_research_mode and settings.trading_mode != "paper":
+        items.append(
+            CheckItem(
+                "Paper research mode",
+                "ignored",
+                f"PAPER_RESEARCH_MODE is paper-only; TRADING_MODE={settings.trading_mode}",
+            )
+        )
+        warnings.append(
+            "PAPER_RESEARCH_MODE=true is ignored unless TRADING_MODE=paper. "
+            "Live/shadow keep the two-voter candle ensemble (see docs/RUNBOOK.md, "
+            "'Paper research mode and strategy consensus')."
+        )
+    else:
+        items.append(
+            CheckItem(
+                "Paper research mode",
+                "off",
+                "default two-voter candle ensemble; no paper-research baseline",
+            )
+        )
+
     # --- Intelligence providers --------------------------------------------------------
     intelligence_providers = (
         ("Dune (on-chain)", settings.dune_api_key, bool(settings.dune_query_ids.strip())),

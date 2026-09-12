@@ -137,24 +137,95 @@ class MeanReversionStrategy:
 
 
 @dataclass(frozen=True)
+class PaperResearchStrategy:
+    """Candle-only baseline voter used in paper research mode.
+
+    Optional intel (on-chain, narrative, altFINS / other edge fields, Crucix)
+    is intentionally unread. The strategy takes the short-vs-long moving-average
+    side when candles are healthy (enough history, positive prices) and the
+    averages are not identical. It is regime-agnostic so it can pair with the
+    trend/momentum voters that the default ensemble otherwise mutually excludes
+    by regime, or stand alone when ``min_agreeing`` is 1.
+
+    Live/shadow ensembles must leave this unset. See
+    ``docs/RUNBOOK.md`` ("Paper research mode and strategy consensus").
+    """
+
+    strategy_id: str = "paper_research_baseline_v1"
+    short_window: int = 10
+    long_window: int = 30
+    # 10 bps of MA separation is enough to refuse a perfectly flat book while
+    # still firing on typical Kraken 1h crypto drift that misses the 2%
+    # 12-bar momentum bar.
+    minimum_separation: float = 0.001
+
+    def evaluate(self, candles: tuple[Candle, ...], regime: Regime) -> StrategySignal:
+        required = max(self.short_window, self.long_window)
+        if len(candles) < required:
+            raise ValueError("insufficient candles for paper research baseline")
+        short = moving_average(candles, self.short_window)
+        long = moving_average(candles, self.long_window)
+        if short <= 0 or long <= 0:
+            return StrategySignal(
+                strategy_id=self.strategy_id,
+                symbol=candles[-1].symbol,
+                side=None,
+                score=0.0,
+                confidence=0.0,
+                regime=regime,
+                rationale="unhealthy candle prices (non-positive moving average)",
+            )
+        separation = short / long - 1.0
+        side: Side | None = None
+        if separation >= self.minimum_separation:
+            side = Side.BUY
+        elif separation <= -self.minimum_separation:
+            side = Side.SELL
+        confidence = min(abs(separation) / max(self.minimum_separation * 2, 1e-9), 1.0)
+        score = max(-1.0, min(1.0, separation / max(self.minimum_separation * 2, 1e-9)))
+        return StrategySignal(
+            strategy_id=self.strategy_id,
+            symbol=candles[-1].symbol,
+            side=side,
+            score=score,
+            confidence=confidence if side is not None else 0.0,
+            regime=regime,
+            rationale=f"paper-research MA separation={separation:.4f}",
+        )
+
+
+@dataclass(frozen=True)
 class StrategyEnsemble:
     classifier: RegimeClassifier = field(default_factory=RegimeClassifier)
     momentum_strategy: MomentumStrategy = field(default_factory=MomentumStrategy)
     trend_strategy: TrendStrategy = field(default_factory=TrendStrategy)
     mean_reversion_strategy: MeanReversionStrategy = field(default_factory=MeanReversionStrategy)
+    # --- paper research mode ---
+    # Unset in live/shadow. When set, the candle-only baseline participates in
+    # evaluate() so paper dry-runs are not structurally unable to reach
+    # two-of-three (the default members are regime-exclusive).
+    paper_research_strategy: PaperResearchStrategy | None = None
+    # Majority size. Default 2 is the live/shadow / specialist-committee rule.
+    # Paper research mode may drop this to 1 when optional intel is unset.
+    min_agreeing: int = 2
 
     def evaluate(self, candles: tuple[Candle, ...]) -> tuple[Regime, tuple[StrategySignal, ...]]:
         regime = self.classifier.classify(candles)
-        signals = (
+        signals: list[StrategySignal] = [
             self.momentum_strategy.evaluate(candles, regime),
             self.trend_strategy.evaluate(candles, regime),
             self.mean_reversion_strategy.evaluate(candles, regime),
-        )
-        return regime, signals
+        ]
+        if self.paper_research_strategy is not None:
+            signals.append(self.paper_research_strategy.evaluate(candles, regime))
+        return regime, tuple(signals)
 
     def consensus(self, signals: tuple[StrategySignal, ...]) -> StrategySignal | None:
         return combine_signals(
-            signals, strategy_id="baseline_ensemble_v1", signal_version=version_of(self)
+            signals,
+            strategy_id="baseline_ensemble_v1",
+            signal_version=version_of(self),
+            min_agreeing=self.min_agreeing,
         )
 
 
@@ -163,19 +234,28 @@ def combine_signals(
     *,
     strategy_id: str,
     signal_version: str | None = None,
+    min_agreeing: int = 2,
 ) -> StrategySignal | None:
-    """Majority-side consensus requiring at least two agreeing actionable signals.
+    """Majority-side consensus requiring ``min_agreeing`` agreeing actionable signals.
 
     Shared by the quant ensemble and the specialist committee so both combine
     their members identically; each caller stamps its own id and version.
+
+    A split vote (equal buy and sell counts) is no consensus — fail closed
+    rather than silently preferring BUY. ``min_agreeing`` defaults to 2; paper
+    research mode may pass 1 when optional intel voters cannot participate.
     """
+    if min_agreeing < 1:
+        raise ValueError("min_agreeing must be >= 1")
     actionable = [signal for signal in signals if signal.side is not None]
     if not actionable:
         return None
     buys = [signal for signal in actionable if signal.side is Side.BUY]
     sells = [signal for signal in actionable if signal.side is Side.SELL]
-    selected = buys if len(buys) >= len(sells) else sells
-    if len(selected) < 2:
+    if len(buys) == len(sells):
+        return None
+    selected = buys if len(buys) > len(sells) else sells
+    if len(selected) < min_agreeing:
         return None
     confidence = sum(signal.confidence for signal in selected) / len(selected)
     score = sum(signal.score for signal in selected) / len(selected)

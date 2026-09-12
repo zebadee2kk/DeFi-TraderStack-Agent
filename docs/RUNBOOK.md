@@ -89,7 +89,11 @@ At every step, the pre-trade backtest gate and the deterministic risk engine are
 active by default (`PRETRADE_BACKTEST_ENABLED=true`, `KILL_SWITCH=true`). With the
 kill switch on, every proposal is deterministically rejected with
 `kill_switch_enabled` — that's expected. See "Engaging/releasing the kill switch"
-before disengaging it.
+before disengaging it. Paper dry-runs on Kraken Spot OHLC with intel keys left
+blank use `PAPER_RESEARCH_MODE=true` (documented paper default) so the
+strategy ensemble can form a candle-only consensus and reach that risk
+decision; see "Paper research mode and strategy consensus". Live/shadow never
+get that voter rule.
 
 ## Filling in `.env` safely
 
@@ -405,7 +409,7 @@ proposal):
 | `missing_candle_history` | The gate is enabled but no candle history was fetched for this cycle at all. |
 | `insufficient_candle_history` | Fewer candles than `PRETRADE_MIN_CANDLES`. |
 | `stale_candle_history` | The most recent candle is older than `PRETRADE_MAX_CANDLE_AGE_SECONDS`. |
-| `no_strategy_consensus` | The deterministic strategy ensemble, re-run on current candles, produced no consensus side. |
+| `no_strategy_consensus` | The deterministic strategy ensemble, re-run on current candles, produced no consensus side. See "Paper research mode and strategy consensus" below for when this is expected vs. a paper-config gap. |
 | `strategy_does_not_confirm_side` | The ensemble's consensus side doesn't match the side a caller explicitly requested confirmation for. |
 | `backtest_excess_return_below_minimum` | Backtested return net of fees/slippage, vs. buy-and-hold, is below `PRETRADE_MIN_EXCESS_RETURN`. |
 | `backtest_drawdown_above_maximum` | Backtested max drawdown exceeds `PRETRADE_MAX_DRAWDOWN_PCT`. |
@@ -419,7 +423,85 @@ None of these need operator action beyond monitoring — a rejecting gate here i
 working as intended (no history yet, or the ensemble genuinely doesn't clear its
 own bar). Persistent `missing_candle_history`/`insufficient_candle_history` on
 every cycle for one asset is the one worth investigating (candle provider outage
-or a newly-added asset with too little history).
+or a newly-added asset with too little history). Persistent
+`no_strategy_consensus` on every cycle, with healthy Kraken candles and no
+other rejection, is the paper-research-mode case described next.
+
+## Paper research mode and strategy consensus
+
+`no_strategy_consensus` is raised in `PreTradeBacktestGate.evaluate` after
+`StrategyEnsemble.consensus` / `combine_signals` finds no majority side. It is
+**not** a risk-engine rejection: market-data validation already passed, and
+RiskEngine is never called for that cycle.
+
+### Why a typical paper dry-run used to fail-closed here
+
+The default candle ensemble has three voters (momentum, trend, mean-reversion)
+and requires **two agreeing actionable signals**. Those three are
+regime-exclusive:
+
+| Regime | Who can vote | Typical Kraken 1h Spot OHLC |
+|---|---|---|
+| `trending_up` / `trending_down` | Trend (0.5% MA gap) **and** momentum (2% over 12 bars). Mean-reversion is silent. | Mild drift often clears the trend bar but not 2% / 12 hours → **one voter**. |
+| `range` | Mean-reversion only (`|z| ≥ 1.5`). Momentum *can* fire but usually opposes it. | Flat-to-choppy books → **zero or one voter**, or a 1–1 split. |
+| `high_volatility` | Momentum only (trend requires a trending regime). | Crash/spike hours → **one voter**. |
+
+A split vote (equal buy and sell counts) is also no consensus — fail closed,
+not a silent BUY.
+
+Optional intelligence does **not** vote in this ensemble. Empty intel, a
+missing Crucix (or any other unset edge provider), and absent edge fields
+(`onchain.*`, `narrative.*`, `market.external_signal_score`) only starve the
+deterministic specialists that feed the meta-agent as *evidence*. They cannot
+create a candle-side consensus, and their absence is expected on a paper
+laptop that left those keys blank.
+
+So: candles and the tick can be healthy, RiskEngine would have allowed a
+proposal, and the stack still emits no intentional paper trade because the
+vote structurally cannot reach two agreeing sides.
+
+### What paper research mode changes (and what it does not)
+
+`PAPER_RESEARCH_MODE=true` is the **documented paper default**. It applies
+**only** when `TRADING_MODE=paper` (`Settings.paper_research_active`).
+`traderstack-paper` / `build_service` already refuse non-paper modes; the
+ensemble helper also ignores the flag on live/shadow so a mis-set env cannot
+loosen those gates.
+
+When active:
+
+1. A fourth, candle-only voter (`paper_research_baseline_v1`) joins the
+   ensemble. It reads short-vs-long moving averages from the same Kraken OHLC
+   — no intel, no Crucix, no edge fields.
+2. If **no** optional intel provider has usable credentials, consensus may
+   form from **one** agreeing healthy signal (`min_agreeing=1`). If any of
+   Dune / LunarCrush / CryptoPanic / Perplexity / altFINS *is* configured,
+   the two-voter bar is kept.
+3. The pre-trade **backtest and walk-forward** still run on that same
+   ensemble. A consensus side that cannot clear `PRETRADE_MIN_EXCESS_RETURN`
+   / drawdown / Sharpe / trade-count / walk-forward is still rejected.
+4. Every proposal that leaves the gate still goes through **RiskEngine**
+   (kill switch first), then the meta-agent withhold-only review. Paper
+   research mode cannot auto-approve, disable the kill switch, change a
+   side/size after risk, or raise notionals.
+
+`PAPER_RESEARCH_MODE=false` restores the strict two-voter candle ensemble
+(no baseline voter). Use that when you want paper to fail-closed the same
+way live/shadow do.
+
+### When consensus is expected vs fail-closed
+
+| Situation | Expected outcome |
+|---|---|
+| Healthy Kraken 1h history, `TRADING_MODE=paper`, `PAPER_RESEARCH_MODE=true` (default), intel keys blank, book has a measurable MA tilt or a single regime-valid signal | Consensus **can** form. The cycle should reach RiskEngine. Kill switch / limits / backtest may still reject. |
+| Perfectly flat or no-signal book (zero momentum, zero MA gap, no z-score) | `no_strategy_consensus` — fail-closed. Features are not directional. |
+| Split vote (equal buy and sell counts) | `no_strategy_consensus` — fail-closed. |
+| `PAPER_RESEARCH_MODE=false`, or `TRADING_MODE` is shadow/live | Two agreeing candle strategies required. Typical mild Kraken drift **will** fail-closed; that is intentional. |
+| Optional intel configured on paper | Baseline voter is still present; `min_agreeing` stays 2. |
+| Missing/stale/short candle history | `missing_candle_history` / `insufficient_candle_history` / `stale_candle_history` — not a consensus question. |
+
+`traderstack-check-config` reports whether paper research mode is `active`,
+`off`, or `ignored` (flag set but `TRADING_MODE` is not paper).
 
 **Deterministic risk engine** (`RiskEngine.evaluate`, checked in this order,
 tier by tier per `docs/RISK-PRINCIPLES.md`; always active, cannot be bypassed

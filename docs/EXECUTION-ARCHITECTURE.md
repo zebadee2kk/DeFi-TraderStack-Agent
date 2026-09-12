@@ -93,6 +93,26 @@ thresholds live in version-controlled configuration, not in any agent's
 runtime state. The full `PreTradeCheck` (metrics, folds, reasons) is attached
 to every `PipelineResult` so each decision is auditable.
 
+### Paper research mode (paper path only)
+
+`PAPER_RESEARCH_MODE` (default `true`) is a **paper-only** ensemble input
+fix, not a risk-policy change. `cli.paper_research_ensemble` applies it only
+when `Settings.paper_research_active` (`TRADING_MODE=paper` and the flag).
+Live/shadow keep the default two-of-three candle ensemble even if the flag
+is set.
+
+When active, `StrategyEnsemble` includes `PaperResearchStrategy`
+(`paper_research_baseline_v1`) — a candle-only MA-direction voter that does
+not read intel, Crucix, or edge fields — and may set `min_agreeing=1` when
+no optional intel provider is configured. `combine_signals` still fail-closes
+on a split vote. The backtest/walk-forward, `RiskEngine`, and kill switch
+run unchanged after a consensus side exists.
+
+This exists because the default three voters are regime-exclusive, so typical
+Kraken Spot 1h OHLC (mild drift, range, or a single-regime signal) produced
+`no_strategy_consensus` after market data succeeded and before risk was
+asked. See `docs/RUNBOOK.md`, "Paper research mode and strategy consensus".
+
 ## Cycle order of operations
 
 This is the actual, traced order of `ContinuousPaperService.run` ->

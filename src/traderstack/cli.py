@@ -73,6 +73,7 @@ from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.pretrade import PreTradeBacktestGate
+from traderstack.strategies import PaperResearchStrategy, StrategyEnsemble
 from traderstack.reconciliation import HummingbotPortfolioReconciler
 from traderstack.risk import RiskEngine
 from traderstack.risk_audit import JsonlRiskAuditTrail
@@ -108,11 +109,32 @@ class ServiceOverrides:
 # --- end paper-trading acceptance (Epic 10) ---
 
 
+def paper_research_ensemble(settings: Settings) -> StrategyEnsemble:
+    """Build the pre-trade ensemble, applying paper-research voters only on paper.
+
+    Live/shadow keep the default two-of-three candle ensemble even if
+    ``PAPER_RESEARCH_MODE`` is true. Paper research never changes risk limits.
+    """
+    if not settings.paper_research_active:
+        return StrategyEnsemble()
+    # Optional intel (and unset edge slots such as Crucix) cannot vote in the
+    # candle ensemble. When they are intentionally off, a single healthy
+    # candle-side signal is enough to form consensus; when they are
+    # configured, keep the two-voter bar.
+    min_agreeing = 1 if not settings.optional_intelligence_configured else 2
+    return StrategyEnsemble(
+        paper_research_strategy=PaperResearchStrategy(),
+        min_agreeing=min_agreeing,
+    )
+
+
 def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
     backtester = BaselineBacktester(
         starting_equity=settings.paper_starting_nav_usd,
         fee_bps=settings.pretrade_fee_bps,
         slippage_bps=settings.pretrade_slippage_bps,
+        # --- paper research mode ---
+        ensemble=paper_research_ensemble(settings),
     )
     return PreTradeBacktestGate(
         backtester=backtester,
