@@ -30,6 +30,11 @@ from traderstack.research.cli import load_candles_from_json
 from traderstack.research.daily_robustness import KRAKEN_PUBLIC_OHLC_MAX_BARS
 from traderstack.research.download_candles import download_spot_histories
 from traderstack.research.edge_series import (
+    utc_day,
+    truncate_points_to_end,
+    freeze_window_start,
+    BASIS_AWARE_WINDOW_END_UTC,
+    BASIS_AWARE_MIN_ALIGNED_DAYS,
     BINANCE_FAPI_BASE,
     BITMEX_BASE,
     BITMEX_DAILY_LIMIT_PAGES,
@@ -310,24 +315,111 @@ async def fetch_basis_venues(
     symbols: tuple[str, ...],
     *,
     timeout: float = 20.0,
-) -> list[dict[str, str]]:
-    """Probe Hyperliquid, HTX, and BitMEX for a PIT basis tape. Do not invent."""
+    window_end: datetime | None = None,
+    window_start: datetime | None = None,
+) -> tuple[dict[str, dict[str, tuple]], list[dict[str, str]]]:
+    """Fetch HL (asilletto81) + HTX PIT basis; BitMEX notes only (sunset)."""
+    from datetime import datetime as _dt
+
+    end = window_end or BASIS_AWARE_WINDOW_END_UTC
+    start = window_start or freeze_window_start(end)
     notes: list[dict[str, str]] = []
-    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=max(timeout, 30.0)) as client:
+    venue_maps: dict[str, dict[str, tuple]] = {
+        "hyperliquid": {},
+        "htx": {},
+        "bitmex": {},
+    }
+    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=max(timeout, 120.0)) as client:
         for index, symbol in enumerate(symbols):
             if index:
                 await asyncio.sleep(HYPERLIQUID_SYMBOL_PAUSE_SECONDS)
-            result = await fetch_hyperliquid_basis(symbol, client=client)
+            result = await fetch_hyperliquid_basis(
+                symbol, client=client, start=start, end=end, prefer_archive=True
+            )
             notes.append(result.as_note())
-    async with httpx.AsyncClient(base_url=HTX_BASE, timeout=max(timeout, 30.0)) as client:
+            if result.status == "ok":
+                venue_maps["hyperliquid"][symbol.upper()] = result.points
+    async with httpx.AsyncClient(base_url=HTX_BASE, timeout=max(timeout, 60.0)) as client:
         for symbol in symbols:
             result = await fetch_htx_basis(symbol, client=client)
-            notes.append(result.as_note())
+            # clamp to freeze
+            if result.status == "ok":
+                clamped = truncate_points_to_end(result.points, end)
+                clamped = tuple((ts, v) for ts, v in clamped if utc_day(ts) >= utc_day(start))
+                notes.append(
+                    {
+                        **result.as_note(),
+                        "points": str(len(clamped)),
+                        "reason": result.reason + f" Clamped to freeze [{start.date()}→{end.date()}].",
+                    }
+                )
+                if len(clamped) >= BASIS_AWARE_MIN_ALIGNED_DAYS:
+                    venue_maps["htx"][symbol.upper()] = clamped
+                else:
+                    notes.append(
+                        {
+                            "name": f"htx_basis:{symbol}",
+                            "status": "skipped",
+                            "reason": (
+                                f"HTX basis {len(clamped)} days inside freeze "
+                                f"(need >={BASIS_AWARE_MIN_ALIGNED_DAYS})"
+                            ),
+                            "source": result.source,
+                            "points": str(len(clamped)),
+                        }
+                    )
+            else:
+                notes.append(result.as_note())
     async with httpx.AsyncClient(base_url=BITMEX_BASE, timeout=max(timeout, 30.0)) as client:
         for symbol in symbols:
             result = await fetch_bitmex_basis(symbol, client=client)
             notes.append(result.as_note())
-    return notes
+    return venue_maps, notes
+
+
+def _merge_basis_by_symbol(
+    mapping: dict[str, tuple],
+) -> tuple[tuple[datetime, float], ...] | None:
+    """Prefer BTC series when present; else first symbol. Skip-not-invent."""
+    if not mapping:
+        return None
+    for key in ("BTC/USD", "BTCUSDT", "BTC"):
+        for k, series in mapping.items():
+            if key in k.upper() or k.upper().startswith("BTC"):
+                return series
+    # fall back to any
+    return next(iter(mapping.values()))
+
+
+def truncate_histories_to_end(
+    histories: dict[str, tuple],
+    end: datetime,
+) -> dict[str, tuple]:
+    end_d = utc_day(end)
+    out: dict[str, tuple] = {}
+    for key, candles in histories.items():
+        kept = tuple(c for c in candles if utc_day(c.opened_at) <= end_d)
+        if kept:
+            out[key] = kept
+    return out
+
+
+def truncate_funding_map_to_window(
+    mapping: dict[str, tuple] | None,
+    *,
+    start: datetime,
+    end: datetime,
+) -> dict[str, tuple] | None:
+    if not mapping:
+        return mapping
+    start_d = utc_day(start)
+    end_d = utc_day(end)
+    out: dict[str, tuple] = {}
+    for key, series in mapping.items():
+        kept = tuple((ts, v) for ts, v in series if start_d <= utc_day(ts) <= end_d)
+        if kept:
+            out[key] = kept
+    return out or None
 
 
 def _pick_venues(
@@ -368,6 +460,7 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
     funding = _parse_feature_series(args.funding_z) if args.funding_z else None
     second_funding = _parse_feature_series(args.second_funding_z) if args.second_funding_z else None
     basis = _parse_feature_series(args.basis) if args.basis else None
+    basis_second = None
     funding_by_symbol = None
     second_funding_by_symbol = None
     primary_venue: str | None = "file" if funding is not None else None
@@ -404,8 +497,53 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
         primary_map, primary_venue, second_map, second_venue = _pick_venues(venue_maps)
         funding_by_symbol = primary_map
         second_funding_by_symbol = second_map
+        basis_primary = None
+        basis_second = None
         if basis is None:
-            edge_notes.extend(asyncio.run(fetch_basis_venues(symbols)))
+            # Coverage-driven freeze BEFORE scoring (asilletto81 ends 2026-06-01).
+            freeze_end = BASIS_AWARE_WINDOW_END_UTC
+            freeze_start = freeze_window_start(freeze_end)
+            histories = truncate_histories_to_end(histories, freeze_end)
+            history_notes.append(
+                {
+                    "note": (
+                        f"Basis-aware freeze: truncate candles/funding/basis to "
+                        f"{freeze_start.date()}→{freeze_end.date()} "
+                        f"(>={BASIS_AWARE_MIN_ALIGNED_DAYS}d) before scoring. "
+                        "asilletto81 ends 2026-06-01; do not invent the post-archive tail."
+                    ),
+                    "source": "basis_window_freeze",
+                }
+            )
+            if funding_by_symbol is not None:
+                funding_by_symbol = truncate_funding_map_to_window(
+                    funding_by_symbol, start=freeze_start, end=freeze_end
+                )
+            if second_funding_by_symbol is not None:
+                second_funding_by_symbol = truncate_funding_map_to_window(
+                    second_funding_by_symbol, start=freeze_start, end=freeze_end
+                )
+            basis_maps, basis_notes = asyncio.run(
+                fetch_basis_venues(symbols, window_end=freeze_end, window_start=freeze_start)
+            )
+            edge_notes.extend(basis_notes)
+            hl_map = basis_maps.get("hyperliquid") or {}
+            htx_map = basis_maps.get("htx") or {}
+            # Align basis venue to funding venue pick when possible.
+            if primary_venue == "hyperliquid" and hl_map:
+                basis_primary = _merge_basis_by_symbol(hl_map)
+            elif primary_venue == "htx" and htx_map:
+                basis_primary = _merge_basis_by_symbol(htx_map)
+            if second_venue == "htx" and htx_map:
+                basis_second = _merge_basis_by_symbol(htx_map)
+            elif second_venue == "hyperliquid" and hl_map:
+                basis_second = _merge_basis_by_symbol(hl_map)
+            # If venues flipped, still attach whichever we have.
+            if basis_primary is None and hl_map:
+                basis_primary = _merge_basis_by_symbol(hl_map)
+            if basis_second is None and htx_map:
+                basis_second = _merge_basis_by_symbol(htx_map)
+            basis = basis_primary
         if funding_by_symbol is None and funding is None:
             history_notes.append(
                 {
@@ -458,6 +596,7 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
         history_notes=history_notes,
         edge_notes=edge_notes,
         basis=basis,
+        second_basis=basis_second,
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)

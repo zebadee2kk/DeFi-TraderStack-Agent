@@ -1104,6 +1104,7 @@ def run_funding_carry(
     edge_notes: list[dict[str, str]] | None = None,
     now: datetime | None = None,
     basis: tuple[tuple[datetime, float], ...] | None = None,
+    second_basis: tuple[tuple[datetime, float], ...] | None = None,
 ) -> FundingCarryReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -1267,7 +1268,7 @@ def run_funding_carry(
             test_size=use_test,
             step_size=use_step,
             min_trades=min_trades,
-            basis=basis,
+            basis=second_basis if second_basis is not None else basis,
         )
         primary_eligible = {
             row.candidate_id
@@ -1287,13 +1288,28 @@ def run_funding_carry(
         funding=funding if have_primary else None,
         funding_by_symbol=funding_by_symbol if have_primary else None,
     )
-    basis_status: Literal["ok", "skipped"] = "ok" if basis else "skipped"
-    basis_note = (
-        "PIT basis series supplied and applied only on days where both the "
-        "current and previous print have a value (missing days skipped)."
-        if basis
-        else BASIS_SKIP_NOTE
-    )
+    have_primary_basis = bool(basis)
+    have_second_basis = bool(second_basis) if print_kind == PRINT_DUAL else have_primary_basis
+    if print_kind == PRINT_DUAL:
+        basis_status: Literal["ok", "skipped"] = (
+            "ok" if have_primary_basis and have_second_basis else "skipped"
+        )
+    else:
+        basis_status = "ok" if have_primary_basis else "skipped"
+    if basis_status == "ok":
+        basis_note = (
+            "PIT basis series supplied per dual-print venue and applied only "
+            "on days where both the current and previous print have a value "
+            "(missing days skipped). Window frozen at/before "
+            "BASIS_AWARE_WINDOW_END_UTC when using asiletto81+HTX."
+        )
+    elif print_kind == PRINT_DUAL and (have_primary_basis ^ have_second_basis):
+        basis_note = (
+            "PIT basis present on only one dual-print venue — dual-print "
+            "basis requires both. " + BASIS_SKIP_NOTE
+        )
+    else:
+        basis_note = BASIS_SKIP_NOTE
     if basis_status == "skipped":
         notes.append(
             {
@@ -1321,7 +1337,7 @@ def run_funding_carry(
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
             holdout_fraction=holdout_fraction,
-            basis=basis,
+            basis=second_basis if second_basis is not None else basis,
         )
         if have_second and interval == "1d"
         else None

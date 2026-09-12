@@ -594,7 +594,7 @@ def test_basis_file_is_modeled_but_still_cannot_promote() -> None:
 async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.MonkeyPatch) -> None:
     from traderstack.research.edge_series import EdgeSeriesFetch
 
-    async def fake_hl(symbol: str, *, client: object) -> EdgeSeriesFetch:
+    async def fake_hl(symbol: str, *, client: object, **_kwargs) -> EdgeSeriesFetch:
         return EdgeSeriesFetch(
             name=f"hyperliquid_basis:{symbol}",
             status="skipped",
@@ -602,7 +602,7 @@ async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.Mo
             source="hyperliquid",
         )
 
-    async def fake_bm(symbol: str, *, client: object) -> EdgeSeriesFetch:
+    async def fake_bm(symbol: str, *, client: object, **_kwargs) -> EdgeSeriesFetch:
         return EdgeSeriesFetch(
             name=f"bitmex_basis:{symbol}",
             status="skipped",
@@ -610,7 +610,7 @@ async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.Mo
             source="bitmex",
         )
 
-    async def fake_htx(symbol: str, *, client: object) -> EdgeSeriesFetch:
+    async def fake_htx(symbol: str, *, client: object, **_kwargs) -> EdgeSeriesFetch:
         return EdgeSeriesFetch(
             name=f"htx_basis:{symbol}",
             status="skipped",
@@ -624,7 +624,7 @@ async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.Mo
     monkeypatch.setattr(
         "traderstack.research.funding_carry_cli.HYPERLIQUID_SYMBOL_PAUSE_SECONDS", 0
     )
-    notes = await fetch_basis_venues(("BTC/USD", "ETH/USD"))
+    maps, notes = await fetch_basis_venues(("BTC/USD", "ETH/USD"))
     names = {item["name"] for item in notes}
     assert names == {
         "hyperliquid_basis:BTC/USD",
@@ -636,6 +636,8 @@ async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.Mo
     }
     assert all(item["status"] == "skipped" for item in notes)
     assert all(item["points"] == "0" for item in notes)
+    assert maps["hyperliquid"] == {}
+    assert maps["htx"] == {}
 
 
 def test_evaluate_carry_hard_gates_unavailable_on_short_daily_tape() -> None:

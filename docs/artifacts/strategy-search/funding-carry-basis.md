@@ -1,11 +1,14 @@
 # Funding / carry — PIT basis probe
 
-Generated: 2026-09-12 (after #112). Paper / research only.
+Generated: 2026-09-12 (after #125 + basis/hl-htx-aware freeze). Paper / research only.
 
-`basis_status=skipped`. Historical PIT basis remains UNAVAILABLE.
-`paper_path_ready=true` for the forward paper soak only (after the
-cycle-wired hedge+funding path). `can_promote=false`.
-`keep_flag_false=true`. No `PAPER_PROMOTE_*` flip. No live.
+**Window freeze (coverage-driven, committed before score):** scored
+basis-aware dual-print uses UTC days ending **2026-06-01** with
+**≥720** aligned days (implied start **2024-06-12**). See
+`basis-window-freeze.md`. The default live Kraken720 ending
+~2026-09-11 only overlaps asiletto81 on **618/720** days (102d gap
+after archive end) — do **not** invent those days and do **not**
+stitch Binance Vision into the HL leg.
 
 ## What was requested
 
@@ -113,3 +116,18 @@ Carry was **not** re-scored with an invented pair. See
 **No candidate is promoted.** PIT basis is UNAVAILABLE. The paper
 soak path does not unlock a pin. Leave every
 `PAPER_PROMOTE_*=false`. Do not add a new pin. Do not enable live.
+
+## HL+HTX basis wiring (this branch)
+
+- `fetch_hyperliquid_basis` loads HuggingFace
+  `asiletto81/hyperliquid` `asset_ctxs` daily last
+  `(mark_px-oracle_px)/oracle_px` inside the freeze.
+- `fetch_htx_basis` daily mark−index clamped to the same freeze.
+- Live `--interval 1d` truncates candles/funding/basis to the
+  freeze **before** walk-forward / hard gates / dual-print.
+- `basis_status=ok` only when **both** HL and HTX basis clear
+  the freeze with enough days. BitMEX remains sunset/skipped.
+- `can_promote` still requires dual-print + hard gates + PIT
+  basis on both + paper path + dual passers; every
+  `PAPER_PROMOTE_*=false` until earned.
+

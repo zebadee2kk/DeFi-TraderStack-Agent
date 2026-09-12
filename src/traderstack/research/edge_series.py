@@ -63,9 +63,12 @@ PIT perp−spot basis (skip-not-invent; do not blend):
   construction on Hyperliquid for the scored window.
 * HuggingFace ``asiletto81/hyperliquid`` ``asset_ctxs`` is a public
   ≥720d Hyperliquid mark−index tape (883 contiguous days,
-  2024-01-01 → 2026-06-01, ``mark_px``/``oracle_px``). The current
-  Kraken 720 (2024-09-22 → 2026-09-11) aligns only ~617 of those
-  days. Official HL S3 stays requester-pays 403.
+  2024-01-01 → 2026-06-01, ``mark_px``/``oracle_px``). The live
+  Kraken 720 ending ~2026-09-11 aligns only ~618 days, so
+  basis-aware dual-print freezes the scored window ending
+  ``BASIS_AWARE_WINDOW_END_UTC`` (2026-06-01) with ≥720 aligned
+  days **before** scoring. Official HL S3 stays requester-pays 403.
+  Do not stitch Binance Vision into the HL leg.
 * Dual-print basis requires the requested construction on **both**
   venues for the scored window. Absent that, basis is UNAVAILABLE.
 
@@ -75,8 +78,11 @@ Cross-venue divergence is not built here (needs two aligned venues).
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, Literal
 
 import httpx
@@ -844,11 +850,10 @@ HYPERLIQUID_BASIS_UNAVAILABLE = (
     "only (metaAndAssetCtxs). fundingHistory.premium is the funding-formula "
     "input, not a PIT perp−spot mid, and is not used. candleSnapshot is "
     "last-trade, not mid. HuggingFace asiletto81/hyperliquid asset_ctxs "
-    "is a public ≥720d mark_px/oracle_px tape (883 contiguous days "
-    "2024-01-01 → 2026-06-01) but the current Kraken 720 "
-    "(2024-09-22 → 2026-09-11) aligns only ~617 days. Official S3 is "
-    "requester-pays 403. Skip-not-invent; do not retune the window "
-    "after seeing the archive end date."
+    "is the historical mark_px/oracle_px path for the frozen window ending "
+    "2026-06-01; if that fetch fails or yields <720 days inside the freeze, "
+    "basis stays skipped. Official S3 is requester-pays 403. Do not stitch "
+    "Binance Vision into HL. Skip-not-invent."
 )
 
 BITMEX_BASIS_UNAVAILABLE = (
@@ -946,26 +951,201 @@ def _hyperliquid_ctx_for(payload: object, coin: str) -> dict[str, Any] | None:
     return None
 
 
-async def fetch_hyperliquid_basis(
+
+ASILLETTO81_CACHE_DIR = Path("var/ops/basis_cache/asilletto81/asset_ctxs")
+
+
+def utc_day(ts: datetime) -> datetime:
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    return datetime(ts.year, ts.month, ts.day, tzinfo=UTC)
+
+
+def truncate_points_to_end(
+    points: tuple[tuple[datetime, float], ...] | list[tuple[datetime, float]],
+    end: datetime,
+) -> tuple[tuple[datetime, float], ...]:
+    end_d = utc_day(end)
+    return tuple((ts, value) for ts, value in points if utc_day(ts) <= end_d)
+
+
+def freeze_window_start(end: datetime | None = None, *, days: int = BASIS_AWARE_MIN_ALIGNED_DAYS) -> datetime:
+    end_d = utc_day(end or BASIS_AWARE_WINDOW_END_UTC)
+    return end_d - timedelta(days=days - 1)
+
+
+def _asilletto_yyyymmdd(day: datetime) -> str:
+    return utc_day(day).strftime("%Y%m%d")
+
+
+def _asilletto_decompress(payload: bytes) -> str:
+    try:
+        import lz4.frame
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("lz4 package required for asiletto81 asset_ctxs") from exc
+    return lz4.frame.decompress(payload).decode("utf-8")
+
+
+def _asilletto_last_mark_oracle(csv_text: str, coin: str) -> tuple[float, float] | None:
+    last: tuple[float, float] | None = None
+    for row in csv.DictReader(io.StringIO(csv_text)):
+        if (row.get("coin") or "").strip() != coin:
+            continue
+        try:
+            mark = float(row["mark_px"])
+            oracle = float(row["oracle_px"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if mark <= 0 or oracle <= 0:
+            continue
+        last = (mark, oracle)
+    return last
+
+
+async def _asilletto_download_day(
+    client: httpx.AsyncClient,
+    day: datetime,
+    *,
+    cache_dir: Path,
+) -> bytes | None:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / f"{_asilletto_yyyymmdd(day)}.csv.lz4"
+    if path.is_file() and path.stat().st_size > 0:
+        return path.read_bytes()
+    url = f"{ASILLETTO81_HL_ASSET_CTXS_PREFIX}/{_asilletto_yyyymmdd(day)}.csv.lz4"
+    try:
+        response = await client.get(url, follow_redirects=True)
+    except httpx.HTTPError:
+        return None
+    if response.status_code != 200 or not response.content:
+        return None
+    head = response.content[:32].lstrip()
+    if head.startswith(b"<") or head.startswith(b"{") or head.startswith(b"Invalid"):
+        return None
+    path.write_bytes(response.content)
+    return response.content
+
+
+async def fetch_asilletto81_hyperliquid_basis(
     symbol: str,
     *,
     client: httpx.AsyncClient,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    cache_dir: Path | None = None,
 ) -> EdgeSeriesFetch:
-    """Probe for a PIT mark−index / perp-mid−spot-mid tape. Do not invent."""
+    """Daily PIT mark−index from HF asiletto81/hyperliquid asset_ctxs."""
     name = f"hyperliquid_basis:{symbol}"
     try:
         coin = hyperliquid_coin(symbol)
     except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="asilletto81")
+
+    start_d = utc_day(start or freeze_window_start())
+    end_d = utc_day(end or BASIS_AWARE_WINDOW_END_UTC)
+    if end_d > ASILLETTO81_HL_ARCHIVE_LAST_UTC:
+        end_d = utc_day(ASILLETTO81_HL_ARCHIVE_LAST_UTC)
+    if start_d < ASILLETTO81_HL_ARCHIVE_FIRST_UTC:
+        start_d = utc_day(ASILLETTO81_HL_ARCHIVE_FIRST_UTC)
+    if start_d > end_d:
+        return EdgeSeriesFetch(
+            name=name,
+            status="skipped",
+            reason="asilletto81 freeze window empty",
+            source="asilletto81/hyperliquid asset_ctxs",
+        )
+
+    cache = cache_dir or ASILLETTO81_CACHE_DIR
+    points: list[tuple[datetime, float]] = []
+    missing = 0
+    day = start_d
+    while day <= end_d:
+        payload = await _asilletto_download_day(client, day, cache_dir=cache)
+        if payload is None:
+            missing += 1
+            day = day + timedelta(days=1)
+            continue
+        try:
+            pair = _asilletto_last_mark_oracle(_asilletto_decompress(payload), coin)
+        except Exception:
+            missing += 1
+            day = day + timedelta(days=1)
+            continue
+        if pair is None:
+            missing += 1
+            day = day + timedelta(days=1)
+            continue
+        mark, oracle = pair
+        points.append((day, (mark - oracle) / oracle))
+        day = day + timedelta(days=1)
+
+    return _finish(
+        name,
+        source="huggingface:asiletto81/hyperliquid asset_ctxs mark_px−oracle_px",
+        points=points,
+        ok_reason=(
+            f"asilletto81 daily last (mark_px-oracle_px)/oracle_px for {coin}; "
+            f"{len(points)} days in [{start_d.date()}→{end_d.date()}], "
+            f"missing={missing} skipped-not-invented. Frozen end "
+            f"{BASIS_AWARE_WINDOW_END_UTC.date()}."
+        ),
+    )
+
+async def fetch_hyperliquid_basis(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    cache_dir: Path | None = None,
+    prefer_archive: bool = True,
+) -> EdgeSeriesFetch:
+    """PIT mark−index: HF asiletto81 archive (frozen window) or skip.
+
+    Live REST metaAndAssetCtxs remains current-only and is never scored as
+    a historical tape. Missing archive days are skipped, not invented.
+    """
+    name = f"hyperliquid_basis:{symbol}"
+    if prefer_archive:
+        # Use a bare client for HF CDN (not the Hyperliquid base_url).
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as hf_client:
+            archive = await fetch_asilletto81_hyperliquid_basis(
+                symbol,
+                client=hf_client,
+                start=start,
+                end=end,
+                cache_dir=cache_dir,
+            )
+        if archive.status == "ok" and len(archive.points) >= BASIS_AWARE_MIN_ALIGNED_DAYS:
+            return archive
+        if archive.status == "ok":
+            return EdgeSeriesFetch(
+                name=name,
+                status="skipped",
+                reason=(
+                    f"asilletto81 returned {len(archive.points)} days "
+                    f"(need >={BASIS_AWARE_MIN_ALIGNED_DAYS} inside freeze "
+                    f"ending {BASIS_AWARE_WINDOW_END_UTC.date()}). "
+                    + archive.reason
+                ),
+                source=archive.source,
+            )
+        archive_note = archive.reason
+    else:
+        archive_note = "archive fetch disabled"
+    try:
+        coin = hyperliquid_coin(symbol)
+    except ValueError as exc:
         return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="hyperliquid")
+    extra = f" Archive note: {archive_note}."
     try:
         response = await _hyperliquid_post_info(client, {"type": "metaAndAssetCtxs"})
         payload = response.json()
     except (httpx.HTTPError, TypeError, ValueError) as exc:
         return _geo_or_http_skip(name, "hyperliquid", exc)
     ctx = _hyperliquid_ctx_for(payload, coin)
-    extra = ""
     if ctx is not None and ctx.get("markPx") is not None and ctx.get("oraclePx") is not None:
-        extra = " Current markPx/oraclePx observed; snapshot only."
+        extra += " Current markPx/oraclePx observed; snapshot only."
     return EdgeSeriesFetch(
         name=name,
         status="skipped",
