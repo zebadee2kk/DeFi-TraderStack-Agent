@@ -1,15 +1,18 @@
 """Paper daily ema_9_21 promote path: align the DD gate with research.
 
-Root cause of the post-#94 WSL soak (NAV stuck, 0 fills): every cycle
-rejected ``backtest_drawdown_above_maximum`` because the shared
-``PRETRADE_MAX_DRAWDOWN_PCT=0.15`` bar is calibrated for ~16-day 1h MA
-lookbacks. Daily ``ema_9_21`` on Kraken Spot (#95/#96) realized WF maxDD
-~23.35% (BTC+ETH mean). Units are already fractions in [0, 1]; the
-mismatch is the ceiling, not the series.
+#98 raised the paper ceiling to 0.30 but still compared
+``metrics.max_drawdown`` (full-history backtest) to a bar calibrated
+to #95–#100 *walk-forward* maxDD (train=180 / test=60 / step=60,
+warmup=train). On Kraken daily after #98, that longer series is ETH
+~43% (400 bars) / ~36% (720 bars) while research WF maxDD is 28.77%.
+BTC's 400-bar full-history DD (~20%) cleared; ETH never did
+(``backtest_drawdown_above_maximum``).
 
-The promote path therefore uses
-``PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT`` (default 0.30). Live/shadow
-and the 1h non-promote paper path keep 0.15. The gate stays on.
+The promote path therefore (1) applies 0.30 to research-style WF
+worst_drawdown only, and (2) fetches 720 daily bars so the documented
+ETH fold is in-window. Live/shadow and the 1h non-promote path keep
+0.15 on the full-history book. The gate stays on. The ceiling is not
+raised past the research envelope.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from pydantic import ValidationError
 from traderstack.candles import Candle
 from traderstack.cli import build_pretrade_gate
 from traderstack.config import (
+    EMA_9_21_PAPER_CANDLE_COUNT,
     EMA_9_21_PAPER_MAX_DRAWDOWN_PCT,
     EMA_9_21_PAPER_RESEARCH_WF_MAX_DRAWDOWN_PCT,
     Settings,
@@ -97,10 +101,29 @@ def daily_ema_end_crash(drop_pct: float, crash_bars: int) -> tuple[Candle, ...]:
     """
     peak = 180.0
     trough = peak * (1.0 - drop_pct)
+    # 360 bars so the last research WF fold (test 300–360) includes the cliff.
+    middle = 360 - 32 - crash_bars
     prices = (
         _linspace(100.0, peak, 32)
-        + _linspace(peak, peak + 1.0, 325)
+        + _linspace(peak, peak + 1.0, middle)
         + _linspace(peak + 1.0, trough, crash_bars)
+    )
+    return _daily(prices)
+
+
+def daily_ema_early_crash(drop_pct: float, crash_bars: int) -> tuple[Candle, ...]:
+    """Cliff inside the first train window: full-history DD sees it, WF does not.
+
+    Research WF uses warmup=train_size (180), so bars 32–100 are traded
+    on the full-history book and only used as warmup on fold 1.
+    """
+    peak = 180.0
+    trough = peak * (1.0 - drop_pct)
+    rest = 360 - 32 - crash_bars
+    prices = (
+        _linspace(100.0, peak, 32)
+        + _linspace(peak, trough, crash_bars)
+        + _linspace(trough, trough + 20.0, rest)
     )
     return _daily(prices)
 
@@ -121,6 +144,20 @@ def test_promote_path_uses_dedicated_ceiling_not_the_1h_bar() -> None:
     gate = build_pretrade_gate(promote)
     assert gate.max_drawdown == EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
     assert gate.max_drawdown != promote.pretrade_max_drawdown_pct
+    assert gate.compare_full_history_drawdown is False
+    assert gate.walkforward is not None
+    assert gate.walkforward.train_warmup is True
+
+
+def test_promote_path_forces_research_candle_count() -> None:
+    promote = _settings(paper_promote_ema_9_21=True, pretrade_candle_count=400)
+    assert promote.pretrade_candle_count == 400
+    assert promote.effective_pretrade_candle_count == EMA_9_21_PAPER_CANDLE_COUNT
+    assert promote.effective_pretrade_candle_count == 720
+    live = _settings(trading_mode="live", paper_promote_ema_9_21=True, pretrade_candle_count=400)
+    assert live.effective_pretrade_candle_count == 400
+    off = _settings(pretrade_candle_count=400)
+    assert off.effective_pretrade_candle_count == 400
 
 
 def test_adx15_promote_path_uses_the_same_daily_dd_ceiling() -> None:
@@ -138,7 +175,11 @@ def test_live_and_shadow_ignore_the_paper_promote_dd_ceiling() -> None:
             paper_promote_ema_9_21_max_drawdown_pct=0.30,
         )
         assert settings.effective_pretrade_max_drawdown_pct == 0.15
-        assert build_pretrade_gate(settings).max_drawdown == 0.15
+        assert settings.effective_pretrade_candle_count == 400
+        gate = build_pretrade_gate(settings)
+        assert gate.max_drawdown == 0.15
+        assert gate.compare_full_history_drawdown is True
+        assert gate.walkforward is None or gate.walkforward.train_warmup is False
 
 
 def test_zero_paper_promote_dd_ceiling_fails_closed_at_settings_load() -> None:
@@ -182,10 +223,11 @@ def test_promote_daily_fixture_above_aligned_ceiling_fails() -> None:
     check = build_pretrade_gate(settings).evaluate(candles, now=_end(candles))
     assert check.metrics is not None
     assert check.metrics.max_drawdown > EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
+    assert check.walkforward is not None
+    assert check.walkforward.worst_drawdown > EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
     assert not check.passed
-    assert "backtest_drawdown_above_maximum" in check.reasons or (
-        "walkforward_drawdown_above_maximum" in check.reasons
-    )
+    assert "walkforward_drawdown_above_maximum" in check.reasons
+    assert "backtest_drawdown_above_maximum" not in check.reasons
 
 
 def test_1h_non_promote_path_still_uses_fifteen_percent() -> None:
@@ -198,3 +240,32 @@ def test_1h_non_promote_path_still_uses_fifteen_percent() -> None:
     assert check.passed, check.reasons
     assert check.metrics is not None
     assert check.metrics.max_drawdown <= 0.15
+    assert gate.compare_full_history_drawdown is True
+
+
+def test_full_history_above_ceiling_passes_when_research_wf_clears() -> None:
+    """Post-#98 ETH soak: full-history DD > 0.30, research WF maxDD is not."""
+    candles = daily_ema_early_crash(0.45, crash_bars=3)
+    settings = _settings(paper_promote_ema_9_21=True)
+    gate = build_pretrade_gate(settings)
+    check = gate.evaluate(candles, now=_end(candles))
+    assert check.metrics is not None
+    assert check.walkforward is not None
+    assert check.metrics.max_drawdown > EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
+    assert check.walkforward.worst_drawdown <= EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
+    assert "backtest_drawdown_above_maximum" not in check.reasons
+    assert "walkforward_drawdown_above_maximum" not in check.reasons
+
+
+def test_non_promote_still_rejects_full_history_above_fifteen() -> None:
+    """Live/shadow / flag-off paper keep comparing the full-history book."""
+    candles = daily_ema_early_crash(0.45, crash_bars=3)
+    settings = _settings(pretrade_max_candle_age_seconds=172_800.0)
+    gate = build_pretrade_gate(settings)
+    assert gate.compare_full_history_drawdown is True
+    assert gate.max_drawdown == 0.15
+    check = gate.evaluate(candles, now=_end(candles))
+    assert check.metrics is not None
+    assert check.metrics.max_drawdown > 0.15
+    assert not check.passed
+    assert "backtest_drawdown_above_maximum" in check.reasons

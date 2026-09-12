@@ -381,6 +381,9 @@ def test_build_pretrade_gate_registers_only_ema_9_21_adx15_when_flagged() -> Non
     assert [voter.strategy_id for voter in ensemble.extra_voters] == [EMA_9_21_ADX15_STRATEGY_ID]
     assert gate.required_candle_interval == EMA_9_21_PAPER_CANDLE_INTERVAL
     assert gate.max_drawdown == 0.30
+    assert gate.compare_full_history_drawdown is False
+    assert gate.walkforward is not None
+    assert gate.walkforward.train_warmup is True
 
 
 def test_promote_ema_9_21_does_not_move_risk_policy_version() -> None:
@@ -425,6 +428,8 @@ def test_build_pretrade_gate_ignores_ema_9_21_flag_outside_paper() -> None:
     assert gate.backtester.ensemble.extra_voters == ()
     assert gate.backtester.ensemble.suppress_defaults is False
     assert gate.required_candle_interval is None
+    assert gate.compare_full_history_drawdown is True
+    assert live.effective_pretrade_candle_count == 400
 
 
 def test_promote_ema_forces_daily_interval_even_when_pretrade_is_hourly() -> None:
@@ -437,6 +442,7 @@ def test_promote_ema_forces_daily_interval_even_when_pretrade_is_hourly() -> Non
     assert hourly.effective_pretrade_candle_interval == "1d"
     assert hourly.effective_pretrade_max_candle_age_seconds == EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS
     assert hourly.effective_pretrade_max_drawdown_pct == EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
+    assert hourly.effective_pretrade_candle_count == 720
     assert INTERVAL_MINUTES[hourly.effective_pretrade_candle_interval] == (
         EMA_9_21_PAPER_KRAKEN_INTERVAL_MINUTES
     )
@@ -550,7 +556,7 @@ async def test_promote_runtime_fetches_daily_even_if_pretrade_interval_is_hourly
         ),
         candles=provider,
         candle_interval=cfg.effective_pretrade_candle_interval,
-        candle_count=cfg.pretrade_candle_count,
+        candle_count=cfg.effective_pretrade_candle_count,
     )
     result = await runtime.run_once(
         "BTC/USD",

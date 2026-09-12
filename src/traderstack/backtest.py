@@ -247,7 +247,9 @@ class BaselineBacktester:
     warmup: int = 31
     cost_model: CostModel | None = None
 
-    def run(self, candles: tuple[Candle, ...]) -> BacktestMetrics:
+    def run(self, candles: tuple[Candle, ...], *, warmup: int | None = None) -> BacktestMetrics:
+        used_warmup = self.warmup if warmup is None else warmup
+
         def decide(window: tuple[Candle, ...]) -> tuple[float, Regime, list[str]]:
             # --- paper research path ---
             isolated = self.ensemble.paper_research_position(window)
@@ -267,7 +269,7 @@ class BaselineBacktester:
             candles,
             decide,
             starting_equity=self.starting_equity,
-            warmup=self.warmup,
+            warmup=used_warmup,
             cost_model=self.cost_model,
             fee_bps=self.fee_bps,
             slippage_bps=self.slippage_bps,

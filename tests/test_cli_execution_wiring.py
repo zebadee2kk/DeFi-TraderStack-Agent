@@ -189,3 +189,7 @@ def test_build_service_promote_ema_forces_daily_candle_interval(tmp_path: Path) 
     assert gate is not None
     assert gate.required_candle_interval == "1d"
     assert gate.max_candle_age_seconds == pytest.approx(172_800.0)
+    assert service.runtime.candle_count == 720
+    assert gate.compare_full_history_drawdown is False
+    assert gate.walkforward is not None
+    assert gate.walkforward.train_warmup is True

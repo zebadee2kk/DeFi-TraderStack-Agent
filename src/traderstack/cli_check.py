@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pydantic import SecretStr
 
 from traderstack.config import (
+    EMA_9_21_PAPER_CANDLE_COUNT,
+    EMA_9_21_PAPER_MAX_DRAWDOWN_PCT,
     EMA_9_21_PAPER_RESEARCH_WF_MAX_DRAWDOWN_PCT,
     PAPER_PROMOTE_UNIVERSE_SYMBOLS,
     Settings,
@@ -250,9 +252,25 @@ def build_report(settings: Settings) -> ConfigReport:
                 "Paper promote ema_9_21 max drawdown",
                 f"{settings.effective_pretrade_max_drawdown_pct:.2%}",
                 (
-                    "PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT; "
+                    "PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT applied to "
+                    "research walk-forward maxDD (train=180 / test=60 / "
+                    "step=60, warmup=train) — the #95–#100 definition. "
+                    "Full-history backtest DD is a different series "
+                    "(ETH ~43% on 400d) and is not this ceiling. "
                     f"PRETRADE_MAX_DRAWDOWN_PCT={settings.pretrade_max_drawdown_pct:.2%} "
                     "is the 1h / live / shadow bar and is not used on this path"
+                ),
+            )
+        )
+        items.append(
+            CheckItem(
+                "Paper promote candle count",
+                str(settings.effective_pretrade_candle_count),
+                (
+                    "forced to the #95–#100 Kraken public OHLC cap "
+                    f"({EMA_9_21_PAPER_CANDLE_COUNT}); "
+                    f"PRETRADE_CANDLE_COUNT={settings.pretrade_candle_count} "
+                    "is the 1h MA lookback and is not used on this path"
                 ),
             )
         )
@@ -263,9 +281,17 @@ def build_report(settings: Settings) -> ConfigReport:
             warnings.append(
                 "PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT is tighter than the "
                 "documented ema_9_21 Kraken daily WF maxDD (~23.35% on BTC+ETH). "
-                "The daily promote path will reject every cycle with "
-                "backtest_drawdown_above_maximum (WSL soak after #94). Leave the "
+                "The daily promote path will reject cycles with "
+                "walkforward_drawdown_above_maximum. Leave the "
                 "documented default or raise it to the research envelope."
+            )
+        if settings.paper_promote_ema_9_21_max_drawdown_pct > EMA_9_21_PAPER_MAX_DRAWDOWN_PCT:
+            warnings.append(
+                "PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT is above the "
+                "documented 0.30 BTC+ETH research envelope (ETH WF maxDD "
+                "~28.77%). Do not raise this to cover full-history "
+                "backtest DD (ETH ~43% on 400 daily bars) — that is a "
+                "different series than the #95–#100 walk-forward definition."
             )
         if settings.paper_promote_ema_9_21_max_drawdown_pct >= 1.0:
             warnings.append(

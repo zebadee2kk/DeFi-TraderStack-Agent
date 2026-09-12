@@ -21,7 +21,16 @@ EMA_9_21_PAPER_RESEARCH_WF_MAX_DRAWDOWN_PCT = 0.2335
 # Paper promote-path DD ceiling. Covers the BTC+ETH research envelope
 # (mean 23.35%, ETH per-asset WF ~28.77%) with a small buffer. SOL's
 # ~50% WF maxDD is supporting-only and is not this envelope.
+# This ceiling is the #95–#100 *walk-forward* maxDD (train=180 / test=60
+# / step=60, warmup=train). It is not full-history backtest DD: on the
+# same Kraken daily window that series is ETH ~43% (400d) / ~36% (720d)
+# and BTC ~20% (400d) / ~33% (720d). Applying 0.30 to the full-history
+# book is why ETH kept rejecting after #98 while research WF was 28.77%.
 EMA_9_21_PAPER_MAX_DRAWDOWN_PCT = 0.30
+# Kraken public Spot OHLC cap and the #95–#100 daily research window.
+# PRETRADE_CANDLE_COUNT=400 is the 1h MA lookback (~16 days) and is a
+# different calendar window on 1d bars.
+EMA_9_21_PAPER_CANDLE_COUNT = 720
 # #100 honesty: daily paper pins were researched on Kraken Spot BTC/USD
 # + ETH/USD only. SOL remains in MVP_ASSETS (~50% WF maxDD) and must
 # not be cycled as if it were inside that envelope. Extra names in
@@ -624,6 +633,20 @@ class Settings(BaseSettings):
         if self.paper_daily_promote_active:
             return EMA_9_21_PAPER_CANDLE_INTERVAL
         return self.pretrade_candle_interval
+
+    @property
+    def effective_pretrade_candle_count(self) -> int:
+        """Bars fetched for the pre-trade gate and feature history.
+
+        Daily paper promote pins use the #95–#100 Kraken public OHLC cap
+        (720). PRETRADE_CANDLE_COUNT=400 is the 1h MA lookback and would
+        silently drop the older research folds (including ETH's 28.77%
+        WF maxDD fold). Live/shadow and the flag-off paper path keep
+        PRETRADE_CANDLE_COUNT.
+        """
+        if self.paper_daily_promote_active:
+            return EMA_9_21_PAPER_CANDLE_COUNT
+        return self.pretrade_candle_count
 
     @property
     def effective_pretrade_max_candle_age_seconds(self) -> float:

@@ -35,11 +35,21 @@ class WalkForwardEvaluator:
     test_size: int = 60
     step_size: int = 60
     fit: FitHook | None = None
+    # --- paper daily promote DD series ---
+    # When True, each fold is train+test with warmup=train_size so only
+    # the test window trades. This is the #95–#100 research definition
+    # (`miles_search._walkforward_with_train_warmup`). Default False keeps
+    # the isolated test-slice evaluator (1h / live / shadow).
+    train_warmup: bool = False
 
     def evaluate(self, candles: tuple[Candle, ...]) -> WalkForwardReport:
-        if self.train_size <= self.backtester.warmup:
+        if self.train_size <= 0:
+            raise ValueError("train_size must be positive")
+        if self.test_size <= 0:
+            raise ValueError("test_size must be positive")
+        if not self.train_warmup and self.train_size <= self.backtester.warmup:
             raise ValueError("train_size must exceed backtester warmup")
-        if self.test_size <= self.backtester.warmup:
+        if not self.train_warmup and self.test_size <= self.backtester.warmup:
             raise ValueError("test_size must exceed backtester warmup")
         if self.step_size <= 0:
             raise ValueError("step_size must be positive")
@@ -52,12 +62,16 @@ class WalkForwardEvaluator:
             test_end = test_start + self.test_size
             if test_end > len(candles):
                 break
-            test_slice = candles[test_start:test_end]
             backtester = self.backtester
             if self.fit is not None:
                 train_slice = candles[train_start:train_end]
                 backtester = self.fit(train_slice)
-            metrics = backtester.run(test_slice)
+            if self.train_warmup:
+                window = candles[train_start:test_end]
+                metrics = backtester.run(window, warmup=self.train_size)
+            else:
+                test_slice = candles[test_start:test_end]
+                metrics = backtester.run(test_slice)
             folds.append(
                 WalkForwardFold(
                     train_start=train_start,
