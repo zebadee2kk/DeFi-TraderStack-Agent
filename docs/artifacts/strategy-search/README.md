@@ -142,3 +142,34 @@ negative and did not enter the average. Leave
 
 See `balanced-holdout-report.md`.
 
+## Harder honesty gates (`traderstack-harder-gates`)
+
+Pre-registered before scoring (do not retune after seeing the print):
+
+| gate | rule |
+| --- | --- |
+| A Magnitude | BTC and ETH holdout excess > 0 **and** min/max ≥ 0.25 |
+| B Multi-window | 3 contiguous 240-bar Kraken daily slices; BTC and ETH WF total > 0 in ≥ 2 of 3 |
+| C Fee stress | 2× fees (20+10 bps) still clear #96 balanced signs |
+| Combined | #96 **and** A **and** B **and** C **and** pre-registered top-1 |
+
+Yahoo / non-Kraken stays A/B only. #96-eligible ADX/SMA names are
+re-scored and cannot skip a failing `ema_9_21` top-1. This command
+never flips `PAPER_PROMOTE_EMA_9_21`. An honest FAIL is success.
+
+On the 2026-09-12 Kraken 720-bar daily window (2024-09-22 → 2026-09-11),
+`ema_9_21` **FAIL**ed the combined bar:
+
+| gate | `ema_9_21` | evidence |
+| --- | --- | --- |
+| A Magnitude | **FAIL** | BTC HO +5.55% / ETH +58.37%, ratio 0.095 < 0.25 |
+| B Multi-window | **FAIL** | 1 of 3 windows (W2 ETH WF −16.88%, W3 BTC WF −8.99%) |
+| C Fee stress | **PASS** | 2× fees still BTC/ETH WF and holdout signs > 0 |
+| Combined | **FAIL** | A and B failed. Leave `PAPER_PROMOTE_EMA_9_21=false`. |
+
+`ema_12_26_adx20` cleared A+B+C+#96 but is rank 4, not top-1 — it is
+**not** promoted. Yahoo BTC-USD holdout excess stayed −9.28% and did
+not enter the average.
+
+See `magnitude-multiwindow-report.md`.
+

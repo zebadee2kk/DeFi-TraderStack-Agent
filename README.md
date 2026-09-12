@@ -173,7 +173,8 @@ holdout evaluation → paper trading → shadow-live trading → tiny-capital li
 pilot → controlled scale-up. Benchmarks include BTC/ETH buy-and-hold and
 simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-strategy-search`, `traderstack-miles-search`,
-`traderstack-daily-robustness`, `traderstack-paper-report`) so any claimed AI
+`traderstack-daily-robustness`, `traderstack-harder-gates`,
+`traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
 not register a voter unless fee-aware walk-forward **total** return is
@@ -192,7 +193,11 @@ must not be read as a 1h-runtime edge.
 pre-registered slower-EMA / dual-mom / risk-off / optional-GARCH grid)
 on the 720-bar Kraken daily cap and only documents a `PAPER_PROMOTE_*`
 id if **BTC and ETH** both have walk-forward total > 0 **and** both have
-holdout excess > 0 after fees.
+holdout excess > 0 after fees. `traderstack-harder-gates` adds three
+pre-registered honesty gates on that same Kraken daily window
+(magnitude balance, 3×240-bar multi-window, 2× fee stress). Combined
+promotion stays off unless top-1 clears all three; Yahoo stays A/B
+only. Default `PAPER_PROMOTE_EMA_9_21` remains false.
 
 ## Roadmap
 
