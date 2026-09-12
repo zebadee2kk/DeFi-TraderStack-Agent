@@ -334,7 +334,9 @@ class BinanceForceOrderProvider:
         async for event in self.stream_events():
             self.aggregator.ingest(event)
 
-    def snapshot(self, asset: str, *, now: datetime | None = None) -> LiquidationWindowSnapshot | None:
+    def snapshot(
+        self, asset: str, *, now: datetime | None = None
+    ) -> LiquidationWindowSnapshot | None:
         moment = now or datetime.now(UTC)
         if self._last_message_at is None and not self.aggregator.has_events:
             return None

@@ -48,15 +48,15 @@ from traderstack.market.adapters import (
     KrakenBookProvider,
     KrakenTickerProvider,
 )
-from traderstack.market.book_ticker import BookTickerProvider
-from traderstack.market.liquidations import BinanceForceOrderProvider
 from traderstack.market.altfins import AltFinsSignalProvider
+from traderstack.market.book_ticker import BookTickerProvider
 from traderstack.market.intelligence_providers import (
     CryptoPanicNewsProvider,
     DuneOnChainProvider,
     LunarCrushSocialProvider,
 )
 from traderstack.market.kraken_candles import KrakenCandleProvider
+from traderstack.market.liquidations import BinanceForceOrderProvider
 from traderstack.market.perplexity import PerplexityNewsProvider
 from traderstack.market.providers import (
     BookSnapshotProvider,

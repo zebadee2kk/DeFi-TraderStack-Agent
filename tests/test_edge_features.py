@@ -38,9 +38,7 @@ def _portfolio() -> PortfolioSnapshot:
 
 
 def _tick() -> MarketTick:
-    return MarketTick(
-        source=MarketSource.KRAKEN, symbol="BTC/USD", bid=99.95, ask=100.05, last=100
-    )
+    return MarketTick(source=MarketSource.KRAKEN, symbol="BTC/USD", bid=99.95, ask=100.05, last=100)
 
 
 def _refs() -> list[ReferencePrice]:

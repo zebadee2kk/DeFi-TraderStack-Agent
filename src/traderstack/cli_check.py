@@ -106,9 +106,7 @@ def build_report(settings: Settings) -> ConfigReport:
             "research/risk context; RiskEngine does not size from these",
         )
     )
-    book_ticker_value = (
-        settings.book_ticker_venue if settings.book_ticker_enabled else "no"
-    )
+    book_ticker_value = settings.book_ticker_venue if settings.book_ticker_enabled else "no"
     items.append(
         CheckItem(
             "  Second-venue bookTicker",

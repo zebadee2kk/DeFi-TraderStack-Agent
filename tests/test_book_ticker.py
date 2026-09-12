@@ -19,7 +19,9 @@ from traderstack.market.book_ticker import (
 from traderstack.market.models import MarketSource
 from traderstack.market.streaming import FeedExhausted
 
-BINANCE_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "edge" / "binance_book_ticker.json"
+BINANCE_FIXTURES = (
+    Path(__file__).resolve().parent / "fixtures" / "edge" / "binance_book_ticker.json"
+)
 BYBIT_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "edge" / "bybit_ticker.json"
 
 
@@ -148,7 +150,7 @@ async def test_bybit_book_ticker_subscribes_and_caches_latest() -> None:
         sleep=_instant_sleep,
         random_jitter=lambda: 0.0,
         max_reconnect_attempts=0,
-        max_age_seconds=10_000,
+        max_age_seconds=0,
     )
 
     with pytest.raises(FeedExhausted):
@@ -160,3 +162,6 @@ async def test_bybit_book_ticker_subscribes_and_caches_latest() -> None:
     assert latest is not None
     assert latest.source is MarketSource.BYBIT
     assert latest.mid == pytest.approx((17215.50 + 17216.00) / 2)
+
+    provider.max_age_seconds = 1.0
+    assert provider.latest("BTC") is None

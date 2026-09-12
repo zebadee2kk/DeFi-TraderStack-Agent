@@ -47,9 +47,7 @@ def test_parse_buy_force_order_is_a_short_liquidation() -> None:
 
 
 def test_parse_array_and_combined_wrapper_shapes() -> None:
-    array_events = parse_force_order_message(
-        _fixtures()["array"], assets=("BTC", "ETH", "SOL")
-    )
+    array_events = parse_force_order_message(_fixtures()["array"], assets=("BTC", "ETH", "SOL"))
     assert {e.asset for e in array_events} == {"BTC", "SOL"}
     combined = parse_force_order_message(_fixtures()["combined"], assets=("BTC",))
     assert len(combined) == 1
@@ -92,9 +90,7 @@ def test_aggregator_bounded_counts_and_zscore_after_baseline() -> None:
     aggregator = LiquidationAggregator(window_seconds=60, baseline_seconds=300, count_cap=4)
     # Three completed 60s windows with different notionals, then a live burst.
     for offset, notional in ((0, 500.0), (60, 1_000.0), (120, 1_500.0)):
-        aggregator.ingest(
-            _event(notional=notional, observed_at=start + timedelta(seconds=offset))
-        )
+        aggregator.ingest(_event(notional=notional, observed_at=start + timedelta(seconds=offset)))
     burst_at = start + timedelta(seconds=180)
     aggregator.ingest(_event(notional=4_000, observed_at=burst_at))
 
@@ -192,12 +188,16 @@ async def test_force_order_collect_updates_snapshot_without_network() -> None:
         sleep=_instant_sleep,
         random_jitter=lambda: 0.0,
         max_reconnect_attempts=0,
+        max_age_seconds=0,
     )
 
     with pytest.raises(FeedExhausted):
         await provider.collect()
 
-    snap = provider.snapshot("BTC")
+    # Recorded fixture `E` is 2019-09-09; evaluate the window at that instant
+    # so the rolling aggregator is not aged out by wall-clock now.
+    fixture_time = datetime.fromtimestamp(1_568_014_460_893 / 1000.0, tz=UTC)
+    snap = provider.snapshot("BTC", now=fixture_time)
     assert snap is not None
     assert snap.long_notional == pytest.approx(0.014 * 9910)
     assert snap.liq_count_long > 0
