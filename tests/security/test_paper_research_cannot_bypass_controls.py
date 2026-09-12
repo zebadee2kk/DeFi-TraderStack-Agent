@@ -216,3 +216,30 @@ def test_promote_ema_is_ignored_on_live_and_does_not_force_daily() -> None:
     gate = build_pretrade_gate(settings)
     assert gate.required_candle_interval is None
     assert gate.max_drawdown == 0.15
+
+
+def test_promote_ema_9_21_adx15_cannot_relax_risk_or_run_live() -> None:
+    live = _settings(
+        trading_mode="live",
+        paper_promote_ema_9_21_adx15=True,
+        pretrade_candle_interval="1h",
+        max_position_pct=0.10,
+    )
+    assert live.paper_promote_ema_9_21_adx15_active is False
+    assert live.effective_pretrade_candle_interval == "1h"
+    assert live.effective_pretrade_max_drawdown_pct == 0.15
+    paper = _settings(
+        trading_mode="paper",
+        paper_promote_ema_9_21_adx15=True,
+        pretrade_candle_interval="1h",
+        max_position_pct=0.10,
+        kill_switch=True,
+    )
+    assert paper.effective_pretrade_candle_interval == "1d"
+    assert paper.effective_pretrade_max_drawdown_pct == 0.30
+    gate = build_pretrade_gate(paper)
+    assert gate.required_candle_interval == "1d"
+    assert gate.max_drawdown == 0.30
+    engine = RiskEngine(paper)
+    assert engine.settings.max_position_pct == 0.10
+    assert engine.settings.kill_switch is True

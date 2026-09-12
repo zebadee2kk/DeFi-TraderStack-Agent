@@ -123,6 +123,13 @@ def test_promote_path_uses_dedicated_ceiling_not_the_1h_bar() -> None:
     assert gate.max_drawdown != promote.pretrade_max_drawdown_pct
 
 
+def test_adx15_promote_path_uses_the_same_daily_dd_ceiling() -> None:
+    promote = _settings(paper_promote_ema_9_21_adx15=True, pretrade_max_drawdown_pct=0.15)
+    assert promote.paper_promote_ema_9_21 is False
+    assert promote.effective_pretrade_max_drawdown_pct == EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
+    assert build_pretrade_gate(promote).max_drawdown == EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
+
+
 def test_live_and_shadow_ignore_the_paper_promote_dd_ceiling() -> None:
     for mode in ("live", "shadow"):
         settings = _settings(

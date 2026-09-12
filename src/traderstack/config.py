@@ -335,11 +335,19 @@ class Settings(BaseSettings):
     # Default matches EMA_9_21_PAPER_MAX_DRAWDOWN_PCT (the #95/#96 Kraken
     # daily BTC+ETH envelope). gt=0 / le=1: 0 or a missing/invalid value
     # fails Settings load (fail-closed). Ignored unless
-    # paper_promote_ema_9_21_active. Not RiskEngine policy -- flipping it
-    # must not move policy_version. Do not set 1.0 to disable the gate.
+    # paper_daily_promote_active (ema_9_21 or ema_9_21_adx15). Not
+    # RiskEngine policy -- flipping it must not move policy_version.
+    # Do not set 1.0 to disable the gate.
     paper_promote_ema_9_21_max_drawdown_pct: float = Field(
         default=EMA_9_21_PAPER_MAX_DRAWDOWN_PCT, gt=0, le=1
     )
+
+    # --- expanded harder-gates ema_9_21_adx15 paper voter ---
+    # Documented paper-only switch for the post-#97 combined-passer top-1
+    # (`ema_9_21` + ADX>15) on the same daily Kraken window. Default false.
+    # Same daily-candle force as PAPER_PROMOTE_EMA_9_21. PAPER_PROMOTE_EMA_9_21
+    # wins if both are true. Ignored on live/shadow. Not RiskEngine policy.
+    paper_promote_ema_9_21_adx15: bool = False
 
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue
@@ -521,15 +529,33 @@ class Settings(BaseSettings):
         return self.trading_mode == "paper" and self.paper_promote_ema_9_21
 
     @property
+    def paper_promote_ema_9_21_adx15_active(self) -> bool:
+        """Register ema_9_21_adx15 as the sole paper voter (paper path only).
+
+        PAPER_PROMOTE_EMA_9_21 wins when both flags are set so the older
+        documented pin cannot be silently replaced.
+        """
+        return (
+            self.trading_mode == "paper"
+            and self.paper_promote_ema_9_21_adx15
+            and not self.paper_promote_ema_9_21
+        )
+
+    @property
+    def paper_daily_promote_active(self) -> bool:
+        """Any daily-validated paper promote pin is on (forces 1d candles)."""
+        return self.paper_promote_ema_9_21_active or self.paper_promote_ema_9_21_adx15_active
+
+    @property
     def effective_pretrade_candle_interval(self) -> str:
         """Candle interval used for paper ingestion, features, and the gate.
 
-        When the paper-only ema_9_21 promote path is active this is always
+        When a paper-only daily promote path is active this is always
         daily (`1d` / 1440m). A daily-validated EMA on 1h bars is not the
         same strategy. Live/shadow (and the flag-off paper path) keep
         PRETRADE_CANDLE_INTERVAL.
         """
-        if self.paper_promote_ema_9_21_active:
+        if self.paper_daily_promote_active:
             return EMA_9_21_PAPER_CANDLE_INTERVAL
         return self.pretrade_candle_interval
 
@@ -541,7 +567,7 @@ class Settings(BaseSettings):
         drops the in-progress day). The 1h default (7200s) would reject
         every promote-path cycle after mid-morning UTC.
         """
-        if self.paper_promote_ema_9_21_active:
+        if self.paper_daily_promote_active:
             return max(
                 self.pretrade_max_candle_age_seconds,
                 EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS,
@@ -553,12 +579,13 @@ class Settings(BaseSettings):
         """Drawdown ceiling used by the pre-trade gate.
 
         The 1h MA bar (PRETRADE_MAX_DRAWDOWN_PCT=0.15) is too tight for
-        the daily ema_9_21 research envelope (~23% WF maxDD). When the
-        paper promote path is active, use the dedicated paper ceiling.
-        Live/shadow and the flag-off paper path keep
-        PRETRADE_MAX_DRAWDOWN_PCT. This never disables the gate.
+        the daily ema_9_21 research envelope (~23% WF maxDD). When any
+        paper daily promote path is active (ema_9_21 or ema_9_21_adx15),
+        use the dedicated paper ceiling. Live/shadow and the flag-off
+        paper path keep PRETRADE_MAX_DRAWDOWN_PCT. This never disables
+        the gate.
         """
-        if self.paper_promote_ema_9_21_active:
+        if self.paper_daily_promote_active:
             return self.paper_promote_ema_9_21_max_drawdown_pct
         return self.pretrade_max_drawdown_pct
 

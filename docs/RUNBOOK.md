@@ -27,7 +27,7 @@ without activating the venv.
 | `traderstack-strategy-search` | Offline catalog search: scores the expanded pre-registered catalog (MA / momentum / mean-reversion + vol-regime filters; optional funding / OI / liquidation series) on Kraken charts-spot (~180d 1h) or public Spot OHLC (720-bar cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Promotion additionally requires WF **total** return > 0. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
 | `traderstack-miles-search` | Miles-inspired catalog search: EMA 9/21 and 12/26 (optional ADX gate) × optional GARCH vol-targeted sizing, scored on Kraken Spot OHLC (daily and 1h, 720-bar public cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout. Writes `docs/artifacts/strategy-search/miles-inspired-report.md`. Never flips `PAPER_GARCH_SIZE` or `PAPER_PROMOTE_EMA_9_21`. Daily promotion is not a 1h-runtime claim — the paper promote flag forces `1d` / 1440m. |
 | `traderstack-daily-robustness` | Daily robustness / balanced-holdout pass: EMA 9/21, 12/26, 20/50, 50/200 (ADX variants), dual-mom grid, buy-the-dip, MA risk-off, optional GARCH size on the longest Kraken public daily OHLC (720-bar ≈ 2y cap). Optional Yahoo Finance BTC-USD/ETH-USD daily is a non-Kraken A/B only. Promotes only if **BTC and ETH** both have WF total > 0 **and** both have holdout excess > 0 (ETH cannot carry a losing BTC holdout). Writes `docs/artifacts/strategy-search/balanced-holdout-report.md`. Never flips `PAPER_PROMOTE_*`. |
-| `traderstack-harder-gates` | Harder honesty gates on the #96 Kraken daily window: **A** magnitude (BTC and ETH holdout excess > 0 and min/max ratio ≥ 0.25), **B** three contiguous 240-bar windows (BTC and ETH WF total > 0 in ≥ 2 of 3), **C** 2× fees (20+10 bps) still clearing #96 balanced signs. Yahoo is A/B only. Writes `docs/artifacts/strategy-search/magnitude-multiwindow-report.md`. Never flips `PAPER_PROMOTE_EMA_9_21`. An honest FAIL is success. |
+| `traderstack-harder-gates` | Harder honesty gates on the Kraken daily 720-bar window: **A** magnitude (BTC and ETH holdout excess > 0 and min/max ratio ≥ 0.25), **B** three contiguous 240-bar windows (BTC and ETH WF total > 0 in ≥ 2 of 3), **C** 2× fees (20+10 bps) still clearing #96 balanced signs. Default catalog is the frozen expanded post-#97 grid. Ranking key (frozen before scoring): mean holdout excess among combined-passers. Yahoo is A/B only. Writes `docs/artifacts/strategy-search/expanded-harder-gates-report.md`. Never flips `PAPER_PROMOTE_*`. An empty promotee is success. |
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
@@ -187,6 +187,11 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
   `PAPER_PROMOTE_SEARCHED_STRATEGIES`. When the flag is on, paper
   ingestion / feature bars / the pre-trade backtest are forced to
   `1d` (Kraken interval 1440) even if `PRETRADE_CANDLE_INTERVAL=1h`.
+- Leave `PAPER_PROMOTE_EMA_9_21_ADX15=false` unless you intend to
+  register **only** the expanded harder-gates combined-passer top-1
+  `ema_9_21_adx15` (EMA 9/21, ADX>15) on daily candles. Same paper-only
+  / daily-force rules. `PAPER_PROMOTE_EMA_9_21` wins if both are true.
+  See `docs/artifacts/strategy-search/expanded-harder-gates-report.md`.
   **Do not claim the daily Miles edge on a 1h runtime** — that is a
   different strategy, and the same EMA lost money on the 1h window.
 - Prefer a secret manager or your platform's env-injection mechanism over a
@@ -433,6 +438,13 @@ flag. It does not flip `PAPER_GARCH_SIZE`. If both this and
 `PAPER_PROMOTE_SEARCHED_STRATEGIES` are true, `ema_9_21` wins and
 `traderstack-check-config` warns.
 
+`PAPER_PROMOTE_EMA_9_21_ADX15` (default **false**) is the paper-only
+pin for the expanded harder-gates combined-passer top-1
+(`ema_9_21` + ADX>15). Same daily-candle force, same paper-only
+rule, same "does not enable live", and the same
+`PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` ceiling. If both EMA
+promote flags are true, `PAPER_PROMOTE_EMA_9_21` wins.
+
 **Alignment (do not skip this).** `ema_9_21` cleared the daily Kraken Spot
 OHLC window in #93. Paper historically fetched `PRETRADE_CANDLE_INTERVAL=1h`.
 Running that daily-validated EMA on 1h bars is **not** the same strategy
@@ -506,18 +518,26 @@ bars **before** the window is scored:
   bps). Must still clear the #96 balanced signs.
 
 Yahoo / non-Kraken prints stay A/B only and are never averaged in.
-Selection is still pre-registered top-1; a more balanced ADX/SMA #2
-cannot skip a failing `ema_9_21`. Combined promote requires A **and**
-B **and** C **and** the #96 bar. This command does not flip
-`PAPER_PROMOTE_EMA_9_21` (default false). An honest FAIL is the
-successful research outcome.
+The default catalog is the frozen expanded post-#97 grid (`--catalog
+expanded`); `#96` balanced and `#95` legacy remain available. Ranking
+key (frozen before scoring): **mean holdout excess among
+combined-passers**. Combined = #96 **and** A **and** B **and** C. A
+non-passer is never promoted; walk-forward rank cannot block a passer.
+If a combined-passer top-1 exists, the report names
+`PAPER_PROMOTE_<ID>` (default **false**) — this command does not flip
+it, nor `PAPER_PROMOTE_EMA_9_21`. The committed expanded-catalog window
+named `PAPER_PROMOTE_EMA_9_21_ADX15` for `ema_9_21_adx15`; leave that
+flag **false** unless you intend the paper-only daily voter. An empty
+promotee is also a successful research outcome.
 
 ```bash
 .venv/bin/traderstack-harder-gates --live-kraken
 .venv/bin/traderstack-harder-gates --live-kraken --no-yahoo
 ```
 
-See `docs/artifacts/strategy-search/magnitude-multiwindow-report.md`.
+See `docs/artifacts/strategy-search/expanded-harder-gates-report.md`
+(this expansion) and
+`docs/artifacts/strategy-search/magnitude-multiwindow-report.md` (#97).
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
 the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:
@@ -872,7 +892,7 @@ env vars are set.
 | `PAPER_PRETRADE_MIN_TRADES` | `1` | At least one completed round-trip. Flat/no-trade books still fail. |
 | `PAPER_PRETRADE_MIN_WALKFORWARD_EXCESS_RETURN` | `-0.10` | Out-of-sample excess uses the same paper room. `PRETRADE_REQUIRE_WALKFORWARD` stays on. |
 | `PRETRADE_MAX_DRAWDOWN_PCT` | `0.15` (shared) | 1h MA / live / shadow catastrophic bar. **Not** the daily `ema_9_21` promote ceiling. |
-| `PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` | `0.30` (paper promote only) | Used only when `PAPER_PROMOTE_EMA_9_21=true` and `TRADING_MODE=paper`. Matches the #95/#96 Kraken daily BTC+ETH envelope (WF maxDD ~23.35% mean, ETH ~28.77%). The 0.15 1h bar rejected every post-#94 daily soak cycle. SOL's ~50% WF maxDD is supporting-only and may still reject. 0 fails closed at load. Do not set `1.0` to disable the gate. |
+| `PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` | `0.30` (paper promote only) | Used when `TRADING_MODE=paper` and a daily promote pin is on (`PAPER_PROMOTE_EMA_9_21` or `PAPER_PROMOTE_EMA_9_21_ADX15`). Matches the #95/#96 Kraken daily BTC+ETH envelope (WF maxDD ~23.35% mean, ETH ~28.77%). The 0.15 1h bar rejected every post-#94 daily soak cycle. SOL's ~50% WF maxDD is supporting-only and may still reject. 0 fails closed at load. Do not set `1.0` to disable the gate. |
 
 Do **not** set `PRETRADE_BACKTEST_ENABLED=false` to "see if it trades".
 That removes the gate; these floors exist so paper can reach Risk without

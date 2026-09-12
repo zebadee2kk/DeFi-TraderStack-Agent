@@ -25,6 +25,7 @@ from traderstack.models import Side
 from traderstack.strategies import Regime, StrategyEnsemble, StrategySignal
 
 EMA_9_21_STRATEGY_ID = "ema_9_21"
+EMA_9_21_ADX15_STRATEGY_ID = "ema_9_21_adx15"
 
 
 class DirectionStrategy(Protocol):
@@ -173,6 +174,25 @@ def build_ema_9_21_paper_ensemble() -> StrategyEnsemble:
     """Sole paper voter: `ema_9_21`. Defaults and the MA baseline stay off."""
     return StrategyEnsemble(
         extra_voters=(ema_9_21_paper_voter(),),
+        min_agreeing=1,
+        suppress_defaults=True,
+    )
+
+
+def ema_9_21_adx15_paper_voter() -> EmaCrossoverStrategy:
+    """Combined-passer top-1 on the expanded harder-gates daily window."""
+    return EmaCrossoverStrategy(
+        strategy_id=EMA_9_21_ADX15_STRATEGY_ID,
+        fast_span=9,
+        slow_span=21,
+        adx_threshold=15.0,
+    )
+
+
+def build_ema_9_21_adx15_paper_ensemble() -> StrategyEnsemble:
+    """Sole paper voter: `ema_9_21_adx15`. Defaults stay off."""
+    return StrategyEnsemble(
+        extra_voters=(ema_9_21_adx15_paper_voter(),),
         min_agreeing=1,
         suppress_defaults=True,
     )

@@ -243,6 +243,7 @@ def build_report(settings: Settings) -> ConfigReport:
                 ),
             )
         )
+    if settings.paper_daily_promote_active:
         items.append(
             CheckItem(
                 "Paper promote ema_9_21 max drawdown",
@@ -281,6 +282,52 @@ def build_report(settings: Settings) -> ConfigReport:
         warnings.append(
             "PAPER_PROMOTE_EMA_9_21=true takes precedence over "
             "PAPER_PROMOTE_SEARCHED_STRATEGIES; only ema_9_21 is registered."
+        )
+
+    # --- expanded harder-gates ema_9_21_adx15 paper voter ---
+    items.append(
+        CheckItem(
+            "Promote ema_9_21_adx15 as paper voter",
+            (
+                "active"
+                if settings.paper_promote_ema_9_21_adx15_active
+                else "ignored"
+                if settings.paper_promote_ema_9_21_adx15
+                else "no"
+            ),
+            (
+                "sole voter ema_9_21_adx15; defaults suppressed; "
+                f"candles forced {settings.effective_pretrade_candle_interval} "
+                "(Kraken 1440); do not claim daily edge on 1h bars"
+                if settings.paper_promote_ema_9_21_adx15_active
+                else (
+                    "PAPER_PROMOTE_EMA_9_21 takes precedence; ema_9_21_adx15 not registered"
+                    if settings.paper_promote_ema_9_21_adx15 and settings.paper_promote_ema_9_21
+                    else (
+                        "PAPER_PROMOTE_EMA_9_21_ADX15 is paper-only; "
+                        f"TRADING_MODE={settings.trading_mode}"
+                        if settings.paper_promote_ema_9_21_adx15
+                        else "default; ema_9_21_adx15 is not a paper voter"
+                    )
+                )
+            ),
+        )
+    )
+    if settings.paper_promote_ema_9_21_adx15 and settings.trading_mode != "paper":
+        warnings.append(
+            "PAPER_PROMOTE_EMA_9_21_ADX15=true is ignored unless TRADING_MODE=paper. "
+            "Live/shadow do not register ema_9_21_adx15 and keep "
+            "PRETRADE_MAX_DRAWDOWN_PCT."
+        )
+    if settings.paper_promote_ema_9_21 and settings.paper_promote_ema_9_21_adx15:
+        warnings.append(
+            "PAPER_PROMOTE_EMA_9_21=true takes precedence over "
+            "PAPER_PROMOTE_EMA_9_21_ADX15; only ema_9_21 is registered."
+        )
+    if settings.paper_promote_ema_9_21_adx15_active and settings.paper_promote_searched_strategies:
+        warnings.append(
+            "PAPER_PROMOTE_EMA_9_21_ADX15=true takes precedence over "
+            "PAPER_PROMOTE_SEARCHED_STRATEGIES; only ema_9_21_adx15 is registered."
         )
 
     # --- Pre-trade self-check (backtest gate) -----------------------------------------

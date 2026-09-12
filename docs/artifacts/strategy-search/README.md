@@ -175,3 +175,32 @@ not enter the average.
 
 See `magnitude-multiwindow-report.md`.
 
+## Expanded harder-gates catalog (`traderstack-harder-gates`, default)
+
+Same A/B/C gates and Kraken 720-bar daily window as #97, with a
+**larger catalog frozen before the live pull**: more ADX thresholds,
+faster/slower EMAs, SMA200 risk-off variants, dual-mom lookbacks, and
+dip+vol grids. Yahoo remains A/B only.
+
+Ranking key (frozen before scoring): **mean holdout excess among
+combined-passers** (`#96` + A + B + C). Walk-forward rank of the full
+catalog is informational. #97 required the WF-total #1 to also clear
+A+B+C and therefore did not promote `ema_12_26_adx20` (combined PASS,
+rank 4). This key selects among names that already cleared the bar.
+
+`PAPER_PROMOTE_EMA_9_21` stays false. On the 2026-09-12 Kraken 720-bar
+daily window (2024-09-22 → 2026-09-11) four names cleared combined:
+
+| combined rank | id | mean HO excess | BTC HO | ETH HO | ratio | promoted |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| 1 | `ema_9_21_adx15` | +26.07% | +21.68% | +30.45% | 0.712 | research only |
+| 2 | `ema_9_21_adx18` | +24.41% | +22.90% | +25.93% | 0.883 | no |
+| 3 | `ema_12_26_adx18` | +18.11% | +17.37% | +18.85% | 0.921 | no |
+| 4 | `ema_12_26_adx20` | +9.87% | +4.53% | +15.20% | 0.298 | no (#97 rank-4) |
+
+Documented paper-only pin: `PAPER_PROMOTE_EMA_9_21_ADX15` (default
+**false**). This report does not flip it and does not enable live.
+`ema_9_21` still fails A and B.
+
+See `expanded-harder-gates-report.md`.
+

@@ -1,11 +1,12 @@
-"""Harder honesty gates on the #96 Kraken daily ``ema_9_21`` edge.
+"""Harder honesty gates on an expanded daily catalog.
 
 Pre-registered before any window is scored (also written into every report).
-An honest FAIL is the successful outcome if the edge does not survive.
+An honest FAIL / empty promotee is the successful outcome if no name
+survives.
 
-A. **Magnitude balance** (optional promote path): BTC and ETH holdout
-   excess > 0 **and** ``min(BTC, ETH) / max(BTC, ETH) >= 0.25``.
-   Rejects an ETH-only magnitude even when both signs are positive.
+A. **Magnitude balance**: BTC and ETH holdout excess > 0 **and**
+   ``min(BTC, ETH) / max(BTC, ETH) >= 0.25``. Rejects an ETH-only
+   magnitude even when both signs are positive.
 B. **Rolling multi-window**: the most recent ``3 * 240`` Kraken daily
    bars are split into three contiguous 240-bar windows. Each window is
    scored with the same walk-forward hyperparameters as #96
@@ -22,12 +23,15 @@ C. **Fee stress**: re-score at ``2×`` the baseline fee and slippage
 Yahoo / non-Kraken series stay A/B only and never enter ranking,
 magnitude, multi-window, or fee-stress promotion averages.
 
-Selection stays pre-registered top-1 by baseline Kraken BTC+ETH
-walk-forward mean total return. If #1 fails A, B, or C we do **not**
-promote #2, including #96-eligible ADX/SMA names that look more
-balanced. Combined promote = #96 balanced-holdout **and** A **and** B
-**and** C **and** is top-1. This module never flips
-``PAPER_PROMOTE_EMA_9_21``.
+#97 ranked the full catalog by walk-forward mean total return and
+required that overall #1 also clear A+B+C. That blocked
+``ema_12_26_adx20`` (combined PASS, rank 4). This run freezes a
+different ranking key **before scoring**: among names that already
+clear **combined** (#96 + A + B + C), take top-1 by Kraken BTC+ETH
+**mean holdout excess**. Walk-forward rank of the full catalog is
+informational and cannot promote a non-passer or block a passer.
+Empty combined-passer set → no promotee (success). This module never
+flips ``PAPER_PROMOTE_EMA_9_21`` or any new ``PAPER_PROMOTE_*`` default.
 """
 
 from __future__ import annotations
@@ -39,8 +43,10 @@ from pydantic import BaseModel, Field
 from traderstack.candles import Candle
 from traderstack.research.daily_candidates import (
     BALANCED_HOLDOUT_GRID_NOTE,
+    EXPANDED_HARDER_GATES_GRID_NOTE,
     default_balanced_holdout_candidates,
     default_daily_robustness_candidates,
+    default_expanded_harder_gates_candidates,
 )
 from traderstack.research.daily_robustness import (
     KRAKEN_DAILY_CAP_NOTE,
@@ -62,9 +68,11 @@ MULTIWINDOW_COUNT = 3
 MULTIWINDOW_BARS = 240
 MULTIWINDOW_MIN_PASSES = 2
 FEE_STRESS_MULTIPLIER = 2.0
-SELECTION_RULE = "pre_registered_top1"
-# #96 names that cleared balanced-holdout but were not top-1. Re-scored
-# under A–C for honesty; they cannot skip a failing top-1.
+RANKING_KEY = "mean_holdout_excess_among_combined_passers"
+SELECTION_RULE = "pre_registered_top1_mean_holdout_excess_among_combined_passers"
+# #96 names that cleared balanced-holdout but were not #97 WF top-1.
+# Re-scored under A–C for honesty. Under the expanded ranking key a
+# combined-passer may be selected even if it is not WF-total #1.
 PR96_ELIGIBLE_RECHECK = (
     "ema_12_26",
     "ema_12_26_adx25",
@@ -84,8 +92,10 @@ HARDER_GATES_NOTE = (
     f"{MULTIWINDOW_MIN_PASSES} of {MULTIWINDOW_COUNT} windows. C — fee "
     f"stress: {FEE_STRESS_MULTIPLIER:g}× fee and slippage (defaults "
     "10+5 → 20+10 bps) must still clear #96 balanced signs. Combined "
-    "promote requires #96 balanced-holdout and A and B and C and "
-    "pre-registered top-1. Yahoo is A/B only. PAPER_PROMOTE_EMA_9_21 "
+    "requires #96 balanced-holdout and A and B and C. Ranking key "
+    f"(frozen before scoring): {RANKING_KEY} — Kraken BTC+ETH mean "
+    "holdout excess among combined-passers; full-catalog walk-forward "
+    "rank is informational. Yahoo is A/B only. PAPER_PROMOTE_EMA_9_21 "
     "stays false."
 )
 
@@ -335,10 +345,13 @@ class CandidateHarderResult(BaseModel):
     family: str
     label: str
     rank: int | None = None
+    wf_rank: int | None = None
+    combined_rank: int | None = None
     selected: bool = False
     eligible_96: bool = False
     pr96_recheck: bool = False
     baseline_wf_total: float | None = None
+    mean_holdout_excess: float | None = None
     baseline_btc_wf: float | None = None
     baseline_eth_wf: float | None = None
     baseline_btc_holdout: float | None = None
@@ -382,13 +395,17 @@ class HarderGatesReport(BaseModel):
     multiwindow_bars: int
     multiwindow_min_passes: int
     fee_stress_multiplier: float
+    ranking_key: str
     catalog_name: str
     catalog_note: str
     kraken_cap_note: str
     gates_note: str
     candidates: list[CandidateHarderResult]
     selected_candidate_id: str | None = None
+    wf_top1_candidate_id: str | None = None
+    combined_passer_ids: list[str] = Field(default_factory=list)
     promoted_candidate_ids: list[str] = Field(default_factory=list)
+    recommended_promote_flag: str | None = None
     any_promoted: bool = False
     ema_9_21_gate_a: bool = False
     ema_9_21_gate_b: bool = False
@@ -400,6 +417,48 @@ class HarderGatesReport(BaseModel):
     yahoo_notes: list[str] = Field(default_factory=list)
 
 
+def paper_promote_flag_name(candidate_id: str) -> str:
+    """Documented paper-only Settings name for a combined-passer id."""
+    return "PAPER_PROMOTE_" + candidate_id.upper()
+
+
+def rank_combined_passers(
+    rows: list[CandidateHarderResult],
+) -> list[CandidateHarderResult]:
+    """Frozen ranking key: mean holdout excess among combined-passers.
+
+    Tie-break is candidate_id ascending so the order is deterministic and
+    does not depend on catalog iteration after seeing PnL.
+    """
+    passers = [row for row in rows if row.combined]
+    passers.sort(
+        key=lambda row: (
+            -(row.mean_holdout_excess if row.mean_holdout_excess is not None else float("-inf")),
+            row.candidate_id,
+        )
+    )
+    for index, row in enumerate(passers, start=1):
+        row.combined_rank = index
+        row.rank = index
+    return passers
+
+
+def apply_combined_promotion(
+    rows: list[CandidateHarderResult],
+) -> CandidateHarderResult | None:
+    """Select top-1 combined-passer. A non-passer is never promoted."""
+    for row in rows:
+        row.selected = False
+        row.promoted = False
+    passers = rank_combined_passers(rows)
+    if not passers:
+        return None
+    selected = passers[0]
+    selected.selected = True
+    selected.promoted = True
+    return selected
+
+
 def _catalog_for(
     histories: dict[str, tuple[Candle, ...]],
     *,
@@ -408,17 +467,23 @@ def _catalog_for(
 ) -> tuple[list[SearchCandidate], str, str]:
     if candidates is not None:
         return list(candidates), "custom", "Caller-supplied catalog."
+    overlay = kraken_daily_candles(histories, "BTC/USD")
     if catalog_name == "legacy":
         return (
             list(default_daily_robustness_candidates()),
             "legacy",
             "Frozen #95 daily-robustness catalog (K=8).",
         )
-    overlay = kraken_daily_candles(histories, "BTC/USD")
+    if catalog_name == "balanced":
+        return (
+            list(default_balanced_holdout_candidates(btc_overlay=overlay)),
+            "balanced",
+            BALANCED_HOLDOUT_GRID_NOTE,
+        )
     return (
-        list(default_balanced_holdout_candidates(btc_overlay=overlay)),
-        "balanced",
-        BALANCED_HOLDOUT_GRID_NOTE,
+        list(default_expanded_harder_gates_candidates(btc_overlay=overlay)),
+        "expanded",
+        EXPANDED_HARDER_GATES_GRID_NOTE,
     )
 
 
@@ -438,7 +503,7 @@ def run_harder_gates(
     holdout_fraction: float = 0.20,
     min_trades: int = 3,
     candidates: tuple[SearchCandidate, ...] | None = None,
-    catalog_name: str = "balanced",
+    catalog_name: str = "expanded",
     now: datetime | None = None,
     data_notes: list[str] | None = None,
 ) -> HarderGatesReport:
@@ -525,11 +590,13 @@ def run_harder_gates(
                 candidate_id=base.candidate_id,
                 family=base.family,
                 label=base.label,
-                rank=base.rank,
-                selected=base.selected,
+                rank=None,
+                wf_rank=base.rank,
+                selected=False,
                 eligible_96=base.eligible,
                 pr96_recheck=base.candidate_id in PR96_ELIGIBLE_RECHECK,
                 baseline_wf_total=base.mean_wf_total_return,
+                mean_holdout_excess=base.mean_holdout_excess_return,
                 baseline_btc_wf=(btc.walkforward_mean_total_return if btc is not None else None),
                 baseline_eth_wf=(eth.walkforward_mean_total_return if eth is not None else None),
                 baseline_btc_holdout=btc_ho,
@@ -552,17 +619,11 @@ def run_harder_gates(
             )
         )
 
-    selected = next((row for row in rows if row.selected), None)
-    if selected is None:
-        rankable = [row for row in rows if row.rank is not None]
-        rankable.sort(key=lambda row: row.rank or 10_000)
-        selected = rankable[0] if rankable else None
-    if selected is not None:
-        selected.selected = True
-        # Top-1 only. A passing #2 cannot skip a failing #1.
-        selected.promoted = bool(selected.combined)
-
+    selected = apply_combined_promotion(rows)
+    wf_top1 = next((row for row in rows if row.wf_rank == 1), None)
     promoted_ids = [row.candidate_id for row in rows if row.promoted]
+    combined_ids = [row.candidate_id for row in rows if row.combined]
+    recommend_flag = paper_promote_flag_name(promoted_ids[0]) if promoted_ids else None
     ema = next((row for row in rows if row.candidate_id == "ema_9_21"), None)
     ema_a = ema.gate_a_pass if ema is not None else False
     ema_b = ema.gate_b_pass if ema is not None else False
@@ -571,16 +632,19 @@ def run_harder_gates(
     ema_96 = ema.eligible_96 if ema is not None else False
 
     honesty = (
-        "No candidate is rewritten to look profitable. Walk-forward ranking "
-        "never sees the holdout tail. Selection is pre-registered top-1 of "
-        f"{len(catalog)} catalog members by baseline Kraken BTC+ETH "
-        "walk-forward mean total return. Yahoo Finance daily is a longer "
-        "non-Kraken A/B and cannot enter ranking, magnitude, multi-window, "
-        "or fee-stress averages. "
+        "No candidate is rewritten to look profitable. Walk-forward folds "
+        "never see the holdout tail. Combined-passers are names that clear "
+        "#96 balanced-holdout and A and B and C. Ranking key (frozen before "
+        f"scoring): {RANKING_KEY} — top-1 of {len(catalog)} catalog members "
+        "that also combined-pass, by Kraken BTC+ETH mean holdout excess "
+        "(tie-break: candidate_id). Full-catalog walk-forward rank is "
+        "informational and cannot promote a non-passer or block a passer. "
+        "Yahoo Finance daily is a longer non-Kraken A/B and cannot enter "
+        "ranking, magnitude, multi-window, or fee-stress averages. "
         + HARDER_GATES_NOTE
-        + " An honest FAIL on A, B, or C is a successful research outcome "
-        "— it is not rewritten as a soft PASS. This run does not flip "
-        "PAPER_PROMOTE_EMA_9_21 (default false) and does not enable live."
+        + " An honest FAIL / empty promotee is a successful research "
+        "outcome — it is not rewritten as a soft PASS. This run does not "
+        "flip PAPER_PROMOTE_EMA_9_21 (default false) and does not enable live."
     )
     if ema is not None:
         honesty += (
@@ -596,12 +660,13 @@ def run_harder_gates(
         )
     elif selected.candidate_id == "ema_9_21":
         honesty += (
-            " ema_9_21 cleared A, B, and C on this window. That still does "
-            "not flip PAPER_PROMOTE_EMA_9_21."
+            " ema_9_21 cleared A, B, and C and was top-1 among combined-passers. "
+            "That still does not flip PAPER_PROMOTE_EMA_9_21."
         )
     else:
         honesty += (
-            f" Top-1 under the new gates was {selected.candidate_id}. "
+            f" Combined-passer top-1 was {selected.candidate_id} "
+            f"({paper_promote_flag_name(selected.candidate_id)} default false). "
             "Document the paper-only id; do not enable live."
         )
 
@@ -645,6 +710,7 @@ def run_harder_gates(
         holdout_fraction=holdout_fraction,
         min_trades=min_trades,
         selection_rule=SELECTION_RULE,
+        ranking_key=RANKING_KEY,
         magnitude_ratio_min=MAGNITUDE_RATIO_MIN,
         multiwindow_count=MULTIWINDOW_COUNT,
         multiwindow_bars=MULTIWINDOW_BARS,
@@ -656,7 +722,10 @@ def run_harder_gates(
         gates_note=HARDER_GATES_NOTE,
         candidates=rows,
         selected_candidate_id=selected.candidate_id if selected is not None else None,
+        wf_top1_candidate_id=wf_top1.candidate_id if wf_top1 is not None else None,
+        combined_passer_ids=combined_ids,
         promoted_candidate_ids=promoted_ids,
+        recommended_promote_flag=recommend_flag,
         any_promoted=bool(promoted_ids),
         ema_9_21_gate_a=ema_a,
         ema_9_21_gate_b=ema_b,
@@ -684,7 +753,7 @@ def _verdict(passed: bool) -> str:
 def render_harder_gates_markdown(report: HarderGatesReport) -> str:
     ema = next((row for row in report.candidates if row.candidate_id == "ema_9_21"), None)
     lines: list[str] = [
-        "# Magnitude / multi-window / fee-stress report",
+        "# Expanded catalog harder-gates report",
         "",
         f"Generated: {report.generated_at.isoformat()}",
         f"Symbols: {', '.join(report.symbols)}",
@@ -701,7 +770,10 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
             f"on the full series (gate C / #96). Gate B windows use the same "
             f"train/test/step and no holdout."
         ),
-        (f"Selection: {report.selection_rule} (catalog={report.catalog_name})"),
+        (
+            f"Selection: {report.selection_rule} "
+            f"(ranking_key={report.ranking_key}; catalog={report.catalog_name})"
+        ),
         "",
         "## Pre-registered gates (frozen before scoring)",
         "",
@@ -725,8 +797,9 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
             "bps) still clear #96 balanced signs |"
         ),
         (
-            "| Combined | #96 balanced-holdout **and** A **and** B **and** "
-            "C **and** pre-registered top-1. #2 cannot skip a failing #1. |"
+            "| Combined | #96 balanced-holdout **and** A **and** B **and** C. "
+            f"Top-1 among those passers by `{report.ranking_key}`. "
+            "A non-passer is never promoted. |"
         ),
         "",
         "## Honesty",
@@ -813,26 +886,62 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
             )
         lines.append("")
 
+    passers = sorted(
+        [row for row in report.candidates if row.combined],
+        key=lambda row: (
+            row.combined_rank if row.combined_rank is not None else 10_000,
+            row.candidate_id,
+        ),
+    )
     lines.extend(
         [
-            "## Ranked candidates (baseline Kraken BTC+ETH WF total; A/B/C overlay)",
+            "## Combined-passers (promotion ranking)",
             "",
-            "| rank | id | WF total | BTC HO | ETH HO | ratio | A | B | C | #96 | combined | promoted |",
-            "| ---: | --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- | --- | --- |",
+            (
+                f"Frozen ranking key: `{report.ranking_key}`. "
+                "Only names that already clear #96 + A + B + C appear here. "
+                "Empty table = no promotee (success)."
+            ),
+            "",
+            "| combined rank | id | mean HO excess | BTC HO | ETH HO | ratio | WF total | WF rank | promoted |",
+            "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
+    if passers:
+        for row in passers:
+            cr = str(row.combined_rank) if row.combined_rank is not None else "—"
+            wr = str(row.wf_rank) if row.wf_rank is not None else "—"
+            lines.append(
+                f"| {cr} | `{row.candidate_id}` | {_pct(row.mean_holdout_excess)} | "
+                f"{_pct(row.baseline_btc_holdout)} | {_pct(row.baseline_eth_holdout)} | "
+                f"{_ratio(row.holdout_magnitude_ratio)} | {_pct(row.baseline_wf_total)} | "
+                f"{wr} | {'yes' if row.promoted else 'no'} |"
+            )
+    else:
+        lines.append("| — | — | — | — | — | — | — | — | no combined-passers |")
+    lines.append("")
+
+    lines.extend(
+        [
+            "## Full catalog (informational WF rank; A/B/C overlay)",
+            "",
+            "| WF rank | id | WF total | mean HO | BTC HO | ETH HO | ratio | A | B | C | #96 | combined | promoted |",
+            "| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- | --- | --- |",
         ]
     )
     ordered = sorted(
         report.candidates,
         key=lambda row: (
-            row.rank is None,
-            row.rank if row.rank is not None else 10_000,
+            row.wf_rank is None,
+            row.wf_rank if row.wf_rank is not None else 10_000,
             row.candidate_id,
         ),
     )
     for row in ordered:
-        rank = str(row.rank) if row.rank is not None else "—"
+        rank = str(row.wf_rank) if row.wf_rank is not None else "—"
         lines.append(
             f"| {rank} | `{row.candidate_id}` | {_pct(row.baseline_wf_total)} | "
+            f"{_pct(row.mean_holdout_excess)} | "
             f"{_pct(row.baseline_btc_holdout)} | {_pct(row.baseline_eth_holdout)} | "
             f"{_ratio(row.holdout_magnitude_ratio)} | "
             f"{_verdict(row.gate_a_pass)} | {_verdict(row.gate_b_pass)} | "
@@ -844,32 +953,36 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
     recheck = [row for row in ordered if row.pr96_recheck]
     lines.extend(
         [
-            "## #96 eligible non-promoted re-check (ADX / SMA variants)",
+            "## #96 eligible re-check (ADX / SMA variants)",
             "",
             (
                 "These names cleared #96 balanced-holdout on the committed "
-                "2026-09-12 window (or are the pre-registered ADX/SMA set) but "
-                "were not top-1. They are re-scored under A–C. They **cannot** "
-                "be promoted unless they are the pre-registered top-1 *and* "
-                "clear the new gates. A better magnitude ratio on #2 does not "
-                "unlock promotion when `ema_9_21` remains top-1."
+                "2026-09-12 window (or are the pre-registered ADX/SMA set). "
+                "They are re-scored under A–C. Under the expanded ranking "
+                "key a combined-passer **can** be selected even if it is not "
+                "walk-forward #1. A non-passer is still never promoted."
             ),
             "",
-            "| id | #96 | A | B | C | combined | note |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| id | #96 | A | B | C | combined | combined rank | note |",
+            "| --- | --- | --- | --- | --- | --- | ---: | --- |",
         ]
     )
     for row in recheck:
-        note = "not top-1; cannot skip"
-        if row.selected:
-            note = "unexpected top-1 — only then is combined promotion allowed"
+        if row.promoted:
+            note = "combined-passer top-1 under frozen ranking key"
+        elif row.combined:
+            note = "combined PASS but not top-1 among passers"
+        else:
+            note = "combined FAIL"
+        cr = str(row.combined_rank) if row.combined_rank is not None else "—"
         lines.append(
             f"| `{row.candidate_id}` | {_verdict(row.eligible_96)} | "
             f"{_verdict(row.gate_a_pass)} | {_verdict(row.gate_b_pass)} | "
-            f"{_verdict(row.gate_c_pass)} | {_verdict(row.combined)} | {note} |"
+            f"{_verdict(row.gate_c_pass)} | {_verdict(row.combined)} | "
+            f"{cr} | {note} |"
         )
     if not recheck:
-        lines.append("| — | — | — | — | — | — | re-check set not in this catalog |")
+        lines.append("| — | — | — | — | — | — | — | re-check set not in this catalog |")
     lines.append("")
 
     if report.yahoo_notes:
@@ -901,42 +1014,49 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
         f"Combined: **{_verdict(report.ema_9_21_combined)}**."
     )
     if report.any_promoted:
+        winner = next(
+            row for row in report.candidates if row.candidate_id == report.promoted_candidate_ids[0]
+        )
+        flag = report.recommended_promote_flag or paper_promote_flag_name(winner.candidate_id)
         lines.append(
             "Cleared the combined harder-gates bar on Kraken daily BTC+ETH "
-            f"(research only): `{report.promoted_candidate_ids[0]}`."
+            f"and ranked top-1 among combined-passers by `{report.ranking_key}` "
+            f"(research only): `{winner.candidate_id}` "
+            f"(mean holdout excess={_pct(winner.mean_holdout_excess)}, "
+            f"WF rank={winner.wf_rank if winner.wf_rank is not None else '—'})."
         )
         lines.append(
-            "Documented paper-only switch remains "
-            "`PAPER_PROMOTE_EMA_9_21=true` (default **false**; "
+            f"Documented paper-only switch: `{flag}=true` (default **false**; "
             "`TRADING_MODE=paper` only). This report does not flip that "
-            "flag and does not enable live."
+            "flag, does not flip `PAPER_PROMOTE_EMA_9_21`, and does not "
+            "enable live."
         )
     else:
         lines.append(
             "**No candidate cleared the combined harder-gates bar.** "
-            "An honest FAIL is the successful outcome. Leave "
+            "An empty promotee is the successful outcome. Leave "
             "`PAPER_PROMOTE_EMA_9_21=false` and "
             "`PAPER_PROMOTE_SEARCHED_STRATEGIES=false`."
         )
-        if report.selected_candidate_id:
-            selected = next(
-                row for row in report.candidates if row.candidate_id == report.selected_candidate_id
+        if report.wf_top1_candidate_id:
+            wf_top = next(
+                row for row in report.candidates if row.candidate_id == report.wf_top1_candidate_id
             )
             blocked = []
-            if not selected.eligible_96:
+            if not wf_top.eligible_96:
                 blocked.append("#96 balanced-holdout")
-            if not selected.gate_a_pass:
-                blocked.append("A magnitude (" + ", ".join(selected.gate_a_reasons) + ")")
-            if not selected.gate_b_pass:
-                blocked.append("B multi-window (" + ", ".join(selected.gate_b_reasons) + ")")
-            if not selected.gate_c_pass:
-                blocked.append("C fee stress (" + ", ".join(selected.gate_c_reasons) + ")")
+            if not wf_top.gate_a_pass:
+                blocked.append("A magnitude (" + ", ".join(wf_top.gate_a_reasons) + ")")
+            if not wf_top.gate_b_pass:
+                blocked.append("B multi-window (" + ", ".join(wf_top.gate_b_reasons) + ")")
+            if not wf_top.gate_c_pass:
+                blocked.append("C fee stress (" + ", ".join(wf_top.gate_c_reasons) + ")")
             lines.append(
-                f"Pre-registered top-1 by baseline BTC+ETH WF total was "
-                f"`{selected.candidate_id}` "
-                f"(WF total={_pct(selected.baseline_wf_total)}, "
-                f"holdout ratio={_ratio(selected.holdout_magnitude_ratio)}; "
-                f"blocked by: {'; '.join(blocked) or 'n/a'})."
+                f"Informational walk-forward #1 was `{wf_top.candidate_id}` "
+                f"(WF total={_pct(wf_top.baseline_wf_total)}, "
+                f"holdout ratio={_ratio(wf_top.holdout_magnitude_ratio)}; "
+                f"blocked by: {'; '.join(blocked) or 'n/a'}). "
+                "WF rank cannot promote a non-passer."
             )
         if not report.ema_9_21_combined:
             lines.append(

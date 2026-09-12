@@ -9,7 +9,12 @@ import pytest
 from traderstack.backtest import BacktestMetrics
 from traderstack.candles import Candle
 from traderstack.config import Settings
-from traderstack.research.daily_candidates import default_balanced_holdout_candidates
+from traderstack.research.daily_candidates import (
+    EXPANDED_HARDER_GATES_CORE_IDS,
+    EXPANDED_HARDER_GATES_OVERLAY_IDS,
+    default_balanced_holdout_candidates,
+    default_expanded_harder_gates_candidates,
+)
 from traderstack.research.harder_gates import (
     HARDER_GATES_NOTE,
     MAGNITUDE_RATIO_MIN,
@@ -17,9 +22,14 @@ from traderstack.research.harder_gates import (
     MULTIWINDOW_COUNT,
     MULTIWINDOW_MIN_PASSES,
     PR96_ELIGIBLE_RECHECK,
+    RANKING_KEY,
+    SELECTION_RULE,
+    CandidateHarderResult,
+    apply_combined_promotion,
     evaluate_fee_stress_gate,
     evaluate_magnitude_gate,
     holdout_magnitude_ratio,
+    paper_promote_flag_name,
     render_harder_gates_markdown,
     run_harder_gates,
     score_multiwindow,
@@ -118,6 +128,9 @@ def _search(histories: dict[str, tuple[Candle, ...]], **overrides: object):
 def test_promote_ema_9_21_default_stays_false() -> None:
     assert settings().paper_promote_ema_9_21 is False
     assert settings().paper_promote_ema_9_21_active is False
+    assert settings().paper_promote_ema_9_21_adx15 is False
+    assert settings().paper_promote_ema_9_21_adx15_active is False
+    assert settings().paper_daily_promote_active is False
 
 
 def test_pre_registered_constants_are_frozen() -> None:
@@ -136,6 +149,41 @@ def test_pre_registered_constants_are_frozen() -> None:
     assert "0.25" in HARDER_GATES_NOTE
     assert "2 of 3" in HARDER_GATES_NOTE or "2 of 3" in HARDER_GATES_NOTE.replace(" ", "")
     assert "20+10" in HARDER_GATES_NOTE
+    assert RANKING_KEY == "mean_holdout_excess_among_combined_passers"
+    assert SELECTION_RULE == "pre_registered_top1_mean_holdout_excess_among_combined_passers"
+    assert RANKING_KEY in HARDER_GATES_NOTE
+
+
+def test_expanded_catalog_is_frozen_before_scoring() -> None:
+    catalog = default_expanded_harder_gates_candidates()
+    ids = [item.candidate_id for item in catalog]
+    assert ids == list(EXPANDED_HARDER_GATES_CORE_IDS)
+    assert len(ids) == len(set(ids))
+    assert "ema_9_21" in ids
+    assert "ema_12_26_adx20" in ids
+    assert "ema_5_13" in ids
+    assert "ema_21_55" in ids
+    assert "ema_9_21_adx15" in ids
+    assert "ema_12_26_adx30" in ids
+    assert "ema_12_26_ma200_riskoff" in ids
+    assert "dual_mom_10_50" in ids
+    assert "dip_mr_20_1_5_vol2" in ids
+    families = {item.family for item in catalog}
+    assert {
+        "ema_cross",
+        "ema_cross_garch",
+        "ema_cross_riskoff",
+        "dual_momentum",
+        "buy_the_dip",
+    } <= (families)
+    overlay = default_expanded_harder_gates_candidates(btc_overlay=downtrend(220, symbol="BTC/USD"))
+    overlay_ids = [item.candidate_id for item in overlay]
+    assert overlay_ids == list(EXPANDED_HARDER_GATES_CORE_IDS + EXPANDED_HARDER_GATES_OVERLAY_IDS)
+
+
+def test_paper_promote_flag_name_is_deterministic() -> None:
+    assert paper_promote_flag_name("ema_12_26_adx20") == "PAPER_PROMOTE_EMA_12_26_ADX20"
+    assert paper_promote_flag_name("ema_9_21") == "PAPER_PROMOTE_EMA_9_21"
 
 
 def test_magnitude_gate_fails_eth_only_magnitude() -> None:
@@ -362,22 +410,80 @@ def test_eth_dominated_holdout_fails_gate_a_and_does_not_promote() -> None:
     assert "PAPER_PROMOTE_EMA_9_21=false" in rendered
 
 
-def test_top1_failure_does_not_promote_number_two() -> None:
-    """ADX/SMA-style #2 cannot skip a failing ema_9_21 top-1."""
+def _harder_row(
+    candidate_id: str,
+    *,
+    combined: bool,
+    mean_holdout_excess: float | None,
+    wf_rank: int | None = None,
+) -> CandidateHarderResult:
+    return CandidateHarderResult(
+        candidate_id=candidate_id,
+        family="ema_cross",
+        label=candidate_id,
+        wf_rank=wf_rank,
+        combined=combined,
+        mean_holdout_excess=mean_holdout_excess,
+    )
+
+
+def test_ranking_selects_top_combined_passer_by_mean_holdout_excess() -> None:
+    """WF #1 failing does not block a combined-passer; ranking is among passers."""
+    rows = [
+        _harder_row("ema_9_21", combined=False, mean_holdout_excess=0.32, wf_rank=1),
+        _harder_row("ema_12_26_adx20", combined=True, mean_holdout_excess=0.098, wf_rank=4),
+        _harder_row("ema_8_21_adx20", combined=True, mean_holdout_excess=0.141, wf_rank=9),
+        _harder_row("dual_mom_10_50", combined=False, mean_holdout_excess=0.40, wf_rank=2),
+    ]
+    selected = apply_combined_promotion(rows)
+    assert selected is not None
+    assert selected.candidate_id == "ema_8_21_adx20"
+    assert selected.promoted is True
+    assert selected.combined_rank == 1
+    adx20 = next(row for row in rows if row.candidate_id == "ema_12_26_adx20")
+    assert adx20.combined_rank == 2
+    assert adx20.promoted is False
+    assert rows[0].promoted is False
+    assert rows[0].selected is False
+
+
+def test_empty_combined_passers_is_successful_empty_promotee() -> None:
+    rows = [
+        _harder_row("ema_9_21", combined=False, mean_holdout_excess=0.32, wf_rank=1),
+        _harder_row("ema_12_26", combined=False, mean_holdout_excess=0.20, wf_rank=2),
+    ]
+    selected = apply_combined_promotion(rows)
+    assert selected is None
+    assert all(row.promoted is False and row.selected is False for row in rows)
+
+
+def test_ranking_tie_breaks_on_candidate_id() -> None:
+    rows = [
+        _harder_row("ema_z", combined=True, mean_holdout_excess=0.10, wf_rank=2),
+        _harder_row("ema_a", combined=True, mean_holdout_excess=0.10, wf_rank=1),
+    ]
+    selected = apply_combined_promotion(rows)
+    assert selected is not None
+    assert selected.candidate_id == "ema_a"
+
+
+def test_non_passer_is_never_promoted_on_synthetic_window() -> None:
     report = _search(
         {
             "BTC/USD@1d": downtrend(720, symbol="BTC/USD"),
             "ETH/USD@1d": downtrend(720, symbol="ETH/USD"),
         }
     )
-    selected = next(row for row in report.candidates if row.selected)
-    assert selected.candidate_id == report.selected_candidate_id
-    if not selected.combined:
-        assert selected.promoted is False
+    for row in report.candidates:
+        if row.promoted:
+            assert row.combined is True
+            assert row.selected is True
+            assert row.candidate_id == report.selected_candidate_id
+        else:
+            assert row.promoted is False
+    if not any(row.combined for row in report.candidates):
         assert report.any_promoted is False
-        for row in report.candidates:
-            if row.candidate_id != selected.candidate_id:
-                assert row.promoted is False
+        assert report.selected_candidate_id is None
 
 
 def test_yahoo_does_not_enter_magnitude_or_windows() -> None:
@@ -413,11 +519,19 @@ def test_markdown_table_covers_a_b_c_and_combined() -> None:
     assert "| B Multi-window |" in text
     assert "| C Fee stress |" in text
     assert "| Combined |" in text
+    assert "Combined-passers (promotion ranking)" in text
+    assert RANKING_KEY in text
     assert "Pre-registered gates" in text
     assert "Yahoo" in text
     assert report.ema_9_21_gate_a in {True, False}
     assert report.ema_9_21_gate_b in {True, False}
     assert report.ema_9_21_gate_c in {True, False}
+
+
+def test_cli_default_catalog_is_expanded() -> None:
+    args = build_parser().parse_args(["--candles", "unused.json", "--no-yahoo"])
+    assert args.catalog == "expanded"
+    assert args.output_md.name == "expanded-harder-gates-report.md"
 
 
 def test_cli_writes_json_and_markdown(tmp_path: Path) -> None:
@@ -456,15 +570,18 @@ def test_cli_writes_json_and_markdown(tmp_path: Path) -> None:
     assert written_json.is_file()
     assert written_md.is_file()
     payload = json.loads(written_json.read_text())
-    assert payload["selection_rule"] == "pre_registered_top1"
+    assert payload["selection_rule"] == SELECTION_RULE
+    assert payload["ranking_key"] == RANKING_KEY
     assert payload["magnitude_ratio_min"] == 0.25
     assert payload["multiwindow_count"] == 3
     assert payload["fee_stress_fee_bps"] == 20.0
     assert payload["fee_stress_slippage_bps"] == 10.0
     assert "ema_9_21_gate_a" in payload
     assert "ema_9_21_combined" in payload
+    assert "combined_passer_ids" in payload
     ids = {row["candidate_id"] for row in payload["candidates"]}
     assert "ema_9_21" in ids
     text = written_md.read_text()
-    assert "Magnitude / multi-window / fee-stress report" in text
+    assert "Expanded catalog harder-gates report" in text
     assert "PAPER_PROMOTE" in text
+    assert RANKING_KEY in text
