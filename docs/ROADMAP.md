@@ -51,7 +51,10 @@ that stays off until a report shows WF excess > 0 after fees.
 (optional ADX gate) with a walk-forward GARCH(1,1) size overlay, fee-aware
 walk-forward + holdout, and a promotion bar of WF total return > 0 **and**
 holdout excess > 0. `PAPER_GARCH_SIZE` stays off until a report shows a
-winner. **Freqtrade
+winner. `traderstack-daily-robustness` re-scores the daily EMA catalog
+plus dual-momentum and buy-the-dip on the 720-bar Kraken daily cap with a
+stricter BTC-and-ETH walk-forward bar (Yahoo daily is a labeled non-Kraken
+A/B only). **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.

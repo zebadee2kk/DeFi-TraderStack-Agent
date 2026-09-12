@@ -50,6 +50,9 @@ traderstack-download-candles = "traderstack.research.download_candles:main"
 # Miles-inspired EMA/ADX × GARCH search. Offline/batch; never enables live
 # and never overwrites traderstack-strategy-search (#89 catalog).
 traderstack-miles-search = "traderstack.research.miles_cli:main"
+# Daily robustness: Kraken 720-bar daily + optional Yahoo A/B. Offline/batch;
+# never enables PAPER_PROMOTE_* flags.
+traderstack-daily-robustness = "traderstack.research.daily_robustness_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.

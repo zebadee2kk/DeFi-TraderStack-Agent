@@ -26,6 +26,7 @@ without activating the venv.
 | `traderstack-research` | Runs the research harness end-to-end over a candle history (JSON file via `--candles`, or live from Kraken via `--symbol`): backtest with realistic costs, walk-forward, required baselines, and a performance attribution report. `--json` for machine-readable output. |
 | `traderstack-strategy-search` | Offline catalog search: scores the expanded pre-registered catalog (MA / momentum / mean-reversion + vol-regime filters; optional funding / OI / liquidation series) on Kraken charts-spot (~180d 1h) or public Spot OHLC (720-bar cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Promotion additionally requires WF **total** return > 0. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
 | `traderstack-miles-search` | Miles-inspired catalog search: EMA 9/21 and 12/26 (optional ADX gate) × optional GARCH vol-targeted sizing, scored on Kraken Spot OHLC (daily and 1h, 720-bar public cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout. Writes `docs/artifacts/strategy-search/miles-inspired-report.md`. Never flips `PAPER_GARCH_SIZE` or `PAPER_PROMOTE_EMA_9_21`. Daily promotion is not a 1h-runtime claim — the paper promote flag forces `1d` / 1440m. |
+| `traderstack-daily-robustness` | Daily robustness pass: EMA 9/21 and 12/26 (ADX variants), dual-momentum, buy-the-dip + vol filter on the longest Kraken public daily OHLC (720-bar ≈ 2y cap). Optional Yahoo Finance BTC-USD/ETH-USD daily is a non-Kraken A/B only. Promotes only if **BTC and ETH** both have WF total return > 0 and holdout excess > 0. Writes `docs/artifacts/strategy-search/daily-robustness-report.md`. Never flips `PAPER_PROMOTE_*`. |
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
@@ -447,6 +448,24 @@ Running that daily-validated EMA on 1h bars is **not** the same strategy
 
 `traderstack-check-config` prints the forced interval. Do not narrate a
 daily holdout as evidence for an hourly paper run.
+
+## Daily robustness (multi-asset bar)
+
+`#93` promoted `ema_9_21` on a three-asset daily mean; the holdout was
+ETH-heavy. Re-score on the longest Kraken public daily window and require
+**BTC and ETH** both to have walk-forward total return > 0:
+
+```bash
+.venv/bin/traderstack-daily-robustness --live-kraken
+# skip the Yahoo Finance (non-Kraken) A/B
+.venv/bin/traderstack-daily-robustness --live-kraken --no-yahoo
+```
+
+Kraken public OHLC cannot retrieve more than 720 committed daily bars
+(~2 years) regardless of `since`. Yahoo `BTC-USD` / `ETH-USD` daily is
+labeled non-Kraken and cannot promote. Leave `PAPER_PROMOTE_*` false
+unless `docs/artifacts/strategy-search/daily-robustness-report.md` names
+an id that still clears this bar.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
 the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:
