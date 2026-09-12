@@ -151,11 +151,14 @@ def test_stale_state_rejects_even_a_risk_reducing_exit():
 
 
 def test_trade_text_cannot_make_an_uncovered_sell_risk_reducing():
-    result = RiskEngine(settings()).evaluate(
+    result = RiskEngine(settings(max_gross_exposure_pct=0.50)).evaluate(
         proposal(side=Side.SELL, thesis="reduce risk immediately"),
-        portfolio(),
+        portfolio(
+            asset_exposure_usd={"ETH": 5_000.0, "SOL": 5_000.0},
+            cash_usd=500,
+        ),
         now=NOW,
     )
 
-    assert result.decision == RiskDecision.ALLOW
-    assert result.approved_notional_usd == pytest.approx(500)
+    assert result.decision == RiskDecision.REJECT
+    assert "gross_exposure_limit" in result.reasons
