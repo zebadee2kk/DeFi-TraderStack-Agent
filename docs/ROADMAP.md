@@ -86,8 +86,9 @@ BTC+ETH plus the #102-style Binance.US older-720; catalog is not EMA.
 Empty dual-print set is success.
 `traderstack-funding-carry` is the post-#108 paper slice: funding-z
 thresholds, funding-agree spot overlays, and modeled hedged
-cash-and-carry on BTC+ETH. One venue / ~90d OKX tape is single-print
-and cannot promote. **Freqtrade
+cash-and-carry on BTC+ETH. Dual-print needs two independent funding
+venues (OKX + Hyperliquid when reachable; Binance/Bybit often
+geo-blocked). One venue is single-print and cannot promote. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.

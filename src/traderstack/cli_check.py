@@ -420,9 +420,10 @@ def build_report(settings: Settings) -> ConfigReport:
         CheckItem(
             "Funding / carry search",
             "report-only",
-            "traderstack-funding-carry; OKX (or Binance) funding-z + "
-            "hedged carry on BTC+ETH; single-print cannot promote; no new "
-            "PAPER_PROMOTE_* unless a dual-print passer exists (default false)",
+            "traderstack-funding-carry; OKX + Hyperliquid funding-z + "
+            "hedged carry on BTC+ETH (Binance/Bybit probed, skip-not-invent); "
+            "single-print cannot promote; no new PAPER_PROMOTE_* unless a "
+            "dual-print passer exists (default false)",
         )
     )
 

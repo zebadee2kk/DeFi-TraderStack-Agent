@@ -50,11 +50,15 @@ it is relied upon.
 - Freqtrade's `download-data` already handles Kraken's 720-candle REST cap.
 - **Funding-rate history (research only):** OKX
   `GET /api/v5/public/funding-rate-history` is typically ~90d of 8h
-  prints. Binance USDT-M `GET /fapi/v1/fundingRate` is paginable when
-  reachable (often HTTP 451 from this environment). These are
+  prints. Hyperliquid `POST /info` `fundingHistory` is public hourly
+  and typically reachable here (independent second tape). Binance
+  USDT-M `GET /fapi/v1/fundingRate` is paginable when reachable (often
+  HTTP 451). Bybit `GET /v5/market/funding/history` is often HTTP 403
+  (CloudFront country block) from this environment. These are
   skip-not-invent inputs for `traderstack-funding-carry`. One venue /
   one history length is single-print and cannot promote. Perp-spot
-  basis is not on those endpoints and must not be invented.
+  basis is not on those endpoints and must not be invented. Deribit
+  restates 8h interest every hour — not wired (would invent 8× carry).
 
 ## Robinhood Chain
 

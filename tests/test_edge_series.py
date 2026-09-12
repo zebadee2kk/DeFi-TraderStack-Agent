@@ -8,6 +8,8 @@ from traderstack.research.candidates import FeatureZVoter
 from traderstack.research.edge_series import (
     fetch_binance_funding,
     fetch_binance_liquidations,
+    fetch_bybit_funding,
+    fetch_hyperliquid_funding,
     fetch_okx_funding,
 )
 from traderstack.strategies import Regime
@@ -45,6 +47,92 @@ async def test_binance_liquidations_skip_short_span() -> None:
         result = await fetch_binance_liquidations("BTC/USD", client=client)
     assert result.status == "skipped"
     assert "not a historical" in result.reason
+
+
+@pytest.mark.asyncio
+async def test_bybit_funding_records_http_403_as_skip() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403,
+            text=(
+                "The Amazon CloudFront distribution is configured to block access from your country"
+            ),
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(base_url="https://api.bybit.com", transport=transport) as client:
+        result = await fetch_bybit_funding("BTC/USD", client=client)
+    assert result.status == "skipped"
+    assert "403" in result.reason
+    assert "country" in result.reason.lower() or "CloudFront" in result.reason
+
+
+@pytest.mark.asyncio
+async def test_bybit_funding_parses_pages_when_reachable() -> None:
+    pages = [
+        {
+            "retCode": 0,
+            "result": {
+                "list": [
+                    {
+                        "symbol": "BTCUSDT",
+                        "fundingRate": "0.0003",
+                        "fundingRateTimestamp": "2000000",
+                    },
+                    {
+                        "symbol": "BTCUSDT",
+                        "fundingRate": "0.0001",
+                        "fundingRateTimestamp": "1000000",
+                    },
+                ]
+            },
+        },
+        {"retCode": 0, "result": {"list": []}},
+    ]
+    calls = {"n": 0}
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        idx = min(calls["n"], len(pages) - 1)
+        calls["n"] += 1
+        return httpx.Response(200, json=pages[idx])
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(base_url="https://api.bybit.com", transport=transport) as client:
+        result = await fetch_bybit_funding("BTC/USD", client=client, limit_pages=3)
+    assert result.status == "ok"
+    assert len(result.points) == 2
+    assert result.points[0][1] == 0.0001
+    assert result.points[1][1] == 0.0003
+
+
+@pytest.mark.asyncio
+async def test_hyperliquid_funding_parses_pages() -> None:
+    pages = [
+        [
+            {"coin": "ETH", "fundingRate": "0.0001", "premium": "0.0", "time": 1_000_000},
+            {"coin": "ETH", "fundingRate": "-0.0002", "premium": "0.0", "time": 2_000_000},
+        ],
+        [],
+    ]
+    calls = {"n": 0}
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        idx = min(calls["n"], len(pages) - 1)
+        calls["n"] += 1
+        return httpx.Response(200, json=pages[idx])
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(
+        base_url="https://api.hyperliquid.xyz", transport=transport
+    ) as client:
+        result = await fetch_hyperliquid_funding(
+            "ETH/USD", client=client, start_ms=1, limit_pages=3
+        )
+    assert result.status == "ok"
+    assert len(result.points) == 2
+    assert result.points[0][1] == 0.0001
+    assert result.points[1][1] == -0.0002
+    assert "fundingHistory" in result.source
 
 
 @pytest.mark.asyncio
