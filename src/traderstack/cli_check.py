@@ -16,7 +16,10 @@ from dataclasses import dataclass, field
 
 from pydantic import SecretStr
 
-from traderstack.config import Settings
+from traderstack.config import (
+    EMA_9_21_PAPER_RESEARCH_WF_MAX_DRAWDOWN_PCT,
+    Settings,
+)
 from traderstack.market.crucix import crucix_effective_base_url, crucix_should_register
 
 
@@ -240,10 +243,39 @@ def build_report(settings: Settings) -> ConfigReport:
                 ),
             )
         )
+        items.append(
+            CheckItem(
+                "Paper promote ema_9_21 max drawdown",
+                f"{settings.effective_pretrade_max_drawdown_pct:.2%}",
+                (
+                    "PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT; "
+                    f"PRETRADE_MAX_DRAWDOWN_PCT={settings.pretrade_max_drawdown_pct:.2%} "
+                    "is the 1h / live / shadow bar and is not used on this path"
+                ),
+            )
+        )
+        if (
+            settings.paper_promote_ema_9_21_max_drawdown_pct
+            < EMA_9_21_PAPER_RESEARCH_WF_MAX_DRAWDOWN_PCT
+        ):
+            warnings.append(
+                "PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT is tighter than the "
+                "documented ema_9_21 Kraken daily WF maxDD (~23.35% on BTC+ETH). "
+                "The daily promote path will reject every cycle with "
+                "backtest_drawdown_above_maximum (WSL soak after #94). Leave the "
+                "documented default or raise it to the research envelope."
+            )
+        if settings.paper_promote_ema_9_21_max_drawdown_pct >= 1.0:
+            warnings.append(
+                "PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT=1.0 disables the "
+                "pre-trade drawdown gate on the daily promote path. Do not "
+                "disable the gate to 'see if it trades'."
+            )
     if settings.paper_promote_ema_9_21 and settings.trading_mode != "paper":
         warnings.append(
             "PAPER_PROMOTE_EMA_9_21=true is ignored unless TRADING_MODE=paper. "
-            "Live/shadow do not register ema_9_21."
+            "Live/shadow do not register ema_9_21 and keep "
+            "PRETRADE_MAX_DRAWDOWN_PCT."
         )
     if settings.paper_promote_ema_9_21_active and settings.paper_promote_searched_strategies:
         warnings.append(

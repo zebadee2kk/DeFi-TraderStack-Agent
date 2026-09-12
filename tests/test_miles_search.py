@@ -12,6 +12,7 @@ from traderstack.config import (
     EMA_9_21_PAPER_CANDLE_INTERVAL,
     EMA_9_21_PAPER_KRAKEN_INTERVAL_MINUTES,
     EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS,
+    EMA_9_21_PAPER_MAX_DRAWDOWN_PCT,
     Settings,
 )
 from traderstack.indicators import average_directional_index
@@ -332,7 +333,11 @@ def test_promote_ema_9_21_default_is_off_and_paper_only() -> None:
 
 def test_promote_ema_9_21_does_not_move_risk_policy_version() -> None:
     off = settings(paper_promote_ema_9_21=False, paper_fee_bps=10.0)
-    on = settings(paper_promote_ema_9_21=True, paper_fee_bps=99.0)
+    on = settings(
+        paper_promote_ema_9_21=True,
+        paper_fee_bps=99.0,
+        paper_promote_ema_9_21_max_drawdown_pct=0.30,
+    )
     assert derive_policy_version(off) == derive_policy_version(on)
 
 
@@ -379,6 +384,7 @@ def test_promote_ema_forces_daily_interval_even_when_pretrade_is_hourly() -> Non
     assert hourly.effective_pretrade_candle_interval == EMA_9_21_PAPER_CANDLE_INTERVAL
     assert hourly.effective_pretrade_candle_interval == "1d"
     assert hourly.effective_pretrade_max_candle_age_seconds == EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS
+    assert hourly.effective_pretrade_max_drawdown_pct == EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
     assert INTERVAL_MINUTES[hourly.effective_pretrade_candle_interval] == (
         EMA_9_21_PAPER_KRAKEN_INTERVAL_MINUTES
     )
@@ -389,14 +395,18 @@ def test_promote_ema_forces_daily_interval_even_when_pretrade_is_hourly() -> Non
         trading_mode="live",
         paper_promote_ema_9_21=True,
         pretrade_candle_interval="1h",
+        paper_promote_ema_9_21_max_drawdown_pct=0.30,
     )
     assert live.effective_pretrade_candle_interval == "1h"
+    assert live.effective_pretrade_max_drawdown_pct == 0.15
     shadow = settings(
         trading_mode="shadow",
         paper_promote_ema_9_21=True,
         pretrade_candle_interval="4h",
+        paper_promote_ema_9_21_max_drawdown_pct=0.30,
     )
     assert shadow.effective_pretrade_candle_interval == "4h"
+    assert shadow.effective_pretrade_max_drawdown_pct == 0.15
 
 
 def test_promote_pretrade_gate_cannot_silently_score_hourly_bars() -> None:
@@ -409,6 +419,7 @@ def test_promote_pretrade_gate_cannot_silently_score_hourly_bars() -> None:
     gate = build_pretrade_gate(cfg)
     assert gate.required_candle_interval == "1d"
     assert gate.max_candle_age_seconds == EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS
+    assert gate.max_drawdown == EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
     hourly = make_candles([100.0 + index for index in range(80)], interval="1h")
     check = gate.evaluate(hourly, now=hourly[-1].opened_at + timedelta(minutes=30))
     assert not check.passed

@@ -190,8 +190,10 @@ def test_promote_ema_cannot_silently_score_hourly_bars() -> None:
         max_position_pct=0.10,
     )
     assert settings.effective_pretrade_candle_interval == "1d"
+    assert settings.effective_pretrade_max_drawdown_pct == 0.30
     gate = build_pretrade_gate(settings)
     assert gate.required_candle_interval == "1d"
+    assert gate.max_drawdown == 0.30
     hourly = mild_uptrend()
     check = gate.evaluate(hourly, now=datetime.now(UTC))
     assert not check.passed
@@ -210,5 +212,7 @@ def test_promote_ema_is_ignored_on_live_and_does_not_force_daily() -> None:
     )
     assert settings.paper_promote_ema_9_21_active is False
     assert settings.effective_pretrade_candle_interval == "1h"
+    assert settings.effective_pretrade_max_drawdown_pct == 0.15
     gate = build_pretrade_gate(settings)
     assert gate.required_candle_interval is None
+    assert gate.max_drawdown == 0.15

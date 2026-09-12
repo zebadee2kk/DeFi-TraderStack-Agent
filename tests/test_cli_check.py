@@ -174,6 +174,20 @@ def test_promote_ema_9_21_on_paper_is_safe() -> None:
     candles = next(i for i in report.items if i.label == "Paper candle interval (promote ema_9_21)")
     assert candles.value == "1d"
     assert "PRETRADE_CANDLE_INTERVAL=1h is not used" in candles.detail
+    drawdown = next(i for i in report.items if i.label == "Paper promote ema_9_21 max drawdown")
+    assert drawdown.value == "30.00%"
+    assert "PRETRADE_MAX_DRAWDOWN_PCT=15.00%" in drawdown.detail
+
+
+def test_promote_ema_9_21_tight_drawdown_ceiling_warns() -> None:
+    report = build_report(
+        settings(
+            paper_promote_ema_9_21=True,
+            paper_promote_ema_9_21_max_drawdown_pct=0.15,
+        )
+    )
+    assert not report.safe
+    assert any("MAX_DRAWDOWN_PCT is tighter" in warning for warning in report.warnings)
 
 
 def test_promote_ema_9_21_ignored_outside_paper() -> None:
