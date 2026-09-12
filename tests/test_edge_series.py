@@ -303,9 +303,7 @@ async def test_bitmex_basis_skips_and_refuses_premium_index() -> None:
         return httpx.Response(404, text="no")
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(
-        base_url="https://www.bitmex.com", transport=transport
-    ) as client:
+    async with httpx.AsyncClient(base_url="https://www.bitmex.com", transport=transport) as client:
         result = await fetch_bitmex_basis("BTC/USD", client=client)
     assert result.status == "skipped"
     assert result.points == ()

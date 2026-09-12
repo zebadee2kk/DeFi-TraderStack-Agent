@@ -596,9 +596,7 @@ async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.Mo
             source="bitmex",
         )
 
-    monkeypatch.setattr(
-        "traderstack.research.funding_carry_cli.fetch_hyperliquid_basis", fake_hl
-    )
+    monkeypatch.setattr("traderstack.research.funding_carry_cli.fetch_hyperliquid_basis", fake_hl)
     monkeypatch.setattr("traderstack.research.funding_carry_cli.fetch_bitmex_basis", fake_bm)
     monkeypatch.setattr(
         "traderstack.research.funding_carry_cli.HYPERLIQUID_SYMBOL_PAUSE_SECONDS", 0

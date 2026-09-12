@@ -348,11 +348,7 @@ class ContinuousPaperService:
         # --- paper perp / hedge stub ---
         # Do not pass result.tick.mid: that is the Kraken spot mid, not a
         # PIT perp mid. The book skips when perp_mid_usd is None.
-        if (
-            outcome.applied
-            and outcome.fill is not None
-            and self.paper_perp_book is not None
-        ):
+        if outcome.applied and outcome.fill is not None and self.paper_perp_book is not None:
             self.paper_perp_book.maybe_hedge_spot_fill(
                 outcome.fill,
                 perp_mid_usd=None,

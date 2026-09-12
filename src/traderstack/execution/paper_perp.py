@@ -150,8 +150,7 @@ class PaperPerpBook:
             return PaperPerpOutcome(
                 status=PaperPerpStatus.SKIPPED,
                 reason=(
-                    "perp mid missing; refuse to invent from the spot fill "
-                    "price or from last-trade"
+                    "perp mid missing; refuse to invent from the spot fill price or from last-trade"
                 ),
             )
 
