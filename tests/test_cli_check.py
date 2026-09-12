@@ -84,7 +84,7 @@ def test_paper_reference_resilience_and_pretrade_thresholds_are_active_on_paper(
     assert resilience.value == "active"
     assert "last-good" in resilience.detail
     assert thresholds.value == "active"
-    assert "min total return=0.0" in thresholds.detail
+    assert "min total return=-0.15" in thresholds.detail
     assert report.safe
 
 

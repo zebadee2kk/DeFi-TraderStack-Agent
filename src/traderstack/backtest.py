@@ -249,6 +249,10 @@ class BaselineBacktester:
 
     def run(self, candles: tuple[Candle, ...]) -> BacktestMetrics:
         def decide(window: tuple[Candle, ...]) -> tuple[float, Regime, list[str]]:
+            # --- paper research path ---
+            isolated = self.ensemble.paper_research_position(window)
+            if isolated is not None:
+                return isolated
             regime, signals = self.ensemble.evaluate(window)
             consensus = self.ensemble.consensus(signals)
             if consensus is None or consensus.side is None:

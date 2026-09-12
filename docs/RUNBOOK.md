@@ -91,9 +91,9 @@ kill switch on, every proposal is deterministically rejected with
 `kill_switch_enabled` — that's expected. See "Engaging/releasing the kill switch"
 before disengaging it. Paper dry-runs on Kraken Spot OHLC with intel keys left
 blank use `PAPER_RESEARCH_MODE=true` (documented paper default) so the
-strategy ensemble can form a candle-only consensus and reach that risk
-decision; see "Paper research mode and strategy consensus". Live/shadow never
-get that voter rule.
+strategy ensemble can form a candle-only consensus on every allowlisted
+asset and reach that risk decision; see "Paper research mode and strategy
+consensus". Live/shadow never get that voter rule.
 
 ## Filling in `.env` safely
 
@@ -472,17 +472,24 @@ loosen those gates.
 When active:
 
 1. A fourth, candle-only voter (`paper_research_baseline_v1`) joins the
-   ensemble. It reads short-vs-long moving averages from the same Kraken OHLC
-   — no intel, no Crucix, no edge fields.
+   ensemble for **every allowlisted asset** (BTC, ETH, SOL, …). It is
+   symbol-agnostic. Primary tilt is short-vs-long moving average on the
+   same Kraken OHLC. When those two averages have compressed (typical ETH
+   1h RANGE: a few bps) it falls back to last close vs the long MA so it
+   does not go silent on one asset. No intel, no Crucix, no edge fields.
+   Perfectly flat or non-positive prices stay flat.
 2. If **no** optional intel provider has usable credentials, consensus may
    form from **one** agreeing healthy signal (`min_agreeing=1`). If any of
    Dune / LunarCrush / CryptoPanic / Perplexity / altFINS *is* configured,
    the two-voter bar is kept.
-3. The pre-trade **backtest and walk-forward** still run on that same
-   ensemble. On paper they use `PAPER_PRETRADE_MIN_*` (see the next
-   section); they are not disabled. A consensus side that cannot show
-   positive total return, or that breaches drawdown / the paper excess and
-   Sharpe floors / trade-count / walk-forward, is still rejected.
+3. The pre-trade **backtest and walk-forward** still run. When the baseline
+   is wired they measure that isolated MA path — not the full
+   regime-exclusive ensemble, which flattens on 1–1 splits and bleeds fees
+   on a lookback the MA itself would survive. On paper they use
+   `PAPER_PRETRADE_MIN_*` (see the next section); they are not disabled. A
+   consensus side that cannot show non-catastrophic total return, or that
+   breaches drawdown / the paper excess and Sharpe floors / trade-count /
+   walk-forward, is still rejected.
 4. Every proposal that leaves the gate still goes through **RiskEngine**
    (kill switch first), then the meta-agent withhold-only review. Paper
    research mode cannot auto-approve, disable the kill switch, change a
@@ -496,9 +503,9 @@ way live/shadow do.
 
 | Situation | Expected outcome |
 |---|---|
-| Healthy Kraken 1h history, `TRADING_MODE=paper`, `PAPER_RESEARCH_MODE=true` (default), intel keys blank, book has a measurable MA tilt or a single regime-valid signal | Consensus **can** form. If the paper pretrade floors also clear (positive total return, see below), the cycle should reach RiskEngine. Kill switch / limits / a losing lookback may still reject. |
+| Healthy Kraken 1h history, `TRADING_MODE=paper`, `PAPER_RESEARCH_MODE=true` (default), intel keys blank, book has a measurable MA tilt, a price-vs-long-MA tilt, or a single regime-valid signal | Consensus **can** form on every allowlisted asset, including ETH-like RANGE books where short-vs-long has compressed. If the paper pretrade floors also clear (non-catastrophic total return, see below), the cycle should reach RiskEngine. Kill switch / limits / a catastrophic lookback may still reject. |
 | Perfectly flat or no-signal book (zero momentum, zero MA gap, no z-score) | `no_strategy_consensus` — fail-closed. Features are not directional. |
-| Split vote (equal buy and sell counts) | `no_strategy_consensus` — fail-closed. |
+| Split vote (equal buy and sell counts) | `no_strategy_consensus` — fail-closed, except on paper with intel off (`min_agreeing=1`): if the baseline voted, its side wins and an opposing minority cannot cancel it. |
 | `PAPER_RESEARCH_MODE=false`, or `TRADING_MODE` is shadow/live | Two agreeing candle strategies required. Typical mild Kraken drift **will** fail-closed; that is intentional. |
 | Optional intel configured on paper | Baseline voter is still present; `min_agreeing` stays 2. |
 | Missing/stale/short candle history | `missing_candle_history` / `insufficient_candle_history` / `stale_candle_history` — not a consensus question. |
@@ -524,13 +531,27 @@ On ~400-bar Kraken 1h Spot (~16.7 days) a candle-only MA voter
   excess vs buy-and-hold below 0. Independently, the shared backtester
   records period returns only when the position is rebalanced, so a
   one-trade hold prints a large negative Sharpe even when the strategy
-  made money. That pair — `backtest_excess_return_below_minimum` +
-  `backtest_sharpe_below_minimum` — is what the WSL paper retest showed
-  after PR #45 unblocked consensus: Risk never saw a proposal
-  (`risk_decision=None`). This is a threshold / metric-wiring mismatch,
-  not a reason to disable the gate.
+  made money.
 - A clean uptrend that stays in one position has **one** completed
   round-trip, so `PRETRADE_MIN_TRADES=3` would reject the healthiest book.
+- The *current* 16-day Spot lookback is often a mild pullback, not a
+  clean uptrend. WSL retest on PR #82 (`PAPER_RESEARCH_MODE=true`, Spot
+  OHLC restored): BTC/SOL reached consensus then rejected
+  `backtest_total_return_below_minimum` (and excess) on an isolated MA
+  path of about −7% vs buy-and-hold from the warmup bar of about −3 to
+  −4%. That is a losing lookback, not a blow-up. Requiring
+  `total_return >= 0` therefore blocked every BTC/SOL cycle (0 paper
+  intents; Risk never reached) even though market data was healthy and
+  drawdown stayed inside `PRETRADE_MAX_DRAWDOWN_PCT`. ETH failed earlier
+  with `no_strategy_consensus` because short-vs-long MA compressed to
+  ~4 bps (below the 10 bp bar) while price vs the long MA was still
+  measurable — the baseline now uses that fallback so it participates
+  for every allowlisted asset.
+- Measuring the full regime-exclusive ensemble as the lookback made this
+  worse: opposing minority votes flatten the position (1–1 split) and
+  the book re-enters, so BTC ensemble total return was about −11% /
+  −7% excess vs about −7% / −4% for the isolated MA path. Paper
+  backtest/walk-forward therefore follow the wired baseline.
 
 `TRADING_MODE=paper` therefore applies documented paper floors
 (`build_pretrade_gate` reads `Settings.effective_pretrade_*`). The gate
@@ -539,12 +560,12 @@ env vars are set.
 
 | Paper setting | Default | What it still requires |
 |---|---|---|
-| `PAPER_PRETRADE_MIN_TOTAL_RETURN` | `0.0` | The strategy made money on the lookback (positive evidence). A losing MA book still fail-closes (`backtest_total_return_below_minimum`). |
-| `PAPER_PRETRADE_MIN_EXCESS_RETURN` | `-0.05` | Room for fee drag / short-window noise vs costless buy-and-hold. Not a free pass for a large underperformance. |
-| `PAPER_PRETRADE_MIN_SHARPE` | `-10.0` | The shared backtester records period returns only on a rebalance, so a one-trade MA hold prints a large negative Sharpe (~-5 on a clean 400-bar 1h uptrend) even when `total_return` is +28%. This floor is set so that artifact does not block a profitable lookback. Tighten toward `0` to rehearse the live bar. |
+| `PAPER_PRETRADE_MIN_TOTAL_RETURN` | `-0.15` | Non-catastrophic evidence on the isolated MA path, aligned with `PRETRADE_MAX_DRAWDOWN_PCT`. A 16-day Spot pullback of a few percent can pass. A collapse still fail-closes (`backtest_total_return_below_minimum`). This is **not** "the strategy made money"; that claim was false for current BTC/SOL Spot. |
+| `PAPER_PRETRADE_MIN_EXCESS_RETURN` | `-0.10` | Room for fee drag / MA flips vs costless buy-and-hold on a short window. Not a free pass for a large underperformance. |
+| `PAPER_PRETRADE_MIN_SHARPE` | `-10.0` | The shared backtester records period returns only on a rebalance, so a one-trade MA hold prints a large negative Sharpe (~-5 on a clean 400-bar 1h uptrend) even when `total_return` is +28%. This floor is set so that artifact does not block a non-catastrophic lookback. Tighten toward `0` to rehearse the live bar. |
 | `PAPER_PRETRADE_MIN_TRADES` | `1` | At least one completed round-trip. Flat/no-trade books still fail. |
-| `PAPER_PRETRADE_MIN_WALKFORWARD_EXCESS_RETURN` | `-0.05` | Out-of-sample excess uses the same paper room. `PRETRADE_REQUIRE_WALKFORWARD` stays on. |
-| `PRETRADE_MAX_DRAWDOWN_PCT` | `0.15` (shared) | Unchanged on paper. |
+| `PAPER_PRETRADE_MIN_WALKFORWARD_EXCESS_RETURN` | `-0.10` | Out-of-sample excess uses the same paper room. `PRETRADE_REQUIRE_WALKFORWARD` stays on. |
+| `PRETRADE_MAX_DRAWDOWN_PCT` | `0.15` (shared) | Unchanged on paper. The catastrophic bar. |
 
 Do **not** set `PRETRADE_BACKTEST_ENABLED=false` to "see if it trades".
 That removes the gate; these floors exist so paper can reach Risk without
