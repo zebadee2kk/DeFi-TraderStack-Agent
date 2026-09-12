@@ -219,7 +219,11 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
             else None
         ),
         min_excess_return=settings.effective_pretrade_min_excess_return,
-        max_drawdown=settings.pretrade_max_drawdown_pct,
+        # --- miles-inspired ema_9_21 paper voter ---
+        # Promote+paper uses PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT so the
+        # daily research envelope (~23% WF maxDD) is not rejected by the
+        # 1h PRETRADE_MAX_DRAWDOWN_PCT=0.15 bar. Live/shadow stay on 0.15.
+        max_drawdown=settings.effective_pretrade_max_drawdown_pct,
         min_sharpe=settings.effective_pretrade_min_sharpe,
         min_trades=settings.effective_pretrade_min_trades,
         require_walkforward=settings.pretrade_require_walkforward,

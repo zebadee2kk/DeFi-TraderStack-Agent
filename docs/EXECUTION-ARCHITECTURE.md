@@ -119,7 +119,11 @@ regime-exclusive ensemble, which flattens on 1–1 splits and bleeds fees).
 On `TRADING_MODE=paper` they use the documented paper floors in
 `PAPER_PRETRADE_MIN_*` (non-catastrophic total return, modest room vs
 buy-and-hold, a Sharpe floor below the one-trade fee-shock artifact).
-Live/shadow keep `PRETRADE_MIN_EXCESS_RETURN=0` / `PRETRADE_MIN_SHARPE=0`.
+When `PAPER_PROMOTE_EMA_9_21` is also on, the drawdown ceiling is
+`PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` (default 0.30, the daily
+`ema_9_21` research envelope) instead of `PRETRADE_MAX_DRAWDOWN_PCT=0.15`.
+Live/shadow keep `PRETRADE_MIN_EXCESS_RETURN=0` / `PRETRADE_MIN_SHARPE=0`
+and the 0.15 drawdown bar.
 `RiskEngine` and the kill switch are unchanged.
 
 This exists because the default three voters are regime-exclusive, so typical

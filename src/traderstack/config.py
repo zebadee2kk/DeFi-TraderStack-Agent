@@ -14,6 +14,14 @@ EMA_9_21_PAPER_KRAKEN_INTERVAL_MINUTES = 1440
 # the in-progress day). The 1h default PRETRADE_MAX_CANDLE_AGE_SECONDS=7200
 # would reject every promote-path cycle.
 EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS = 172_800.0
+# Documented #95/#96 ema_9_21 Kraken daily BTC+ETH mean walk-forward
+# max drawdown (~23.35%). The 1h PRETRADE_MAX_DRAWDOWN_PCT=0.15 bar is
+# calibrated for ~16-day MA lookbacks and silently rejects this voter.
+EMA_9_21_PAPER_RESEARCH_WF_MAX_DRAWDOWN_PCT = 0.2335
+# Paper promote-path DD ceiling. Covers the BTC+ETH research envelope
+# (mean 23.35%, ETH per-asset WF ~28.77%) with a small buffer. SOL's
+# ~50% WF maxDD is supporting-only and is not this envelope.
+EMA_9_21_PAPER_MAX_DRAWDOWN_PCT = 0.30
 
 
 class Settings(BaseSettings):
@@ -322,6 +330,16 @@ class Settings(BaseSettings):
     # =1h is overridden — a daily-validated EMA on 1h bars is a different
     # strategy (and lost money on the #93 1h window).
     paper_promote_ema_9_21: bool = False
+    # Paper-only pre-trade drawdown ceiling for the daily ema_9_21 promote
+    # path. PRETRADE_MAX_DRAWDOWN_PCT=0.15 stays the 1h / live / shadow bar.
+    # Default matches EMA_9_21_PAPER_MAX_DRAWDOWN_PCT (the #95/#96 Kraken
+    # daily BTC+ETH envelope). gt=0 / le=1: 0 or a missing/invalid value
+    # fails Settings load (fail-closed). Ignored unless
+    # paper_promote_ema_9_21_active. Not RiskEngine policy -- flipping it
+    # must not move policy_version. Do not set 1.0 to disable the gate.
+    paper_promote_ema_9_21_max_drawdown_pct: float = Field(
+        default=EMA_9_21_PAPER_MAX_DRAWDOWN_PCT, gt=0, le=1
+    )
 
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue
@@ -529,6 +547,20 @@ class Settings(BaseSettings):
                 EMA_9_21_PAPER_MAX_CANDLE_AGE_SECONDS,
             )
         return self.pretrade_max_candle_age_seconds
+
+    @property
+    def effective_pretrade_max_drawdown_pct(self) -> float:
+        """Drawdown ceiling used by the pre-trade gate.
+
+        The 1h MA bar (PRETRADE_MAX_DRAWDOWN_PCT=0.15) is too tight for
+        the daily ema_9_21 research envelope (~23% WF maxDD). When the
+        paper promote path is active, use the dedicated paper ceiling.
+        Live/shadow and the flag-off paper path keep
+        PRETRADE_MAX_DRAWDOWN_PCT. This never disables the gate.
+        """
+        if self.paper_promote_ema_9_21_active:
+            return self.paper_promote_ema_9_21_max_drawdown_pct
+        return self.pretrade_max_drawdown_pct
 
     # --- paper-only Polymarket weather research ---
     @property

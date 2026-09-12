@@ -444,11 +444,20 @@ Running that daily-validated EMA on 1h bars is **not** the same strategy
 - `PRETRADE_MAX_CANDLE_AGE_SECONDS` is raised to at least 48h so last
   committed daily bars are not stale after mid-morning UTC
 - `PRETRADE_CANDLE_INTERVAL=1h` is ignored for ingestion and the gate
+- the pre-trade drawdown ceiling is `PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT`
+  (default **0.30**), not `PRETRADE_MAX_DRAWDOWN_PCT=0.15`. Daily
+  `ema_9_21` realized WF maxDD ~23.35% on Kraken BTC+ETH (#95/#96); the
+  1h 15% bar rejected every WSL soak cycle after #94
+  (`backtest_drawdown_above_maximum`). Live/shadow keep 0.15. Setting
+  the paper ceiling to 0 fails Settings load. Do not set 1.0 to disable
+  the gate. SOL's ~50% WF maxDD is supporting-only and may still reject
 - `EXIT_TIME_STOP_BARS` is still a *bar* count: 24 × 1d = 24 days. Set
   `EXIT_TIME_STOP_BARS=1` if you want a one-day time-stop on daily bars.
 
-`traderstack-check-config` prints the forced interval. Do not narrate a
-daily holdout as evidence for an hourly paper run.
+`traderstack-check-config` prints the forced interval and the promote-path
+drawdown ceiling. It warns if that ceiling is tighter than the documented
+~23.35% research envelope. Do not narrate a daily holdout as evidence for
+an hourly paper run.
 
 ## Daily robustness (balanced-holdout bar)
 
@@ -706,12 +715,13 @@ proposal):
 | `strategy_does_not_confirm_side` | The ensemble's consensus side doesn't match the side a caller explicitly requested confirmation for. |
 | `backtest_total_return_below_minimum` | Paper-only. Backtested total return (not vs. buy-and-hold) is below `PAPER_PRETRADE_MIN_TOTAL_RETURN`. Live/shadow never emit this. |
 | `backtest_excess_return_below_minimum` | Backtested return net of fees/slippage, vs. buy-and-hold, is below the active floor (`PAPER_PRETRADE_MIN_EXCESS_RETURN` on paper, `PRETRADE_MIN_EXCESS_RETURN` on live/shadow). |
-| `backtest_drawdown_above_maximum` | Backtested max drawdown exceeds `PRETRADE_MAX_DRAWDOWN_PCT`. |
+| `backtest_drawdown_above_maximum` | Backtested max drawdown exceeds the active ceiling (`PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` on the paper daily promote path, `PRETRADE_MAX_DRAWDOWN_PCT` otherwise). |
 | `backtest_sharpe_below_minimum` | Backtested Sharpe ratio is below the active floor (`PAPER_PRETRADE_MIN_SHARPE` on paper, `PRETRADE_MIN_SHARPE` on live/shadow). |
 | `backtest_trade_count_below_minimum` | Fewer backtested trades than the active floor (`PAPER_PRETRADE_MIN_TRADES` on paper, `PRETRADE_MIN_TRADES` on live/shadow). |
 | `walkforward_insufficient_history` | Not enough history for a walk-forward evaluation, and `PRETRADE_REQUIRE_WALKFORWARD=true`. |
 | `walkforward_excess_return_below_minimum` | Mean out-of-sample excess return across walk-forward folds is below the active floor (`PAPER_PRETRADE_MIN_WALKFORWARD_EXCESS_RETURN` on paper, `0.0` on live/shadow). |
-| `walkforward_drawdown_above_maximum` | Worst walk-forward fold's drawdown exceeds `PRETRADE_MAX_DRAWDOWN_PCT`. |
+| `walkforward_drawdown_above_maximum` | Worst walk-forward fold's drawdown exceeds the active ceiling (`PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` on the paper daily promote path, `PRETRADE_MAX_DRAWDOWN_PCT` otherwise). |
+| `candle_interval_mismatch` | Paper promote path only. History is missing or any bar is not the forced daily interval (`1d`). Scored before any backtest. |
 
 None of these need operator action beyond monitoring — a rejecting gate here is
 working as intended (no history yet, or the ensemble genuinely doesn't clear its
@@ -805,7 +815,10 @@ way live/shadow do.
 
 `traderstack-check-config` reports whether paper research mode is `active`,
 `off`, or `ignored` (flag set but `TRADING_MODE` is not paper), and the
-same for paper reference resilience and paper pretrade thresholds.
+same for paper reference resilience and paper pretrade thresholds. On the
+daily promote path it also prints `PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT`
+and warns if that ceiling is tighter than the documented ~23.35% research
+envelope.
 
 ## Paper pre-trade thresholds on Spot OHLC
 
@@ -858,7 +871,8 @@ env vars are set.
 | `PAPER_PRETRADE_MIN_SHARPE` | `-10.0` | The shared backtester records period returns only on a rebalance, so a one-trade MA hold prints a large negative Sharpe (~-5 on a clean 400-bar 1h uptrend) even when `total_return` is +28%. This floor is set so that artifact does not block a non-catastrophic lookback. Tighten toward `0` to rehearse the live bar. |
 | `PAPER_PRETRADE_MIN_TRADES` | `1` | At least one completed round-trip. Flat/no-trade books still fail. |
 | `PAPER_PRETRADE_MIN_WALKFORWARD_EXCESS_RETURN` | `-0.10` | Out-of-sample excess uses the same paper room. `PRETRADE_REQUIRE_WALKFORWARD` stays on. |
-| `PRETRADE_MAX_DRAWDOWN_PCT` | `0.15` (shared) | Unchanged on paper. The catastrophic bar. |
+| `PRETRADE_MAX_DRAWDOWN_PCT` | `0.15` (shared) | 1h MA / live / shadow catastrophic bar. **Not** the daily `ema_9_21` promote ceiling. |
+| `PAPER_PROMOTE_EMA_9_21_MAX_DRAWDOWN_PCT` | `0.30` (paper promote only) | Used only when `PAPER_PROMOTE_EMA_9_21=true` and `TRADING_MODE=paper`. Matches the #95/#96 Kraken daily BTC+ETH envelope (WF maxDD ~23.35% mean, ETH ~28.77%). The 0.15 1h bar rejected every post-#94 daily soak cycle. SOL's ~50% WF maxDD is supporting-only and may still reject. 0 fails closed at load. Do not set `1.0` to disable the gate. |
 
 Do **not** set `PRETRADE_BACKTEST_ENABLED=false` to "see if it trades".
 That removes the gate; these floors exist so paper can reach Risk without

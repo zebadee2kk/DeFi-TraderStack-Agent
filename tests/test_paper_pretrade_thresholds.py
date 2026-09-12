@@ -92,6 +92,7 @@ def test_paper_defaults_differ_from_live_promotion_bar() -> None:
     assert paper.effective_pretrade_min_total_return == -0.15
     assert paper.effective_pretrade_min_excess_return == -0.10
     assert paper.effective_pretrade_min_walkforward_excess_return == -0.10
+    assert paper.effective_pretrade_max_drawdown_pct == 0.15
     assert live.effective_pretrade_min_excess_return == live.pretrade_min_excess_return
     assert live.effective_pretrade_min_sharpe == live.pretrade_min_sharpe
     assert live.effective_pretrade_min_trades == live.pretrade_min_trades
@@ -115,6 +116,7 @@ def test_live_ignores_paper_pretrade_env_overrides() -> None:
     assert gate.min_trades == 3
     assert gate.min_total_return is None
     assert gate.min_walkforward_excess_return == 0.0
+    assert gate.max_drawdown == 0.15
 
 
 def test_shadow_keeps_strict_pretrade_mins() -> None:
@@ -122,7 +124,17 @@ def test_shadow_keeps_strict_pretrade_mins() -> None:
     assert gate.min_excess_return == 0.0
     assert gate.min_sharpe == 0.0
     assert gate.min_total_return is None
+    assert gate.max_drawdown == 0.15
     assert gate.backtester.ensemble.paper_research_strategy is None
+
+
+def test_non_promote_paper_gate_keeps_1h_drawdown_ceiling() -> None:
+    """The 1h MA paper path is unchanged: still PRETRADE_MAX_DRAWDOWN_PCT."""
+    settings = _settings()
+    gate = build_pretrade_gate(settings)
+    assert settings.paper_promote_ema_9_21 is False
+    assert gate.max_drawdown == settings.pretrade_max_drawdown_pct
+    assert gate.max_drawdown == 0.15
 
 
 def test_strict_live_mins_are_unreachable_on_mild_kraken_uptrend() -> None:
