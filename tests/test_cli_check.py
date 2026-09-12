@@ -133,6 +133,14 @@ def test_promote_searched_strategies_default_is_safe() -> None:
     assert item.value == "no"
 
 
+def test_intraday_dual_print_is_report_only() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Intraday (4h/1h) dual-print search")
+    assert item.value == "report-only"
+    assert "traderstack-intraday-dual-print" in item.detail
+    assert "PAPER_PROMOTE_*" in item.detail
+
+
 def test_promote_without_report_is_unsafe() -> None:
     report = build_report(
         settings(

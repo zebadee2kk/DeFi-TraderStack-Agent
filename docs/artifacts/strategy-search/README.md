@@ -351,3 +351,35 @@ season.
 
 See `polymarket-weather-eval.md`.
 
+## Intraday dual-print (`traderstack-intraday-dual-print`)
+
+#104 daily EMA dual-print, #105 historical liquidation, and #106
+Polymarket PIT tape were all empty. This command is a **different
+family**: fee-aware #96+A+B+C on Kraken public Spot **4h** (default;
+`1h` alternate) BTC+ETH, plus the #102-style Binance.US older-720 of
+the same interval.
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | 4h or 1h public Spot; #96+A+B+C; rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same interval; 720 bars ending before the primary Kraken first bar | no (gate only) |
+
+Catalog is frozen non-EMA (MA / momentum / mean-reversion / vol-regime;
+two EMA names as controls). Funding/OI instantiate only when an
+aligned series is fetched. Liquidation-z and cross-venue stay skipped.
+A Kraken-only combined-passer cannot promote. Empty dual-print set is
+success. `PAPER_PROMOTE_*` stays false. No new pin unless a committed
+report names a passer (default false if added).
+
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken 4h primary: 2026-05-15 16:00 → 2026-09-12 12:00 UTC (720).
+- Binance.US older-720 4h: 2026-01-15 16:00 → 2026-05-15 12:00 UTC
+  (720; no overlap). `api.binance.com` HTTP 451; labeled Binance.US.
+- OKX funding (~90d of 8h) and 1h OI scored; liquidation skipped.
+- Kraken combined-passers: **0**. Every Kraken mean HO was negative.
+- Binance.US combined-passers: **0**.
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
+See `intraday-dual-print.md`.
+

@@ -112,9 +112,11 @@ def documented_primary_first() -> datetime:
 
 def primary_first_opened_at(
     histories: dict[str, tuple[Candle, ...]],
+    *,
+    interval: str = "1d",
 ) -> tuple[datetime, str]:
     """Cutoff for the older slice. Prefer this run's Kraken BTC first bar."""
-    btc = kraken_daily_candles(histories, "BTC/USD")
+    btc = kraken_daily_candles(histories, "BTC/USD", interval=interval)
     if btc:
         return btc[0].opened_at, "this_run_kraken_btc_first_bar"
     return documented_primary_first(), "documented_primary_first_iso"

@@ -404,6 +404,17 @@ def build_report(settings: Settings) -> ConfigReport:
             "start rather than cycle a name outside the #100 envelope."
         )
 
+    # --- intraday dual-print search (report-only; no promote pin) ---
+    items.append(
+        CheckItem(
+            "Intraday (4h/1h) dual-print search",
+            "report-only",
+            "traderstack-intraday-dual-print; #96+A+B+C on Kraken Spot "
+            "and Binance.US older-720 of the same interval; no new "
+            "PAPER_PROMOTE_* unless a dual-print passer exists (default false)",
+        )
+    )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(

@@ -11,11 +11,11 @@ differ. This module never enters a promotion average with Kraken.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from traderstack.candles import Candle
+from traderstack.candles import Candle, interval_to_seconds
 
 BINANCE_COM_BASE = "https://api.binance.com"
 BINANCE_US_BASE = "https://api.binance.us"
@@ -85,10 +85,24 @@ def parse_binance_klines(
     candles = [parse_binance_kline(row, symbol=symbol, interval=interval) for row in payload]
     candles.sort(key=lambda candle: candle.opened_at)
     if drop_uncommitted_today and candles:
+        candles = _drop_uncommitted(candles, interval=interval)
+    return tuple(candles)
+
+
+def _drop_uncommitted(candles: list[Candle], *, interval: str) -> list[Candle]:
+    """Drop the last bar when its close is still in the future."""
+    if not candles:
+        return candles
+    if interval == "1d":
         today = datetime.now(UTC).date()
         if candles[-1].opened_at.date() >= today:
-            candles = candles[:-1]
-    return tuple(candles)
+            return candles[:-1]
+        return candles
+    seconds = interval_to_seconds(interval)
+    close_at = candles[-1].opened_at + timedelta(seconds=seconds)
+    if close_at > datetime.now(UTC):
+        return candles[:-1]
+    return candles
 
 
 async def _get_klines(
@@ -97,10 +111,11 @@ async def _get_klines(
     symbol: str,
     end_time_ms: int | None,
     limit: int,
+    interval: str = BINANCE_INTERVAL,
 ) -> object:
     params: dict[str, str | int] = {
         "symbol": symbol.upper(),
-        "interval": BINANCE_INTERVAL,
+        "interval": interval,
         "limit": limit,
     }
     if end_time_ms is not None:
@@ -117,11 +132,14 @@ async def download_binance_spot_daily(
     max_candles: int = 720,
     client: httpx.AsyncClient | None = None,
     bases: tuple[str, ...] = (BINANCE_COM_BASE, BINANCE_US_BASE),
+    interval: str = BINANCE_INTERVAL,
 ) -> tuple[tuple[Candle, ...], str, list[str]]:
-    """Fetch one Spot daily series. Tries ``api.binance.com`` then ``.us``.
+    """Fetch one Spot series. Tries ``api.binance.com`` then ``.us``.
 
-    Returns ``(candles, source_label, notes)``. An empty series is a
-    successful research outcome — it is not treated as confirmation.
+    Default interval is daily. ``4h`` / ``1h`` use the same hosts and
+    the same older-slice ``end_before`` rule. Returns
+    ``(candles, source_label, notes)``. An empty series is a successful
+    research outcome — it is not treated as confirmation.
     """
     notes: list[str] = []
     end_ms: int | None = None
@@ -143,6 +161,7 @@ async def download_binance_spot_daily(
                 symbol=symbol,
                 end_time_ms=end_ms,
                 limit=min(BINANCE_KLINE_LIMIT, max(max_candles, 1) + 5),
+                interval=interval,
             )
         except httpx.HTTPStatusError as exc:
             last_error = f"{base or label} HTTP {exc.response.status_code}"
@@ -165,7 +184,7 @@ async def download_binance_spot_daily(
                 await active.aclose()
 
         try:
-            candles = parse_binance_klines(payload, symbol=symbol)
+            candles = parse_binance_klines(payload, symbol=symbol, interval=interval)
         except (TypeError, ValueError) as exc:
             last_error = f"{base or label} parse failed: {exc}"
             notes.append(f"{symbol}: {last_error}")
@@ -185,7 +204,7 @@ async def download_binance_spot_daily(
             )
         return candles, source, notes
 
-    notes.append(f"{symbol}: Binance Spot daily skipped ({last_error})")
+    notes.append(f"{symbol}: Binance Spot {interval} skipped ({last_error})")
     return (), BINANCE_SOURCE_RESTRICTED, notes
 
 
@@ -196,8 +215,9 @@ async def download_binance_spot_histories(
     max_candles: int = 720,
     client: httpx.AsyncClient | None = None,
     bases: tuple[str, ...] = (BINANCE_COM_BASE, BINANCE_US_BASE),
+    interval: str = BINANCE_INTERVAL,
 ) -> tuple[dict[str, tuple[Candle, ...]], str | None, list[str]]:
-    """Keys are ``SYMBOL@1d``. ``source`` is the host that served a series."""
+    """Keys are ``SYMBOL@interval``. ``source`` is the host that served a series."""
     histories: dict[str, tuple[Candle, ...]] = {}
     notes: list[str] = []
     source: str | None = None
@@ -208,6 +228,7 @@ async def download_binance_spot_histories(
             max_candles=max_candles,
             client=client,
             bases=bases,
+            interval=interval,
         )
         notes.extend(item_notes)
         if not candles:
@@ -217,7 +238,8 @@ async def download_binance_spot_histories(
         first = candles[0].opened_at.isoformat()
         last = candles[-1].opened_at.isoformat()
         notes.append(
-            f"{candles[0].symbol}@1d: {len(candles)} committed {fetched_source} "
-            f"daily bars {first} → {last} (non-Kraken; report-only)"
+            f"{candles[0].symbol}@{candles[0].interval}: {len(candles)} committed "
+            f"{fetched_source} {candles[0].interval} bars {first} → {last} "
+            "(non-Kraken; report-only)"
         )
     return histories, source, notes
