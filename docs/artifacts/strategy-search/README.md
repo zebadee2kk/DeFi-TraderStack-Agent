@@ -448,14 +448,19 @@ Follow-up the same day (daily resample / hard-gate honesty):
 
 Follow-up the same day (BitMEX wired as a second ≥720 daily tape):
 
-- Public `GET /api/v1/funding` settlements. 800d lookback: 2402 8h
-  prints / 801 UTC days on XBTUSD and ETHUSD, no day gaps. Uses
+- Public `GET /api/v1/funding` settlements. Live 800d lookback: 2400
+  8h prints → **801** UTC daily sums on XBTUSD and ETHUSD. Uses
   `fundingRate` only (`fundingRateDaily` is a restated multiple).
-- `_pick_venues` prefers the two longest usable tapes (Hyperliquid
-  hourly, then BitMEX). OKX (~97 daily) is no longer the second
-  print when BitMEX is up.
-- Deribit / Gate / Kraken Futures / Vision zips documented, not
-  blended. No paper perp path. No new pin.
+- Dual-print: Hyperliquid primary (19199 hourly → 801 daily) +
+  BitMEX (2400 8h → 801 daily). Aligned bars **720 / 720**. Hard
+  gates **available**. Basis skipped. Paper path false.
+- Spot-signal dual-print passers: **0**. Informational top-1 is the
+  control `ma_cross_10_30` on both tapes (WF excess −4.41%).
+- Modeled `carry_hedged_sign` cleared fee-aware signs on **both**
+  daily tapes (HL WF +1.72% / HO +3.32%; BitMEX WF +2.55% / HO
+  +5.32%) and the #96+A+B+C analog on both. Still not paper-spot
+  executable; basis skipped. **No new pin.**
+- `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
 See `funding-carry.md`, `funding-carry-daily.md`, and the 2026-09-12
 status memo `edge-status-2026-09-12.md`.
