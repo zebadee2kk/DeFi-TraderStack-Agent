@@ -23,6 +23,7 @@ from traderstack.agents.specialists import SpecialistCommittee
 from traderstack.features import MarketFeatures
 from traderstack.intelligence import merge_external_intelligence
 from traderstack.market.altfins import AltFinsSignalProvider
+from traderstack.market.crucix import CrucixIntelProvider
 from traderstack.market.intelligence_providers import (
     CryptoPanicNewsProvider,
     DuneOnChainProvider,
@@ -146,6 +147,31 @@ async def test_altfins_payload_reduces_to_a_clipped_score() -> None:
     _assert_clean(snapshot.model_dump(mode="json"))
     assert snapshot.score == 0.0
     assert snapshot.source_id == "altfins:signals-feed"
+
+
+@pytest.mark.asyncio
+async def test_crucix_titles_never_leave_the_adapter() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "alerts": [
+                    {
+                        "tier": "high",
+                        "score": 0.85,
+                        "title": INJECTION,
+                        "body": INJECTION,
+                        "narrative": INJECTION,
+                    }
+                ]
+            },
+        )
+
+    async with _client(handler) as client:
+        snapshot = await CrucixIntelProvider(api_key="k", client=client).fetch("BTC")
+    _assert_clean(snapshot.model_dump(mode="json"))
+    assert snapshot.adverse_event is True
+    assert 0.0 <= snapshot.event_score <= 1.0
 
 
 @pytest.mark.asyncio
