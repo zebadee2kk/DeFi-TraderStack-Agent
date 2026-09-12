@@ -105,13 +105,36 @@ When active, `StrategyEnsemble` includes `PaperResearchStrategy`
 (`paper_research_baseline_v1`) — a candle-only MA-direction voter that does
 not read intel, Crucix, or edge fields — and may set `min_agreeing=1` when
 no optional intel provider is configured. `combine_signals` still fail-closes
-on a split vote. The backtest/walk-forward, `RiskEngine`, and kill switch
-run unchanged after a consensus side exists.
+on a split vote. The backtest/walk-forward still run after a consensus side
+exists; on `TRADING_MODE=paper` they use the documented paper floors in
+`PAPER_PRETRADE_MIN_*` (positive total return, modest fee-drag room vs
+buy-and-hold, a Sharpe floor below the one-trade fee-shock artifact).
+Live/shadow keep `PRETRADE_MIN_EXCESS_RETURN=0` / `PRETRADE_MIN_SHARPE=0`.
+`RiskEngine` and the kill switch are unchanged.
 
 This exists because the default three voters are regime-exclusive, so typical
 Kraken Spot 1h OHLC (mild drift, range, or a single-regime signal) produced
 `no_strategy_consensus` after market data succeeded and before risk was
-asked. See `docs/RUNBOOK.md`, "Paper research mode and strategy consensus".
+asked. See `docs/RUNBOOK.md`, "Paper research mode and strategy consensus"
+and "Paper pre-trade thresholds on Spot OHLC".
+
+### Paper reference-price resilience (paper path only)
+
+`TRADING_MODE=paper` wires reference providers with
+`PAPER_REFERENCE_CACHE_SECONDS` (default 120s) and
+`PAPER_REFERENCE_LAST_GOOD_SECONDS` (default 300s). A CoinGecko/CMC success
+is stored as last-good; a later 429, timeout, open breaker, or quota
+refusal serves that payload (original `observed_at`) instead of arriving at
+the pipeline with an empty reference list. CoinGecko also retries one 429
+honouring `Retry-After` (capped at 2s) in every trading mode — that is
+good-client behaviour, not a paper looseness.
+
+Live/shadow keep `REFERENCE_PRICE_CACHE_SECONDS` (20s) and
+`last_good_ttl_seconds=0`: an unanswered independent reference still
+fail-closes as `no_independent_reference_price`. Last-good never moves a
+limit, a side, or a notional. A last-good mid that has diverged from the
+venue tick still trips `reference_price_divergence`. See `docs/RUNBOOK.md`,
+"Paper reference-price resilience".
 
 ## Cycle order of operations
 
@@ -142,7 +165,8 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
                                                     cleaned up after.
     2c. PaperRuntime.run_once(symbol, portfolio.snapshot(), submit=submission_enabled):
         i.   fetch venue tick (primary market data)
-        ii.  fetch reference prices (CoinGecko/CoinMarketCap, concurrent, isolated failures)
+        ii.  fetch reference prices (CoinGecko/CoinMarketCap, concurrent, isolated failures;
+             paper may reuse last-good on 429 / open breaker — live/shadow do not)
         iii. fetch candle history (if the pre-trade gate is enabled)
         iv.  best-effort candle persistence (--persistent-events; failure never fails the cycle)
         v.   fetch external intelligence (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS,

@@ -91,6 +91,10 @@ def test_build_pretrade_gate_uses_paper_research_ensemble() -> None:
     gate = build_pretrade_gate(_settings())
     assert isinstance(gate.backtester.ensemble.paper_research_strategy, PaperResearchStrategy)
     assert gate.backtester.ensemble.min_agreeing == 1
+    assert gate.min_total_return == 0.0
+    assert gate.min_excess_return == -0.05
+    assert gate.min_sharpe == -10.0
+    assert gate.min_trades == 1
 
 
 def test_empty_intel_and_absent_edge_fields_do_not_block_paper_consensus() -> None:
