@@ -177,7 +177,7 @@ ALIAS_TO_CANONICAL: dict[str, str] = {
 PAPER_PATH_READY = True
 MULTI_ASSET_GATE_RULE = "btc_eth_signs_as_96_abc_sol_reported_not_required"
 PRICE_PATH_OMITTED_REASON = (
-    "calendar names ignore OHLC; only the UTC civil date of bar t "
+    "Calendar names ignore OHLC; only the UTC civil date of bar t "
     "enters the decision. Not a price-indicator retune of #116–#120"
 )
 

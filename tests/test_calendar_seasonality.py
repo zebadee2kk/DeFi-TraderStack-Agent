@@ -532,6 +532,21 @@ def test_signals_do_not_require_paired_days() -> None:
     assert len(mapping["BTC/USD"]) != len(mapping["ETH/USD"])
 
 
+def test_committed_live_report_is_empty_success() -> None:
+    text = Path("docs/artifacts/strategy-search/calendar-seasonality.md").read_text()
+    assert "Dual-print passers: 0" in text
+    assert "`keep_flag_false=true`" in text
+    assert "Do not add a new promote flag" in text
+    assert "PAPER_PROMOTE_*" in text
+    assert "cal_dow_lo_mon" in text
+    assert "cal_dow_skip_weekend" in text
+    assert "cal_moy_lo_q4" in text
+    assert "cal_tom_lo_3_3" in text
+    assert "utc_calendar_date_of_bar_t" in text
+    assert settings().paper_promote_ema_9_21 is False
+    assert not hasattr(settings(), "paper_promote_cal_dow_lo_mon")
+
+
 def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     args = build_parser().parse_args(["--candles", "unused.json", "--no-binance"])
     assert args.output_md.name == "calendar-seasonality.md"
