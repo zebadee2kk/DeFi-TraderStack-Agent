@@ -24,10 +24,17 @@ Second independent funding tapes (skip-not-invent; do not blend):
 * Hyperliquid ``POST /info`` ``fundingHistory`` — public, hourly, paginable
   from listing (~2023). Typically reachable from this environment.
 * BitMEX ``GET /api/v1/funding`` — public settlements (XBTUSD from 2016,
-  ETHUSD from 2018). Modern cadence is 8h; early XBTUSD was 24h. Uses
-  ``fundingRate`` only — ``fundingRateDaily`` is a restated multiple and
-  must not be treated as a settlement. An 800d lookback yields ≥720 UTC
-  daily sums without inventing prints.
+  ETHUSD from 2018). **Sunset:** official closure 23 September 2026
+  04:00 UTC (risk limits from 26 August 2026 04:00 UTC;
+  https://www.bitmex.com/blog/bitmex-closure). Historical tapes may
+  still be fetched as dead-end documentation. Not a long-term
+  dual-print, basis, or paper-hedge venue. Uses ``fundingRate`` only.
+* HTX linear-swap ``GET /linear-swap-api/v1/swap_historical_funding_rate``
+  — public 8h ``funding_rate`` from 2020-10-21 on BTC-USDT and
+  ETH-USDT (~2150d / ≥720 UTC daily sums). ``realized_rate`` is null
+  on every historical page probed here; ``avg_premium_index`` is the
+  funding-formula premium and is not used. Replacement long tape
+  after the BitMEX sunset.
 * Bybit ``GET /v5/market/funding/history`` — public when reachable; this
   environment typically gets HTTP 403 (CloudFront country block).
 * Deribit ``public/get_funding_rate_history`` is reachable but returns
@@ -50,8 +57,17 @@ PIT perp−spot basis (skip-not-invent; do not blend):
   ``quote/bucketed`` + ``.BXBT``/``.BETH`` can form perp-mid−index;
   that is not mark−index and not perp-mid−spot-mid, and Hyperliquid
   cannot pair it, so it is not wired as a promoting basis series.
+* HTX public REST exposes daily ``linear_swap_mark_price_kline`` and
+  ``index`` history (size cap 2000, ~1999d from 2021-03-23). That is
+  mark−index on **one** venue. Dual-print basis still needs the same
+  construction on Hyperliquid for the scored window.
+* HuggingFace ``asiletto81/hyperliquid`` ``asset_ctxs`` is a public
+  ≥720d Hyperliquid mark−index tape (883 contiguous days,
+  2024-01-01 → 2026-06-01, ``mark_px``/``oracle_px``). The current
+  Kraken 720 (2024-09-22 → 2026-09-11) aligns only ~617 of those
+  days. Official HL S3 stays requester-pays 403.
 * Dual-print basis requires the requested construction on **both**
-  venues. Absent that, basis is UNAVAILABLE.
+  venues for the scored window. Absent that, basis is UNAVAILABLE.
 
 Cross-venue divergence is not built here (needs two aligned venues).
 """
@@ -70,6 +86,7 @@ OKX_BASE = "https://www.okx.com"
 BYBIT_BASE = "https://api.bybit.com"
 HYPERLIQUID_BASE = "https://api.hyperliquid.xyz"
 BITMEX_BASE = "https://www.bitmex.com"
+HTX_BASE = "https://api.hbdm.com"
 
 _BINANCE_SYMBOL: dict[str, str] = {
     "BTC/USD": "BTCUSDT",
@@ -95,6 +112,10 @@ _BITMEX_SYMBOL: dict[str, str] = {
     "BTC/USD": "XBTUSD",
     "ETH/USD": "ETHUSD",
 }
+_HTX_CONTRACT: dict[str, str] = {
+    "BTC/USD": "BTC-USDT",
+    "ETH/USD": "ETH-USDT",
+}
 HYPERLIQUID_PAGE_SIZE = 500
 HYPERLIQUID_DEFAULT_LOOKBACK_DAYS = 180
 # Daily hard gates need ~720 aligned days. Hourly fundingHistory is
@@ -115,6 +136,28 @@ BITMEX_DEFAULT_LOOKBACK_DAYS = 180
 BITMEX_DAILY_LOOKBACK_DAYS = 800
 BITMEX_DAILY_LIMIT_PAGES = 8
 BITMEX_PAGE_PAUSE_SECONDS = 0.25
+# BitMEX official closure (not a long-term dual-print venue):
+# 23 September 2026 04:00 UTC. Historical fetches stay available
+# as dead-end documentation; venue pick excludes it.
+BITMEX_SUNSET_UTC = datetime(2026, 9, 23, 4, 0, tzinfo=UTC)
+BITMEX_SUNSET_NOTE = (
+    "BitMEX official closure 23 September 2026 04:00 UTC "
+    "(risk limits from 26 August 2026 04:00 UTC; new registrations "
+    "already stopped). https://www.bitmex.com/blog/bitmex-closure. "
+    "Not a long-term dual-print, funding, basis, or paper-hedge venue."
+)
+HTX_PAGE_SIZE = 100
+HTX_DEFAULT_LOOKBACK_DAYS = 180
+# Daily hard gates need ~720 aligned days. HTX 8h funding_rate is
+# paginable from 2020-10-21; 800d covers a Kraken 720-bar daily
+# window. page_size is capped at 100 here (200 asked → 100 returned).
+HTX_DAILY_LOOKBACK_DAYS = 800
+HTX_DAILY_LIMIT_PAGES = 28
+HTX_PAGE_PAUSE_SECONDS = 0.2
+HTX_BASIS_SIZE = 2000
+# Official BitMEX sunset. Still fetched for notes; never selected
+# as a promoting / dual-print / paper-hedge default venue.
+SUNSET_FUNDING_VENUES: frozenset[str] = frozenset({"bitmex"})
 
 MIN_LIQUIDATION_SPAN_SECONDS = 7 * 24 * 3600
 
@@ -225,6 +268,13 @@ def bitmex_contract(symbol: str) -> str:
     if key in _BITMEX_SYMBOL:
         return _BITMEX_SYMBOL[key]
     raise ValueError(f"no BitMEX mapping for {symbol!r}")
+
+
+def htx_contract(symbol: str) -> str:
+    key = symbol.upper()
+    if key in _HTX_CONTRACT:
+        return _HTX_CONTRACT[key]
+    raise ValueError(f"no HTX linear-swap mapping for {symbol!r}")
 
 
 def _iso_to_dt(value: str) -> datetime:
@@ -697,26 +747,107 @@ async def fetch_bitmex_funding(
         points=points,
         ok_reason=(
             f"BitMEX public funding settlements (paginated; fundingRate "
-            f"only, not fundingRateDaily; lookback {lookback_days}d){suffix}"
+            f"only, not fundingRateDaily; lookback {lookback_days}d; "
+            f"sunset venue — {BITMEX_SUNSET_NOTE}){suffix}"
+        ),
+    )
+
+
+async def fetch_htx_funding(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+    lookback_days: int = HTX_DEFAULT_LOOKBACK_DAYS,
+    limit_pages: int = 8,
+) -> EdgeSeriesFetch:
+    """Public 8h ``funding_rate`` tape. Never uses premium or realized_rate."""
+    name = f"htx_funding:{symbol}"
+    try:
+        contract = htx_contract(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="htx")
+    start = datetime.now(UTC) - timedelta(days=lookback_days)
+    points: list[tuple[datetime, float]] = []
+    stopped_early = ""
+    try:
+        for page in range(limit_pages):
+            response = await client.get(
+                "/linear-swap-api/v1/swap_historical_funding_rate",
+                params={
+                    "contract_code": contract,
+                    "page_index": page + 1,
+                    "page_size": HTX_PAGE_SIZE,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict) or payload.get("status") != "ok":
+                break
+            data = payload.get("data")
+            rows = data.get("data") if isinstance(data, dict) else None
+            if not isinstance(rows, list) or not rows:
+                break
+            oldest_on_page: datetime | None = None
+            new = 0
+            for row in rows:
+                if not isinstance(row, dict) or "funding_rate" not in row:
+                    continue
+                # Settlement print. avg_premium_index is the
+                # funding-formula premium (same class as HL premium /
+                # BitMEX .XBTUSDPI) — not used. realized_rate is null
+                # on every historical page probed here; do not invent
+                # it and do not treat the null as a zero settlement.
+                ts = _ms_to_dt(row["funding_time"])
+                if ts < start:
+                    continue
+                points.append((ts, float(row["funding_rate"])))
+                oldest_on_page = ts if oldest_on_page is None else min(oldest_on_page, ts)
+                new += 1
+            if new == 0:
+                break
+            if oldest_on_page is not None and oldest_on_page <= start:
+                break
+            if len(rows) < HTX_PAGE_SIZE:
+                break
+            if page + 1 < limit_pages and HTX_PAGE_PAUSE_SECONDS:
+                await asyncio.sleep(HTX_PAGE_PAUSE_SECONDS)
+    except (httpx.HTTPError, TypeError, ValueError, KeyError) as exc:
+        if not points:
+            return _geo_or_http_skip(name, "htx", exc)
+        stopped_early = f"; pagination stopped ({exc})"
+    return _finish(
+        name,
+        source="htx:/linear-swap-api/v1/swap_historical_funding_rate",
+        points=points,
+        ok_reason=(
+            f"HTX linear-swap public funding_rate (paginated 8h; "
+            f"not avg_premium_index; realized_rate unused/null; "
+            f"lookback {lookback_days}d){stopped_early}"
         ),
     )
 
 
 HYPERLIQUID_BASIS_UNAVAILABLE = (
     "UNAVAILABLE: Hyperliquid public REST has current markPx/oraclePx/midPx "
-    "only (metaAndAssetCtxs). No historical mark−index or perp-mid−spot-mid "
-    "tape. fundingHistory.premium is the funding-formula input, not a PIT "
-    "perp−spot mid, and is not used. candleSnapshot is last-trade, not mid. "
-    "Skip-not-invent."
+    "only (metaAndAssetCtxs). fundingHistory.premium is the funding-formula "
+    "input, not a PIT perp−spot mid, and is not used. candleSnapshot is "
+    "last-trade, not mid. HuggingFace asiletto81/hyperliquid asset_ctxs "
+    "is a public ≥720d mark_px/oracle_px tape (883 contiguous days "
+    "2024-01-01 → 2026-06-01) but the current Kraken 720 "
+    "(2024-09-22 → 2026-09-11) aligns only ~617 days. Official S3 is "
+    "requester-pays 403. Skip-not-invent; do not retune the window "
+    "after seeing the archive end date."
 )
 
 BITMEX_BASIS_UNAVAILABLE = (
-    "UNAVAILABLE: BitMEX public REST has current markPrice / "
-    "indicativeSettlePrice / midPrice only. Historical .XBTUSDPI / "
-    ".ETHUSDPI is the funding-formula premium index (same class as "
-    "Hyperliquid premium — not used). quote/bucketed + .BXBT/.BETH can "
-    "form perp-mid−index, which is not mark−index and not "
-    "perp-mid−spot-mid; Hyperliquid cannot pair it. Skip-not-invent."
+    "UNAVAILABLE: BitMEX is sunsetting (official closure 23 September "
+    "2026 04:00 UTC; https://www.bitmex.com/blog/bitmex-closure) and "
+    "is not a long-term basis venue. Public REST still has current "
+    "markPrice / indicativeSettlePrice / midPrice only. Historical "
+    ".XBTUSDPI / .ETHUSDPI is the funding-formula premium index (same "
+    "class as Hyperliquid premium — not used). quote/bucketed + "
+    ".BXBT/.BETH can form perp-mid−index, which is not mark−index and "
+    "not perp-mid−spot-mid. Skip-not-invent."
 )
 
 _BITMEX_PREMIUM_INDEX: dict[str, str] = {
@@ -753,6 +884,37 @@ def bitmex_current_mid_usd(payload: object) -> float | None:
         mid = float(raw)
     except (TypeError, ValueError):
         return None
+    return mid if mid > 0 else None
+
+
+def htx_current_mid_usd(payload: object) -> float | None:
+    """Current bid/ask mid from HTX merged ticker or BBO. Not mark/last."""
+
+    tick: dict[str, Any] | None = None
+    if isinstance(payload, dict):
+        raw_tick = payload.get("tick")
+        if isinstance(raw_tick, dict):
+            tick = raw_tick
+        else:
+            ticks = payload.get("ticks")
+            if isinstance(ticks, list) and ticks and isinstance(ticks[0], dict):
+                tick = ticks[0]
+    if tick is None:
+        return None
+    bid = tick.get("bid")
+    ask = tick.get("ask")
+    bid_px = bid[0] if isinstance(bid, list) and bid else None
+    ask_px = ask[0] if isinstance(ask, list) and ask else None
+    if bid_px is None or ask_px is None:
+        return None
+    try:
+        bid_f = float(bid_px)
+        ask_f = float(ask_px)
+    except (TypeError, ValueError):
+        return None
+    if bid_f <= 0 or ask_f <= 0 or ask_f < bid_f:
+        return None
+    mid = (bid_f + ask_f) / 2.0
     return mid if mid > 0 else None
 
 
@@ -845,6 +1007,87 @@ async def fetch_bitmex_basis(
         reason=BITMEX_BASIS_UNAVAILABLE + extra,
         source="bitmex:/api/v1/instrument",
     )
+
+
+async def fetch_htx_basis(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+    size: int = HTX_BASIS_SIZE,
+) -> EdgeSeriesFetch:
+    """Daily mark−index from public HTX klines. Premium index is not used."""
+    name = f"htx_basis:{symbol}"
+    try:
+        contract = htx_contract(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="htx")
+    try:
+        mark_response = await client.get(
+            "/index/market/history/linear_swap_mark_price_kline",
+            params={
+                "contract_code": contract,
+                "period": "1day",
+                "size": min(size, HTX_BASIS_SIZE),
+            },
+        )
+        mark_response.raise_for_status()
+        index_response = await client.get(
+            "/index/market/history/index",
+            params={
+                "symbol": contract,
+                "period": "1day",
+                "size": min(size, HTX_BASIS_SIZE),
+            },
+        )
+        index_response.raise_for_status()
+    except (httpx.HTTPError, TypeError, ValueError) as exc:
+        return _geo_or_http_skip(name, "htx", exc)
+    try:
+        mark_rows = _htx_kline_rows(mark_response.json())
+        index_rows = _htx_kline_rows(index_response.json())
+    except (TypeError, ValueError, KeyError) as exc:
+        return EdgeSeriesFetch(
+            name=name,
+            status="skipped",
+            reason=f"unparsable HTX mark/index kline ({exc})",
+            source="htx:/index/market/history",
+        )
+    index_by_id = {row[0]: row[1] for row in index_rows}
+    points: list[tuple[datetime, float]] = []
+    for ts_id, mark_close in mark_rows:
+        index_close = index_by_id.get(ts_id)
+        if index_close is None or index_close <= 0:
+            continue
+        points.append((_ms_to_dt(ts_id), (mark_close - index_close) / index_close))
+    return _finish(
+        name,
+        source="htx:/index/market/history mark_price_kline−index",
+        points=points,
+        ok_reason=(
+            "HTX public daily mark_price_kline close minus index close "
+            "over index (not last-trade; not premium_index). Single-venue "
+            "tape; dual-print basis still needs Hyperliquid on the same "
+            "window."
+        ),
+    )
+
+
+def _htx_kline_rows(payload: object) -> list[tuple[int, float]]:
+    if not isinstance(payload, dict):
+        raise TypeError("HTX kline payload is not an object")
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        raise TypeError("HTX kline data is not a list")
+    parsed: list[tuple[int, float]] = []
+    for row in rows:
+        if not isinstance(row, dict) or "id" not in row or "close" not in row:
+            continue
+        ts_id = int(row["id"])
+        close = float(row["close"])
+        if ts_id <= 0 or close <= 0:
+            continue
+        parsed.append((ts_id, close))
+    return parsed
 
 
 async def fetch_okx_open_interest(

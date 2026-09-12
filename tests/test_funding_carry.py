@@ -287,12 +287,22 @@ def test_pick_venues_selects_two_usable_and_skips_empty() -> None:
             "bybit": {},
             "okx": {"BTC/USD": series, "ETH/USD": series},
             "hyperliquid": {"BTC/USD": long_series, "ETH/USD": long_series},
-            "bitmex": {"BTC/USD": series + series, "ETH/USD": series + series},
+            "htx": {"BTC/USD": series + series, "ETH/USD": series + series},
+            "bitmex": {"BTC/USD": long_series, "ETH/USD": long_series},
         }
     )
     assert primary_name == "hyperliquid"
-    assert second_name == "bitmex"
+    assert second_name == "htx"
     assert primary is not None and second is not None
+    _sunset_only_primary, sunset_only_name, sunset_second, sunset_second_name = _pick_venues(
+        {
+            "hyperliquid": {"BTC/USD": long_series, "ETH/USD": long_series},
+            "bitmex": {"BTC/USD": long_series, "ETH/USD": long_series},
+        }
+    )
+    assert sunset_only_name == "hyperliquid"
+    assert sunset_second is None
+    assert sunset_second_name is None
     none_primary, none_name, none_second, none_second_name = _pick_venues(
         {"binance": {}, "bybit": {}}
     )
@@ -600,8 +610,17 @@ async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.Mo
             source="bitmex",
         )
 
+    async def fake_htx(symbol: str, *, client: object) -> EdgeSeriesFetch:
+        return EdgeSeriesFetch(
+            name=f"htx_basis:{symbol}",
+            status="skipped",
+            reason="UNAVAILABLE: dual-print window",
+            source="htx",
+        )
+
     monkeypatch.setattr("traderstack.research.funding_carry_cli.fetch_hyperliquid_basis", fake_hl)
     monkeypatch.setattr("traderstack.research.funding_carry_cli.fetch_bitmex_basis", fake_bm)
+    monkeypatch.setattr("traderstack.research.funding_carry_cli.fetch_htx_basis", fake_htx)
     monkeypatch.setattr(
         "traderstack.research.funding_carry_cli.HYPERLIQUID_SYMBOL_PAUSE_SECONDS", 0
     )
@@ -610,6 +629,8 @@ async def test_fetch_basis_venues_records_skip_not_invent(monkeypatch: pytest.Mo
     assert names == {
         "hyperliquid_basis:BTC/USD",
         "hyperliquid_basis:ETH/USD",
+        "htx_basis:BTC/USD",
+        "htx_basis:ETH/USD",
         "bitmex_basis:BTC/USD",
         "bitmex_basis:ETH/USD",
     }
@@ -645,6 +666,8 @@ def test_pit_basis_archives_memo_stays_unavailable() -> None:
     assert "asiletto81/hyperliquid" in text
     assert "883" in text
     assert "BitMEX" in text
+    assert "23 September 2026" in text
+    assert "HTX" in text
     assert "not wired" in text.lower() or "No fetcher" in text or "No skip-not-invent" in text
     assert Settings.model_fields["paper_promote_searched_strategies"].default is False
     assert Settings.model_fields["paper_promote_ema_9_21"].default is False

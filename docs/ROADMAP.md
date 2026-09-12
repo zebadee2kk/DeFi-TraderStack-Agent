@@ -87,10 +87,12 @@ Empty dual-print set is success.
 `traderstack-funding-carry` is the post-#108 paper slice: funding-z
 thresholds, funding-agree spot overlays, and modeled hedged
 cash-and-carry on BTC+ETH. Dual-print needs two independent funding
-venues (OKX + Hyperliquid + BitMEX when reachable; Binance/Bybit often
-geo-blocked). PIT basis is probed skip-not-invent (current mark/index
-only; dual-print archives stay UNAVAILABLE — HL now has a public
-≥720d `asset_ctxs` mirror, BitMEX still does not; see
+venues (OKX + Hyperliquid + HTX when reachable; BitMEX sunset
+23 September 2026 04:00 UTC is not selected; Binance/Bybit often
+geo-blocked). PIT basis is probed skip-not-invent (HL REST current
+only; dual-print archives stay UNAVAILABLE on the current Kraken 720
+— HL now has a public ≥720d `asset_ctxs` mirror ending 2026-06-01;
+BitMEX still has no free ≥720d tape; see
 `docs/artifacts/strategy-search/pit-basis-archives.md`). A paper
 perp/hedge stub exists and cannot promote. One venue is
 single-print and cannot promote.

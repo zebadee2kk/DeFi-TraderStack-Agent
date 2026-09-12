@@ -1,5 +1,12 @@
 # Funding / carry strategy search
 
+**BitMEX sunset note (after this file's #112 print):** official
+closure 23 September 2026 04:00 UTC
+(https://www.bitmex.com/blog/bitmex-closure). The BitMEX second
+print below is **dead-end documentation**. Replacement dual-print
+pair is Hyperliquid + HTX. Do not treat BitMEX as a long-term
+funding, basis, or paper-hedge venue.
+
 Follow-up (same day, after #112): PIT basis probe is **UNAVAILABLE**
 on Hyperliquid and BitMEX (current mark/index/mid only; premium not
 used). Carry below is still the basis-unaware model — it was not

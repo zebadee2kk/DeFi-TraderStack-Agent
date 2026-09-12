@@ -33,7 +33,7 @@ without activating the venv.
 | `traderstack-dual-print-search` | Expanded daily catalog (frozen K before pull) scored under the **pre-registered dual-print bar**: Kraken primary 720 must clear #96+A+B+C **and** the #102 Binance.US older-720 must also clear those combined gates. Ranking key: Kraken mean holdout excess among dual-print passers. Venues are not averaged. Writes `docs/artifacts/strategy-search/dual-print-search.md`. Never flips `PAPER_PROMOTE_*`. An empty dual-print set is success. |
 | `traderstack-liq-regime-search` | Paper-only next slice after the empty #104 EMA dual-print: scores a frozen catalog **conditioned on** liquidation-z / funding-z / OI-z / cross-venue series when an aligned historical series exists, plus candle-only vol-regime wrappers. Public USDT-M liquidation REST is typically unusable and is skipped, not zero-filled. Dual-print only if historical liq exists on BTC+ETH **and** a second venue print is supplied; otherwise **single-print** and **cannot promote**. Writes `docs/artifacts/strategy-search/liq-regime-search.md`. Never flips `PAPER_PROMOTE_*`. Empty search is success. |
 | `traderstack-intraday-dual-print` | Paper-only 4h (default) or 1h hunt after empty daily EMA (#104), empty liq (#105), and empty Polymarket PIT (#106). Frozen **non-EMA** catalog (MA / momentum / mean-reversion / vol-regime; funding/OI only if aligned series exist). Same #96+A+B+C combined gates on Kraken public Spot **and** the #102-style Binance.US older-720 of the same interval. Ranking is Kraken mean holdout among dual-print passers. Writes `docs/artifacts/strategy-search/intraday-dual-print.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
-| `traderstack-funding-carry` | Paper-only funding-z threshold + hedged cash-and-carry catalog on BTC+ETH. Aligns Kraken public Spot (default 4h) to public funding-rate history (OKX + Hyperliquid + BitMEX when reachable; Binance/Bybit probed and skipped if geo-blocked). Dual-print only if two **independent funding venues** cover BTC and ETH; one venue is **single-print** and **cannot promote**. Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars exist on **each** venue. Writes `docs/artifacts/strategy-search/funding-carry.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
+| `traderstack-funding-carry` | Paper-only funding-z threshold + hedged cash-and-carry catalog on BTC+ETH. Aligns Kraken public Spot (default 4h) to public funding-rate history (OKX + Hyperliquid + HTX when reachable; BitMEX is a sunset venue — official closure 23 September 2026 04:00 UTC — and is not selected; Binance/Bybit probed and skipped if geo-blocked). Dual-print only if two **independent funding venues** cover BTC and ETH; one venue is **single-print** and **cannot promote**. Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars exist on **each** venue. Writes `docs/artifacts/strategy-search/funding-carry.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
 | `traderstack-relative-value` | Paper-only BTC−ETH relative-value residual: fade/follow daily `r_BTC − r_ETH` at frozen \|z\| ≥ 1.0 / 1.5 / 2.0 (lookback 20). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/btc-eth-relative-value.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA reprint. |
 | `traderstack-xs-momentum` | Paper-only BTC+ETH+SOL cross-sectional momentum: long top-1 / optional short bottom-1 by trailing N-day return (N in {21, 63, 126}; optional vol-scaled ranking; `ls` dollar-neutral or `lo` long-only). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH/SOL. Writes `docs/artifacts/strategy-search/cross-sectional-momentum.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA or residual reprint. |
 | `traderstack-donchian-breakout` | Paper-only Donchian / channel breakout: long-only or long/short on the prior N-day high/low (N in {20, 55, 100}; optional ATR(14) buffer on `lo` 20/55). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/donchian-breakout.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, or XS reprint. |
@@ -726,30 +726,35 @@ funding-z thresholds, funding-agree spot overlays, and a modeled
 hedged cash-and-carry on BTC+ETH.
 
 - Dual-print only if two independent **funding** venues (e.g.
-  Hyperliquid and BitMEX) each cover BTC and ETH. A second candle
+  Hyperliquid and HTX) each cover BTC and ETH. A second candle
   venue without a second funding tape is not dual-print. Same-venue
   prefix/suffix is not independent. Binance (HTTP 451) and Bybit
   (HTTP 403) are probed and recorded as skips when geo-blocked.
+  BitMEX is a **sunset** venue (official closure 23 September 2026
+  04:00 UTC; risk limits from 26 August 2026 04:00 UTC) and is not
+  selected for dual-print or paper hedge.
 - Otherwise the run is labeled **single-print** and **cannot promote**.
 - OKX public funding-rate-history is typically ~90d of 8h prints.
   Hyperliquid `fundingHistory` is hourly and typically reachable
   (daily runs request ~800d so a Kraken 720-bar daily window can be
-  covered on that one tape). BitMEX `GET /api/v1/funding` is a public
-  8h settlement tape long enough for ≥720 UTC daily sums (uses
-  `fundingRate`, never `fundingRateDaily`). Hard gates (#96+A+B+C)
+  covered on that one tape). HTX `swap_historical_funding_rate` is a
+  public 8h `funding_rate` tape from 2020-10-21 (BTC+ETH), long
+  enough for ≥720 UTC daily sums. BitMEX `GET /api/v1/funding` remains
+  fetchable as dead-end documentation only. Hard gates (#96+A+B+C)
   need 720 aligned **daily** bars on **each** participating venue and
   stay UNAVAILABLE on a short overlap — they are not faked.
   `--interval 1d` resamples funding to UTC daily sums (empty days
   omitted, never zero-filled).
 - Hedged carry PnL is received |funding| minus two-leg fees. Perp-spot
   basis is skipped unless a PIT mark−index / perp-mid−spot-mid series
-  is supplied. `--live` probes Hyperliquid and BitMEX and records
-  UNAVAILABLE (current mark/index/mid only; `fundingHistory.premium`
+  is supplied on **both** dual-print venues for the scored window.
+  `--live` probes Hyperliquid, HTX, and BitMEX (sunset notes) and
+  records UNAVAILABLE when the pair is incomplete (`fundingHistory.premium`
   and BitMEX `.XBTUSDPI` are not basis). A paper hedge+funding soak
   path exists (`PAPER_PERP_HEDGE`, default false): the cycle fetches
-  an explicit Hyperliquid `midPx` / BitMEX `midPrice` and applies
-  same-venue public funding settlements. Snapshot mids are not
-  historical PIT basis and are not scored as one.
+  an explicit Hyperliquid `midPx` (HTX bid/ask mid fallback; BitMEX
+  not required) and applies same-venue public funding settlements.
+  Snapshot mids are not historical PIT basis and are not scored as one.
   `PAPER_CARRY_PATH_READY` is true for that soak; `can_promote` stays
   false while PIT basis is UNAVAILABLE. A Settings pin requires
   dual-print + hard gates + PIT basis + a paper-executable path.

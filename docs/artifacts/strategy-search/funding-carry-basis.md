@@ -10,8 +10,10 @@ cycle-wired hedge+funding path). `can_promote=false`.
 ## What was requested
 
 A point-in-time **mark−index** or **perp-mid−spot-mid** series on
-**both** Hyperliquid and BitMEX, with timestamps that do not look
-ahead. Hyperliquid `fundingHistory.premium` is not basis.
+**both** Hyperliquid and a second independent venue, with timestamps
+that do not look ahead. Hyperliquid `fundingHistory.premium` is not
+basis. BitMEX is sunsetting (official closure 23 September 2026
+04:00 UTC) and is not a long-term pair venue.
 
 `carry_hedged_sign` is re-scored with basis **only when that series
 is present**. It is not present. The committed daily numbers in
@@ -60,7 +62,9 @@ publish. Research `basis_status` stays **skipped**.
 `PAPER_CARRY_PATH_READY` is **true** for the forward soak (hedge +
 funding exercised with real mid+funding inputs). `can_promote`
 stays **false** while historical PIT basis is UNAVAILABLE.
-`PAPER_PERP_HEDGE` still defaults **false**.
+`PAPER_PERP_HEDGE` still defaults **false**. After the BitMEX sunset
+directive the soak fetches Hyperliquid `midPx` (HTX bid/ask mid
+fallback). BitMEX is not required.
 
 ## Archive follow-up (after #114)
 
@@ -73,19 +77,35 @@ is trade+quote only (no mark dump). BitMEX perp-mid−spot-mid via
 community / empty HuggingFace schemas were skipped. Carry was
 **not** re-scored. See `pit-basis-archives.md`.
 
-## Archive re-hunt (after #123)
+## Archive re-hunt + BitMEX sunset (after #123 / #124)
 
-Public archives were probed again 2026-09-12 after the empty
-#123 volume-confirmed breakout print (0 dual-print passers).
-**Dual-print basis still UNAVAILABLE.** Hyperliquid now has a
-readable ≥720d mark−index tape on HuggingFace
+Public archives and CEX/DEX REST were probed again 2026-09-12 after
+the empty #123 volume-confirmed breakout print (0 dual-print
+passers). **Dual-print basis still UNAVAILABLE** on the current
+Kraken 720.
+
+Hyperliquid now has a readable ≥720d mark−index tape on HuggingFace
 (`asiletto81/hyperliquid` `asset_ctxs`, 883 contiguous days,
-`mark_px`/`oracle_px` confirmed; no AWS keys). BitMEX public
-dump prefixes `data/instrument/` / `data/mark/` list 200 but
-are empty. BitMEX spot books are still 150–600 / ~3500 bps.
-Tardis first-of-month `derivative_ticker` has mark+index on
-both venues and is not a ≥720d daily tape. No fetcher was
-wired. Carry was **not** re-scored. See
+`mark_px`/`oracle_px` confirmed; no AWS keys) but it ends
+2026-06-01 (~617d aligned to 2024-09-22 → 2026-09-11). Do not
+retune the window after seeing that. BitMEX public dump prefixes
+`data/instrument/` / `data/mark/` list 200 but are empty. BitMEX
+spot books are still 150–600 / ~3500 bps. Tardis first-of-month
+`derivative_ticker` has mark+index on both venues and is not a
+≥720d daily tape.
+
+HTX publishes daily mark−index (~1999d) **and** ≥720d funding.
+The basis adapter is wired skip-not-invent and is **not** applied
+as a single-venue substitute. BitMEX official closure is
+23 September 2026 04:00 UTC; it is excluded from venue pick and
+from the paper-hedge default path.
+
+Binance Vision monthly `fundingRate` + `markPriceKlines` +
+`indexPriceKlines` zips are GET 200 from 2020-01 (a full dump
+candidate) while fapi REST stays 451. Not stitched this session.
+
+No paired HL+HTX basis fetcher was wired on the scored 720.
+Carry was **not** re-scored with an invented pair. See
 `pit-basis-archives.md`.
 
 ## Promotion decision

@@ -7,6 +7,7 @@ from traderstack.candles import Candle
 from traderstack.research.candidates import FeatureZVoter
 from traderstack.research.edge_series import (
     BITMEX_BASIS_UNAVAILABLE,
+    BITMEX_SUNSET_NOTE,
     HYPERLIQUID_BASIS_UNAVAILABLE,
     bitmex_current_mid_usd,
     fetch_binance_funding,
@@ -14,6 +15,8 @@ from traderstack.research.edge_series import (
     fetch_bitmex_basis,
     fetch_bitmex_funding,
     fetch_bybit_funding,
+    fetch_htx_basis,
+    fetch_htx_funding,
     fetch_hyperliquid_basis,
     fetch_hyperliquid_funding,
     fetch_okx_funding,
@@ -240,6 +243,105 @@ async def test_bitmex_funding_uses_settlement_not_daily_restatement() -> None:
     assert 0.0003 not in {point[1] for point in result.points}
     assert "fundingRateDaily" in result.reason
     assert "/api/v1/funding" in result.source
+    assert "sunset" in result.reason.lower()
+    assert "23 September 2026" in BITMEX_SUNSET_NOTE
+
+
+@pytest.mark.asyncio
+async def test_htx_funding_uses_funding_rate_not_premium() -> None:
+    pages = [
+        {
+            "status": "ok",
+            "data": {
+                "total_page": 2,
+                "total_size": 2,
+                "data": [
+                    {
+                        "funding_time": "1727006400000",
+                        "funding_rate": "0.0001",
+                        "realized_rate": None,
+                        "avg_premium_index": "0.012",
+                    },
+                    {
+                        "funding_time": "1726977600000",
+                        "funding_rate": "-0.0002",
+                        "realized_rate": None,
+                        "avg_premium_index": "-0.003",
+                    },
+                ],
+            },
+        },
+        {"status": "ok", "data": {"total_page": 2, "total_size": 2, "data": []}},
+    ]
+    calls = {"n": 0}
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        idx = min(calls["n"], len(pages) - 1)
+        calls["n"] += 1
+        return httpx.Response(200, json=pages[idx])
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(base_url="https://api.hbdm.com", transport=transport) as client:
+        result = await fetch_htx_funding(
+            "BTC/USD",
+            client=client,
+            lookback_days=800,
+            limit_pages=4,
+        )
+    assert result.status == "ok"
+    assert len(result.points) == 2
+    assert result.points[0][1] == -0.0002
+    assert result.points[1][1] == 0.0001
+    assert 0.012 not in {point[1] for point in result.points}
+    assert "avg_premium_index" in result.reason
+    assert "swap_historical_funding_rate" in result.source
+
+
+@pytest.mark.asyncio
+async def test_htx_basis_is_mark_minus_index_not_premium() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if "mark_price_kline" in str(request.url):
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "data": [
+                        {
+                            "id": 1726963200,
+                            "open": "100",
+                            "close": "102",
+                            "high": "103",
+                            "low": "99",
+                        }
+                    ],
+                },
+            )
+        if "history/index" in str(request.url):
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "data": [
+                        {
+                            "id": 1726963200,
+                            "open": 100.0,
+                            "close": 100.0,
+                            "high": 101.0,
+                            "low": 99.0,
+                        }
+                    ],
+                },
+            )
+        return httpx.Response(404, text="no")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(base_url="https://api.hbdm.com", transport=transport) as client:
+        result = await fetch_htx_basis("BTC/USD", client=client)
+    assert result.status == "ok"
+    assert len(result.points) == 1
+    assert result.points[0][1] == pytest.approx(0.02)
+    assert "premium" not in result.source
+    assert "mark_price_kline" in result.source
 
 
 @pytest.mark.asyncio

@@ -51,28 +51,35 @@ it is relied upon.
 - **Funding-rate history (research only):** OKX
   `GET /api/v5/public/funding-rate-history` is typically ~90d of 8h
   prints. Hyperliquid `POST /info` `fundingHistory` is public hourly
-  and typically reachable here (independent tape). BitMEX
-  `GET /api/v1/funding` is a public **settlement** tape (XBTUSD from
-  2016, ETHUSD from 2018; modern cadence 8h). An 800d lookback yields
-  ≥720 UTC daily sums. Use `fundingRate` only — `fundingRateDaily` is
-  a restated multiple, not a second print. Binance USDT-M
+  and typically reachable here (independent tape). HTX
+  `GET /linear-swap-api/v1/swap_historical_funding_rate` is a public
+  8h `funding_rate` tape from 2020-10-21 (BTC-USDT and ETH-USDT). An
+  800d lookback yields ≥720 UTC daily sums. Use `funding_rate` only —
+  `avg_premium_index` is the funding-formula premium; `realized_rate`
+  is null on every historical page probed here. BitMEX
+  `GET /api/v1/funding` remains a public settlement tape but the
+  venue is **sunsetting** (official closure 23 September 2026 04:00
+  UTC; https://www.bitmex.com/blog/bitmex-closure) and is not
+  selected for dual-print or paper hedge. Binance USDT-M
   `GET /fapi/v1/fundingRate` is paginable when reachable (often HTTP
-  451). `data.binance.vision` monthly `fundingRate` zips can respond
-  even when fapi is 451 — not wired this session (BitMEX already
-  covers the 720-day bar). Bybit `GET /v5/market/funding/history` is
-  often HTTP 403 (CloudFront country block) from this environment.
-  These are skip-not-invent inputs for `traderstack-funding-carry`.
-  One venue / one history length is single-print and cannot promote.
-  Daily evaluation sums settlements per UTC day and omits empty days.
-  Perp-spot basis is not on those endpoints and must not be invented
-  from last-trade or from `fundingHistory.premium`. A 2026-09-12 probe
-  found Hyperliquid `metaAndAssetCtxs` and BitMEX `/instrument`
-  **current** mark/index/mid only — no historical mark−index or
-  perp-mid−spot-mid tape. BitMEX `.XBTUSDPI` is the funding-formula
-  premium index (same skip). Deribit restates
-  8h interest every hour — not wired (would invent 8× carry). Gate
-  `from` is capped at 180d; Bitget/MEXC public history is shorter
-  than 720 UTC days from this environment.
+  451). `data.binance.vision` monthly `fundingRate` +
+  `markPriceKlines` + `indexPriceKlines` zips respond 200 from
+  2020-01 even when fapi is 451 — a full dump candidate, not stitched
+  this session (HTX REST already fills the 720-day bar). Bybit
+  `GET /v5/market/funding/history` is often HTTP 403 (CloudFront
+  country block) from this environment. These are skip-not-invent
+  inputs for `traderstack-funding-carry`. One venue / one history
+  length is single-print and cannot promote. Daily evaluation sums
+  settlements per UTC day and omits empty days. Perp-spot basis is
+  not invented from last-trade or from `fundingHistory.premium`.
+  Dual-print PIT basis on the current Kraken 720 is still
+  UNAVAILABLE: HL REST is current-only; HuggingFace
+  `asiletto81/hyperliquid` `asset_ctxs` is ≥720d but ends 2026-06-01
+  (~617d aligned); HTX daily mark−index exists on one venue; BitMEX
+  still has no free ≥720d tape and is closing. Deribit restates 8h
+  interest every hour — not wired (would invent 8× carry). Gate
+  `from` is capped at 180d; Bitget public history is ~90d; MEXC
+  funding is 539d.
 - **BTC−ETH relative-value residual (research only):** built from the
   same public Spot daily closes already used by
   `traderstack-dual-print-search` — Kraken `GET /0/public/OHLC`

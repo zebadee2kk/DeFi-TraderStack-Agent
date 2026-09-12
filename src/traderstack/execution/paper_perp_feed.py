@@ -3,8 +3,11 @@
 Forward paper soaks only. Invariants:
 
 * ``TRADING_MODE=paper`` — live/shadow raise ``ExecutionSafetyError``;
-* mid is an explicit venue snapshot (Hyperliquid ``midPx`` or BitMEX
-  ``midPrice``). The Kraken spot mid is never a substitute;
+* mid is an explicit venue snapshot (Hyperliquid ``midPx`` or HTX
+  bid/ask mid). BitMEX ``midPrice`` remains available only when
+  ``venue_preference="bitmex"`` — BitMEX is sunsetting (23 September
+  2026 04:00 UTC) and is not required for ``PAPER_PERP_HEDGE``.
+  The Kraken spot mid is never a substitute;
 * ``markPx`` / ``markPrice`` / last-trade / funding premium are not mids
   and are not used as fallbacks;
 * funding settlements come from the **same** venue as the mid;
@@ -29,20 +32,25 @@ import httpx
 from traderstack.execution.hummingbot import ExecutionSafetyError
 from traderstack.research.edge_series import (
     BITMEX_BASE,
+    HTX_BASE,
     HYPERLIQUID_BASE,
     bitmex_contract,
     bitmex_current_mid_usd,
     fetch_bitmex_funding,
+    fetch_htx_funding,
     fetch_hyperliquid_funding,
+    htx_contract,
+    htx_current_mid_usd,
     hyperliquid_coin,
     hyperliquid_current_mid_usd,
     hyperliquid_post_info,
 )
 
-PaperPerpVenueName = Literal["hyperliquid", "bitmex"]
-PaperPerpVenuePreference = Literal["auto", "hyperliquid", "bitmex"]
+PaperPerpVenueName = Literal["hyperliquid", "htx", "bitmex"]
+PaperPerpVenuePreference = Literal["auto", "hyperliquid", "htx", "bitmex"]
 
 _HL_MID_SOURCE = "hyperliquid:/info metaAndAssetCtxs midPx"
+_HTX_MID_SOURCE = "htx:/linear-swap-ex/market/detail/merged bid/ask mid"
 _BITMEX_MID_SOURCE = "bitmex:/api/v1/instrument midPrice"
 
 
@@ -85,9 +93,13 @@ def _asset_from_symbol(symbol: str) -> str:
 def _venues_for(preference: PaperPerpVenuePreference) -> tuple[PaperPerpVenueName, ...]:
     if preference == "hyperliquid":
         return ("hyperliquid",)
+    if preference == "htx":
+        return ("htx",)
     if preference == "bitmex":
         return ("bitmex",)
-    return ("hyperliquid", "bitmex")
+    # BitMEX sunset: auto is HL-only with HTX fallback. BitMEX is
+    # opt-in via venue_preference="bitmex" only.
+    return ("hyperliquid", "htx")
 
 
 @dataclass
@@ -98,6 +110,7 @@ class PaperPerpVenueFeed:
     venue_preference: PaperPerpVenuePreference = "auto"
     timeout_seconds: float = 10.0
     hyperliquid_client: httpx.AsyncClient | None = None
+    htx_client: httpx.AsyncClient | None = None
     bitmex_client: httpx.AsyncClient | None = None
     mid_cache_seconds: float = 15.0
     funding_lookback_hours: float = 48.0
@@ -163,6 +176,26 @@ class PaperPerpVenueFeed:
                         limit_pages=1,
                     )
                 source = "hyperliquid:/info fundingHistory"
+            elif venue == "htx":
+                client = self.htx_client
+                if client is None:
+                    async with httpx.AsyncClient(
+                        base_url=HTX_BASE, timeout=max(self.timeout_seconds, 15.0)
+                    ) as owned:
+                        result = await fetch_htx_funding(
+                            symbol,
+                            client=owned,
+                            lookback_days=lookback_days,
+                            limit_pages=1,
+                        )
+                else:
+                    result = await fetch_htx_funding(
+                        symbol,
+                        client=client,
+                        lookback_days=lookback_days,
+                        limit_pages=1,
+                    )
+                source = "htx:/linear-swap-api/v1/swap_historical_funding_rate"
             else:
                 client = self.bitmex_client
                 if client is None:
@@ -209,6 +242,9 @@ class PaperPerpVenueFeed:
             if venue == "hyperliquid":
                 mid = await self._hyperliquid_mid(symbol)
                 source = _HL_MID_SOURCE
+            elif venue == "htx":
+                mid = await self._htx_mid(symbol)
+                source = _HTX_MID_SOURCE
             else:
                 mid = await self._bitmex_mid(symbol)
                 source = _BITMEX_MID_SOURCE
@@ -236,6 +272,24 @@ class PaperPerpVenueFeed:
                 return hyperliquid_current_mid_usd(response.json(), coin)
         response = await hyperliquid_post_info(client, {"type": "metaAndAssetCtxs"})
         return hyperliquid_current_mid_usd(response.json(), coin)
+
+    async def _htx_mid(self, symbol: str) -> float | None:
+        contract = htx_contract(symbol)
+        client = self.htx_client
+        if client is None:
+            async with httpx.AsyncClient(base_url=HTX_BASE, timeout=self.timeout_seconds) as owned:
+                response = await owned.get(
+                    "/linear-swap-ex/market/detail/merged",
+                    params={"contract_code": contract},
+                )
+                response.raise_for_status()
+                return htx_current_mid_usd(response.json())
+        response = await client.get(
+            "/linear-swap-ex/market/detail/merged",
+            params={"contract_code": contract},
+        )
+        response.raise_for_status()
+        return htx_current_mid_usd(response.json())
 
     async def _bitmex_mid(self, symbol: str) -> float | None:
         contract = bitmex_contract(symbol)

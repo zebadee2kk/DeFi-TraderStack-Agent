@@ -284,8 +284,9 @@ class Settings(BaseSettings):
     paper_slippage_bps: float = Field(default=5.0, ge=0)
     # --- paper perp / hedge path ---
     # TRADING_MODE=paper only. Opt-in: after a spot paper fill, fetch an
-    # explicit current perp mid from Hyperliquid midPx and/or BitMEX
-    # midPrice and hedge on the in-process perp book. Same-venue public
+    # explicit current perp mid from Hyperliquid midPx (HTX bid/ask mid
+    # fallback). BitMEX midPrice is opt-in only — BitMEX closes
+    # 23 September 2026 04:00 UTC and is not required. Same-venue public
     # funding settlements are applied on a schedule. Kraken spot mid is
     # never a substitute. Snapshot mids are not historical PIT basis
     # and do not flip PAPER_PROMOTE_*. Default off. Live/shadow ignore.

@@ -1,31 +1,48 @@
-# PIT basis archives — UNAVAILABLE
+# PIT basis archives — UNAVAILABLE (BitMEX sunset; HTX cannot pair HL)
 
-Generated: 2026-09-12 (after #123). Paper / research only.
+Generated: 2026-09-12 (after #123 / #124 + BitMEX sunset
+directive). Paper / research only.
 
 Requested construction: point-in-time **mark−index** or
-**perp-mid−spot-mid** for Hyperliquid and/or BitMEX over **≥720**
-days, timestamps that do not look ahead. Hyperliquid
-`fundingHistory.premium` and BitMEX `.XBTUSDPI` remain forbidden.
+**perp-mid−spot-mid** for Hyperliquid and a **second independent
+venue** over **≥720** days, timestamps that do not look ahead.
+Hyperliquid `fundingHistory.premium` and BitMEX `.XBTUSDPI` remain
+forbidden. Funding premium is not basis. Illiquid spot books are not
+a mid.
 
-**Result: UNAVAILABLE** for dual-print basis. No skip-not-invent
-fetcher was wired. Carry was **not** re-scored.
-`basis_status` stays `skipped`. `can_promote` stays **false**.
-No `PAPER_PROMOTE_*` flip. No live.
+**BitMEX official sunset** (https://www.bitmex.com/blog/bitmex-closure,
+23 July 2026 post):
+
+- Closure Time: **23 September 2026 04:00 UTC**
+- Risk limits from **26 August 2026 04:00 UTC** (reduce-only / wind-down)
+- New registrations already stopped
+
+BitMEX must **not** be treated as a long-term dual-print, funding,
+basis, or paper-hedge venue. Historical BitMEX tapes stay dead-end
+documentation. No new promote path, paper soak, or fetcher
+dependency is built on BitMEX continuing to exist.
+
+**Result: dual-print PIT basis still UNAVAILABLE** on the current
+Kraken 720 (2024-09-22 → 2026-09-11). No skip-not-invent fetcher
+was wired for a paired HL+HTX basis score on that window. HTX
+daily mark−index is wired as a single-venue tape and is **not**
+applied alone. Carry was **not** re-scored. `basis_status` stays
+`skipped`. `can_promote` stays **false**. No `PAPER_PROMOTE_*`
+flip. No live.
 
 #123 volume-confirmed breakout dual-print passers: **0** (empty;
 pins stay false). Do not re-run that catalog.
-
-Dual-print + hard gates + paper soak path remain true from
-#112/#114. The last promote blocker is still historical PIT basis
-on **both** dual-print venues.
 
 This re-hunt found a **new** public Hyperliquid mark−index tape
 that clears ≥720 contiguous days (`asiletto81/hyperliquid`
 `asset_ctxs`, 2024-01-01 → 2026-06-01, 883 days, columns
 `mark_px`/`oracle_px` confirmed). BitMEX still has no matching
-free tape. Dual-print basis therefore stays blocked. Do not
-invent the BitMEX series. Do not stitch Tardis first-of-month
-samples into a daily tape. Do not invent AWS keys.
+free tape **and** is closing. Dual-print basis therefore stays
+blocked. Do not invent the BitMEX series. Do not stitch Tardis
+first-of-month samples into a daily tape. Do not invent AWS keys.
+
+Funding dual-print can now use **Hyperliquid + HTX** without BitMEX.
+That does not unlock basis-aware scoring.
 
 ## What would have been wired
 
@@ -64,7 +81,7 @@ New sources and re-checks. Do not treat a 403 / empty prefix / first-of-month sa
 
 | source | path | HTTP / access | usable ≥720d mark−index or perp-mid−spot-mid? |
 | --- | --- | --- | --- |
-| HuggingFace `asiletto81/hyperliquid` | `asset_ctxs/YYYYMMDD.csv.lz4` (883 files) | GET **200**; lz4 magic `\x04"M\x18`; decompressed CSV | **HL only — yes, ≥720d mark−index**. Calendar **2024-01-01 → 2026-06-01**, **883 contiguous days, 0 gaps**. Header `time,coin,funding,open_interest,prev_day_px,day_ntl_vlm,premium,oracle_px,mark_px,mid_px,impact_bid_px,impact_ask_px`. BTC+ETH minute rows present (2024-01-01 BTC `mark_px` 42330 / `oracle_px` 42284; ETH 2284.6 / 2282; 2026-06-01 BTC 73654 / 73679). This is official `asset_ctxs` shape, not last-trade. **BitMEX cannot pair it.** Not wired: dual-print basis still needs the same construction on BitMEX. Ends 2026-06-01, so the current Kraken 720 (2024-09-22 → 2026-09-11) would align only ~617 days — the *archive* is still ≥720d |
+| HuggingFace `asiletto81/hyperliquid` | `asset_ctxs/YYYYMMDD.csv.lz4` (883 files) | GET **200**; lz4 magic `\x04"M\x18`; decompressed CSV | **HL only — yes, ≥720d mark−index**. Calendar **2024-01-01 → 2026-06-01**, **883 contiguous days, 0 gaps**. Header `time,coin,funding,open_interest,prev_day_px,day_ntl_vlm,premium,oracle_px,mark_px,mid_px,impact_bid_px,impact_ask_px`. BTC+ETH minute rows present (2024-01-01 BTC `mark_px` 42330 / `oracle_px` 42284; ETH 2284.6 / 2282; 2026-06-01 BTC 73654 / 73679). This is official `asset_ctxs` shape, not last-trade. **BitMEX cannot pair it** (still no free tape; venue closes 23 September 2026 04:00 UTC). Not wired: dual-print basis still needs the same construction covering the scored 720. Ends 2026-06-01, so the current Kraken 720 (2024-09-22 → 2026-09-11) would align only ~617 days — the *archive* is still ≥720d. HTX mark−index is a single-venue tape and is not applied alone. |
 | HuggingFace `Chainticks/perp-data` | `_manifest.json` + `hyperliquid_chain/funding/date=*/part-*.parquet` | LATEST_DATE **200** (`2026-08-11`); manifest **200**; parquet GET **200**; datasets-server rows **200** | **no ≥720d**. Columns are the requested construction (`mark_price`/`index_price`; `raw_json.mark_px`/`oracle_px`; `source_kind=hypercore_s3`). Longest contiguous run **2023-05-20 → 2024-04-28 (345d)** then stray single days in 2026. 352 unique funding dates over a 1170d calendar (818 missing). GregM twin repos still `status=initialized`, `files=[]` |
 | HuggingFace `GregM/hyperliquid-perp-open-data` / `GregM/perp-data` | `_manifest.json` | **200**; `files: []` | **no** — still schema-only. Sample parquet path **404** |
 | HuggingFace other HL dumps | `gionuibk/hyperliquid-data` (Nautilus last-trade bars); `gionuibk/hyperliquidL2Book-v2` (L2/candles from 2026-06); `gionuibk/hyperliquid-node-fills-by-block` (fills); `tessera-analytics/hyperliquid-ohlcv-1m` (2026-08 last-trade sample); `PhysiAI/HyperLiquid-Crawl` (empty test) | **200** | **no** — last-trade, L2 inventory, fills, or empty. Not mark−index. HF search `bitmex` datasets: **[]** |
@@ -94,28 +111,67 @@ New sources and re-checks. Do not treat a 403 / empty prefix / first-of-month sa
 - Do not stitch Tardis first-of-month `derivative_ticker` rows into
   a daily basis series.
 - `asiletto81/hyperliquid` is a real HL mark−index archive. It does
-  **not** unlock dual-print basis by itself.
+  **not** unlock dual-print basis on the current Kraken 720 by itself
+  (aligns ~617d). Do not retune that window after seeing the archive
+  end date.
 - `carry_hedged_sign` daily numbers in `funding-carry-daily.md`
-  (HL WF +1.72% / BitMEX WF +2.55%) stay the **basis-unaware** model.
+  (HL WF +1.72% / BitMEX WF +2.55% from #112) stay the
+  **basis-unaware** BitMEX-era model until a new HL+HTX daily print
+  is committed. They are not a reason to keep BitMEX as a promote
+  venue.
 - `PAPER_CARRY_PATH_READY` is true only for the forward soak
-  (`PAPER_PERP_HEDGE=true`). Snapshot mids are not this archive.
+  (`PAPER_PERP_HEDGE=true`, HL midPx / HTX bid/ask mid). Snapshot
+  mids are not this archive. BitMEX is not required.
+
+## Re-hunt probes (this environment, 2026-09-12, after #123 + sunset)
+
+New sources and re-checks. Do not treat a 403 / empty prefix /
+first-of-month sample / short funding tape as a ≥720d dual-print
+pair. #124 facts (now on `main`) included.
+
+| source | path | HTTP / access | usable ≥720d mark−index or perp-mid−spot-mid? |
+| --- | --- | --- | --- |
+| HuggingFace `asiletto81/hyperliquid` | `asset_ctxs/YYYYMMDD.csv.lz4` (883 files) | GET **200**; lz4 magic `\x04"M\x18`; decompressed CSV | **HL only — yes, ≥720d mark−index**. Calendar **2024-01-01 → 2026-06-01**, **883 contiguous days, 0 gaps**. Header includes `oracle_px`,`mark_px`. BTC+ETH minute rows confirmed on first and last files. **Not wired into scoring:** the current Kraken 720 aligns only ~617 days. Official S3 stays requester-pays 403. |
+| HuggingFace `Chainticks/perp-data` | funding parquet | **200** | **no ≥720d**. True `mark_price`/`index_price` but longest contiguous run **345d**. |
+| Official HL / node / Hydromancer S3 | requester-pays | anonymous GET **403** | **no** — do not invent AWS keys |
+| BitMEX public dump | `data/instrument/`, `data/mark/` | list **200**, empty | **no** — and the venue closes 23 September 2026 04:00 UTC |
+| BitMEX spot `XBT_USDT` / `ETH_USDT` | `quote/bucketed` 1d | **200** | **no** — still 150–603 / ~3500 bps. Not a mid |
+| OKX | `history-mark-price-candles` + `history-index-candles` 1D | **200**; paginated **2448d** from 2019-12-31 | **mark−index yes; funding no** — public funding-rate-history still **~96d / 290** 8h prints. Not a dual-print funding pair |
+| HTX | `linear_swap_mark_price_kline` + `index` 1day | **200**; **2000** bars from 2021-03-23 | **mark−index yes (single venue)** — wired. Funding `funding_rate` **2152d / 6457** 8h prints from 2020-10-21 (BTC+ETH). `realized_rate` null on every page; `avg_premium_index` not used. Tight bid/ask (~0.13 bps) for paper mid |
+| Binance Vision | monthly `fundingRate` + `markPriceKlines/1d` + `indexPriceKlines/1d` | zip GET **200** from 2020-01 (ETH too); fapi REST **451** | **full dump candidate** — `last_funding_rate`; mark/index OHLC headers confirmed. Not stitched this session (HTX REST already fills the 720-day funding bar). Do not invent a Binance API key |
+| Binance REST / Bybit REST | fapi / v5 | **451** / **403** CloudFront | **skip** |
+| Gate | `funding_rate` + `mark_price_candlesticks` | funding `from` **400** (180d cap); mark candles **400** missing KEY | **no** — do not invent a Gate key. Perp last-trade candles 1999d are not mark−index |
+| Bitget | `history-fund-rate` + mark/index candles | **200** | **no** — funding **90d**; mark/index candles **90d** |
+| MEXC | `funding_rate/history` + `kline/fair_price` + `kline/index_price` | **200** | **mark/fair+index 2000d; funding 539d < 720** |
+| dYdX v4 | `historicalFunding` + daily candles | **200**; funding **1052d** hourly | **funding yes; basis no** — candles are last-trade; `oraclePrices` **404**; `orderbookMidPrice*` is None on early rows. No spot mid |
+| Tardis first-of-month | `derivative_ticker` | Gate/Binance **200**; full history **401** | columns can be mark−index but **first-of-month only**. Do not invent a Tardis key |
+| HuggingFace search `mark_price+index_price` / OKX / HTX / dYdX | `/api/datasets?search=…` | **200** `[]` | **no** additional free ≥720d non-HL archive |
 
 ## Promotion decision
 
 **No candidate is promoted.** Dual-print PIT basis archives are
-UNAVAILABLE (BitMEX still missing). Leave every
-`PAPER_PROMOTE_*=false`. Do not add a new pin. Do not
+UNAVAILABLE on the current Kraken 720 (HL archive does not cover
+the last ~3 months; BitMEX is closing and still missing). Leave
+every `PAPER_PROMOTE_*=false`. Do not add a new pin. Do not
 enable live. No `PAPER_PROMOTE_*` flip.
 
 ## Operator recommendation
 
-Still blocked. Next concrete promote gate remaining: a public
-≥720d **BitMEX** mark−index or liquid perp-mid−spot-mid tape
-that this environment can GET without invented AWS / Tardis /
-Dune / Coin Metrics keys. When that exists, wire skip-not-invent
-on **both** venues (HL path: `asiletto81/hyperliquid` `asset_ctxs`)
-and re-score `carry_hedged_sign` with basis costs. Until then
-do not flip `PAPER_PROMOTE_*`.
+- **Funding dual-print without BitMEX:** use **Hyperliquid + HTX**.
+  HTX is the wired replacement long settlement tape. Binance Vision
+  monthly zips are a reachable full dump (funding + mark + index from
+  2020-01) if a later session wants to stitch them; REST stays 451.
+- **PIT basis:** still blocked for a basis-aware `carry_hedged_sign`
+  score on the current window. BitMEX still has no free ≥720d
+  mark−index tape and is closing — do not wait on it. Next
+  concrete gate is a Hyperliquid mark−index that covers the scored
+  720 days (extend `asiletto81/hyperliquid` past 2026-06-01, or
+  another free HL tape) so it can pair with HTX (or Vision)
+  mark−index. Do not retune the Kraken window after seeing the
+  archive end date. Do not invent AWS / Tardis / Dune / Coin
+  Metrics / Gate keys.
+- Paper hedge: **HL-only or HL+HTX**. BitMEX is not required.
+- Until then do not flip `PAPER_PROMOTE_*`.
 
 Do **not** re-run candle dual-print catalogs #104 / #108 /
 #116–#123 on the same Kraken 720 + Binance.US older-720 windows

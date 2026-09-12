@@ -420,14 +420,16 @@ def build_report(settings: Settings) -> ConfigReport:
         CheckItem(
             "Funding / carry search",
             "report-only",
-            "traderstack-funding-carry; OKX + Hyperliquid + BitMEX "
-            "funding-z + hedged carry on BTC+ETH (Binance/Bybit probed, "
-            "skip-not-invent); "
+            "traderstack-funding-carry; OKX + Hyperliquid + HTX "
+            "funding-z + hedged carry on BTC+ETH (BitMEX sunset "
+            "23 September 2026 04:00 UTC, not selected; Binance/Bybit "
+            "probed, skip-not-invent); "
             "1d resamples funding to UTC daily sums; PIT basis probed on "
-            "Hyperliquid+BitMEX and recorded UNAVAILABLE (skip-not-invent); "
+            "Hyperliquid+HTX and recorded UNAVAILABLE on the current "
+            "Kraken 720 (skip-not-invent); "
             "paper hedge+funding soak path is cycle-wired "
             "(PAPER_CARRY_PATH_READY=true when PAPER_PERP_HEDGE fetches "
-            "an explicit HL/BitMEX mid + same-venue funding); snapshot "
+            "an explicit HL/HTX mid + same-venue funding); snapshot "
             "mids are not historical PIT basis; single-print cannot "
             "promote; no new PAPER_PROMOTE_* unless dual-print + hard "
             "gates + PIT basis + paper path all clear (default false)",
@@ -980,8 +982,8 @@ def build_report(settings: Settings) -> ConfigReport:
             ),
             (
                 "TRADING_MODE=paper only; kill switch withholds new hedges; "
-                "fetches explicit HL midPx / BitMEX midPrice (never Kraken "
-                "spot); same-venue public funding tape; "
+                "fetches explicit HL midPx / HTX bid/ask mid (never Kraken "
+                "spot; BitMEX not required); same-venue public funding tape; "
                 "PAPER_CARRY_PATH_READY is the soak path only; PIT basis "
                 "UNAVAILABLE so cannot promote; no PAPER_PROMOTE_* flip"
                 if settings.trading_mode == "paper"
@@ -998,8 +1000,9 @@ def build_report(settings: Settings) -> ConfigReport:
     if settings.paper_perp_hedge and settings.trading_mode == "paper":
         warnings.append(
             "PAPER_PERP_HEDGE=true exercises the paper hedge+funding soak "
-            "(explicit HL/BitMEX mid + same-venue funding). PIT basis is "
-            "UNAVAILABLE on Hyperliquid+BitMEX; snapshot mids are not a "
+            "(explicit HL/HTX mid + same-venue funding; BitMEX not "
+            "required). PIT basis is UNAVAILABLE on Hyperliquid+HTX for "
+            "the current Kraken 720; snapshot mids are not a "
             "historical series. Leave every PAPER_PROMOTE_* false."
         )
 
