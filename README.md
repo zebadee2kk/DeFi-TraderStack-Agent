@@ -163,8 +163,12 @@ Polymarket CLOB mids and writes would-trade intents to
 `var/audit/polymarket_weather_paper.jsonl`. It is a separate process from
 `traderstack-paper`, requires `TRADING_MODE=paper`, respects the kill
 switch, and has no private-key or CLOB-order surface. Claimed weather-market
-win rates are unproven; see `docs/EVALUATION-FRAMEWORK.md` and
-`docs/RUNBOOK.md` ("Polymarket weather paper research").
+win rates are unproven. `traderstack-polymarket-weather-eval` is the
+fee-aware report-only calculator (gates 1/4/5); dual independent prints
+are required before anyone may talk about promotion. This repo has no
+PIT mid + official station-high tape, so the committed print is empty.
+See `docs/EVALUATION-FRAMEWORK.md` and `docs/RUNBOOK.md`
+("Polymarket weather paper research").
 
 ## Validation path
 
@@ -178,6 +182,7 @@ simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-second-print`,
 `traderstack-dual-print-search`,
 `traderstack-liq-regime-search`,
+`traderstack-polymarket-weather-eval`,
 `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
@@ -229,6 +234,12 @@ liquidation history is typically missing; that run is labeled
 **single-print** and **cannot promote**. Default `PAPER_PROMOTE_*`
 stays false. Report:
 `docs/artifacts/strategy-search/liq-regime-search.md`.
+`traderstack-polymarket-weather-eval` scores the #44 weather rule
+against hold / fade-the-mid after conservative costs. Dual independent
+prints are pre-registered; a single print cannot promote. The committed
+live tape is empty (no PIT mid + official station high). Default
+`PAPER_PROMOTE_*` stays false. Report:
+`docs/artifacts/strategy-search/polymarket-weather-eval.md`.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default)
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but
 is not traded under that envelope.

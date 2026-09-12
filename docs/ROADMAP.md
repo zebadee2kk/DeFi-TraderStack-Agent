@@ -75,7 +75,11 @@ An empty set is success.
 catalog conditioned on liquidation / funding / OI / cross-venue
 series when those series exist (skipped, not invented, when public
 REST cannot build a historical liquidation print). Kraken-only is
-labeled single-print and cannot promote. **Freqtrade
+labeled single-print and cannot promote.
+`traderstack-polymarket-weather-eval` scores the #44 NWP-vs-CLOB
+weather rule after conservative costs vs hold / fade-the-mid; dual
+independent prints are required to promote and the committed live tape
+is empty (no PIT mid + official station high). **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.

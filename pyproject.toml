@@ -83,6 +83,10 @@ traderstack-paper-report = "traderstack.acceptance.report:main"
 # Paper-only Polymarket weather research. Isolated from traderstack-paper;
 # never signs or submits CLOB orders.
 traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"
+# Fee-aware evaluation of the #44 weather rule. Report-only; dual
+# independent prints required before anyone may talk about promotion.
+# Never flips PAPER_PROMOTE_*. Empty / negative is success. No CLOB orders.
+traderstack-polymarket-weather-eval = "traderstack.polymarket.eval_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

@@ -830,6 +830,15 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
     items.append(CheckItem("  paper ledger", settings.polymarket_weather_ledger_path))
+    # --- polymarket weather eval (report-only; no promote pin) ---
+    items.append(
+        CheckItem(
+            "  fee-aware weather eval CLI",
+            "report-only",
+            "traderstack-polymarket-weather-eval; dual independent prints "
+            "required to promote; no PAPER_PROMOTE_POLYMARKET_WEATHER pin",
+        )
+    )
     if settings.polymarket_weather_enabled and settings.trading_mode != "paper":
         warnings.append(
             "POLYMARKET_WEATHER_ENABLED=true but TRADING_MODE="

@@ -94,7 +94,9 @@ New adapter against altFINS' public REST API — base URL `https://altfins.com`,
 ### Polymarket weather paper adapters (`traderstack.polymarket`)
 
 Opt-in research process (`traderstack-polymarket-weather-paper`), not wired
-through `cli.build_service`. Gamma and CLOB clients are GET-only and wrapped
+through `cli.build_service`. `traderstack-polymarket-weather-eval` is
+report-only and does not invent a historical CLOB mid tape from Gamma
+settlement prices. Gamma and CLOB clients are GET-only and wrapped
 in `ProviderRegistry` (timeout, breaker, quota, TTL cache) the same way as
 intelligence providers. CLOB order/auth paths raise before a request is
 built. Forecast fetch is Open-Meteo by default, NOAA optional. Intents land

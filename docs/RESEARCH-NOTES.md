@@ -68,4 +68,8 @@ At minimum:
 - Does an NWP-vs-Polymarket-temperature divergence survive fees, station
   mismatch and a pre-registered A/B (see `docs/EVALUATION-FRAMEWORK.md`)?
   Social claims of high win rates are treated as unproven. The paper weather
-  CLI records intents only; it is not evidence of alpha.
+  CLI records intents only. `traderstack-polymarket-weather-eval` now
+  scores gates 1/4/5 when resolved rows exist; this repo has no PIT mid +
+  official station-high tape, so the committed live print is empty and
+  cannot promote. Gates 2 and 3 (WF parameter fit; a full season of live
+  paper A/B) are still open. That is not evidence of alpha.
