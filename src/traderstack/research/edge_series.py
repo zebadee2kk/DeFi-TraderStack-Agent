@@ -188,9 +188,7 @@ def _geo_or_http_skip(name: str, source: str, exc: BaseException) -> EdgeSeriesF
         detail = "HTTP 451 (geo-blocked / unavailable in this environment)"
     elif "403" in detail or "403" in response_text:
         if "cloudfront" in lowered or "country" in lowered:
-            detail = (
-                "HTTP 403 (CloudFront / country block — unavailable in this environment)"
-            )
+            detail = "HTTP 403 (CloudFront / country block — unavailable in this environment)"
         else:
             detail = "HTTP 403 (forbidden in this environment)"
     return EdgeSeriesFetch(
@@ -489,15 +487,9 @@ async def fetch_hyperliquid_funding(
     try:
         coin = hyperliquid_coin(symbol)
     except ValueError as exc:
-        return EdgeSeriesFetch(
-            name=name, status="skipped", reason=str(exc), source="hyperliquid"
-        )
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="hyperliquid")
     now_ms = int(datetime.now(UTC).timestamp() * 1000)
-    cursor = (
-        start_ms
-        if start_ms is not None
-        else now_ms - lookback_days * 24 * 3600 * 1000
-    )
+    cursor = start_ms if start_ms is not None else now_ms - lookback_days * 24 * 3600 * 1000
     points: list[tuple[datetime, float]] = []
     try:
         for _ in range(limit_pages):
@@ -530,8 +522,7 @@ async def fetch_hyperliquid_funding(
         source="hyperliquid:/info fundingHistory",
         points=points,
         ok_reason=(
-            "Hyperliquid public fundingHistory (hourly; paginated; "
-            f"lookback {lookback_days}d)"
+            f"Hyperliquid public fundingHistory (hourly; paginated; lookback {lookback_days}d)"
         ),
     )
 

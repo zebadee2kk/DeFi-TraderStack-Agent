@@ -247,8 +247,7 @@ def test_dual_print_without_passer_still_cannot_promote() -> None:
 
 def test_pick_venues_selects_two_usable_and_skips_empty() -> None:
     series = tuple(
-        (datetime(2024, 1, 1, tzinfo=UTC) + timedelta(hours=8 * i), 0.0001)
-        for i in range(40)
+        (datetime(2024, 1, 1, tzinfo=UTC) + timedelta(hours=8 * i), 0.0001) for i in range(40)
     )
     long_series = series + tuple(
         (datetime(2024, 2, 15, tzinfo=UTC) + timedelta(hours=i), 0.0001) for i in range(80)
@@ -271,6 +270,37 @@ def test_pick_venues_selects_two_usable_and_skips_empty() -> None:
     assert none_name is None
     assert none_second is None
     assert none_second_name is None
+
+
+def test_dual_print_modeled_carry_passer_still_cannot_promote() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    other = datetime(2023, 1, 1, tzinfo=UTC)
+    btc = downtrend(360, symbol="BTC/USD", start=start)
+    eth = downtrend(360, symbol="ETH/USD", start=start)
+    other_btc = downtrend(360, symbol="BTC/USD", start=other)
+    other_eth = downtrend(360, symbol="ETH/USD", start=other)
+    series = tuple((candle.opened_at, 0.001) for candle in btc)
+    other_series = tuple((candle.opened_at, 0.001) for candle in other_btc)
+    report = _search(
+        {"BTC/USD@1d": btc, "ETH/USD@1d": eth},
+        funding_by_symbol={"BTC/USD": series, "ETH/USD": series},
+        second_funding_by_symbol={"BTC/USD": other_series, "ETH/USD": other_series},
+        second_histories={"BTC/USD@1d": other_btc, "ETH/USD@1d": other_eth},
+        primary_venue="hyperliquid",
+        second_venue="okx",
+        min_trades=1,
+    )
+    assert report.print_kind == PRINT_DUAL
+    assert "carry_hedged_sign" in report.dual_print_passer_ids
+    assert report.can_promote is False
+    assert report.any_promoted is False
+    assert report.recommended_promote_flag is None
+    assert report.keep_flag_false is True
+    assert all(row.executable_on_paper_spot is False for row in report.carry)
+    text = render_funding_carry_markdown(report)
+    assert "carry_hedged_sign" in text
+    assert "No candidate is promoted" in text
+    assert "Do not add a new pin" in text
 
 
 def test_hedged_carry_measures_constant_rate_after_fees() -> None:

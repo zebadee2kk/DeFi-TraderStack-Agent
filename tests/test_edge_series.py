@@ -55,15 +55,12 @@ async def test_bybit_funding_records_http_403_as_skip() -> None:
         return httpx.Response(
             403,
             text=(
-                "The Amazon CloudFront distribution is configured to "
-                "block access from your country"
+                "The Amazon CloudFront distribution is configured to block access from your country"
             ),
         )
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(
-        base_url="https://api.bybit.com", transport=transport
-    ) as client:
+    async with httpx.AsyncClient(base_url="https://api.bybit.com", transport=transport) as client:
         result = await fetch_bybit_funding("BTC/USD", client=client)
     assert result.status == "skipped"
     assert "403" in result.reason
@@ -100,9 +97,7 @@ async def test_bybit_funding_parses_pages_when_reachable() -> None:
         return httpx.Response(200, json=pages[idx])
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(
-        base_url="https://api.bybit.com", transport=transport
-    ) as client:
+    async with httpx.AsyncClient(base_url="https://api.bybit.com", transport=transport) as client:
         result = await fetch_bybit_funding("BTC/USD", client=client, limit_pages=3)
     assert result.status == "ok"
     assert len(result.points) == 2
