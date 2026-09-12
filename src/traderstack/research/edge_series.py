@@ -155,6 +155,18 @@ HTX_DAILY_LOOKBACK_DAYS = 800
 HTX_DAILY_LIMIT_PAGES = 28
 HTX_PAGE_PAUSE_SECONDS = 0.2
 HTX_BASIS_SIZE = 2000
+# Coverage-driven freeze for HL+HTX basis-aware dual-print.
+# asiletto81/hyperliquid asset_ctxs ends 2026-06-01; the live Kraken720
+# ending ~2026-09-11 only aligns ~617d. Do not retune after seeing PnL.
+# See docs/artifacts/strategy-search/basis-window-freeze.md.
+BASIS_AWARE_WINDOW_END_UTC = datetime(2026, 6, 1, tzinfo=UTC)
+BASIS_AWARE_MIN_ALIGNED_DAYS = 720
+ASILLETTO81_HL_DATASET = "asiletto81/hyperliquid"
+ASILLETTO81_HL_ASSET_CTXS_PREFIX = (
+    "https://huggingface.co/datasets/asiletto81/hyperliquid/resolve/main/asset_ctxs"
+)
+ASILLETTO81_HL_ARCHIVE_FIRST_UTC = datetime(2024, 1, 1, tzinfo=UTC)
+ASILLETTO81_HL_ARCHIVE_LAST_UTC = datetime(2026, 6, 1, tzinfo=UTC)
 # Official BitMEX sunset. Still fetched for notes; never selected
 # as a promoting / dual-print / paper-hedge default venue.
 SUNSET_FUNDING_VENUES: frozenset[str] = frozenset({"bitmex"})
