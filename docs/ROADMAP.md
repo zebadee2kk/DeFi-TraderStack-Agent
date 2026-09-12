@@ -117,6 +117,12 @@ on own-asset Bollinger bands (period×k in {20x2, 20x2.5,
 40x2}) on that same dual-print bar. Distinct from existing
 `mean_reversion_*` ids. SOL is reported, not a gate.
 Paper-executable on Kraken spot. Empty dual-print is success.
+`traderstack-calendar-seasonality` is the post-#120 slice:
+UTC day-of-week / month-of-year / turn-of-month long-only
+on the civil calendar of bar t (not a price-indicator
+retune) on that same dual-print bar. SOL is reported, not
+a gate. Paper-executable on Kraken spot. Empty dual-print
+is success.
 **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy

@@ -39,7 +39,8 @@ without activating the venv.
 | `traderstack-donchian-breakout` | Paper-only Donchian / channel breakout: long-only or long/short on the prior N-day high/low (N in {20, 55, 100}; optional ATR(14) buffer on `lo` 20/55). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/donchian-breakout.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, or XS reprint. |
 | `traderstack-tsmom` | Paper-only time-series momentum: long-only or long/short on each asset's own trailing N-day close-to-close return (N in {21, 63, 126, 252}). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/tsmom.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, or Donchian reprint. |
 | `traderstack-bollinger-fade` | Paper-only Bollinger band-fade / mean-reversion: fade-to-inside, long-only fade, and a squeeze-breakout contrast on own-asset SMA ± k × sample stdev (period×k in {20x2, 20x2.5, 40x2}). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/bollinger-fade.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, or `mean_reversion_*` reprint. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-calendar-seasonality` | Paper-only UTC calendar seasonality: day-of-week long-only (Mon / Fri / Mon+Fri), skip-weekend (long Mon–Fri, flat Sat/Sun), month-of-year (Q4 / Jan / Nov+Dec), and turn-of-month last 3 / first 3 UTC calendar days. Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/calendar-seasonality.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, or Bollinger reprint. |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, `traderstack-calendar-seasonality --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
@@ -939,6 +940,43 @@ bars).
 ```
 
 See `docs/artifacts/strategy-search/bollinger-fade.md` and
+the 2026-09-12 status memo
+`docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
+
+## Calendar seasonality
+
+#120 left the Bollinger band-fade dual-print empty
+(informational `bb_squeeze_break_40` cleared Kraken #96+A+B
+but failed gate C). `traderstack-calendar-seasonality` is the
+next **non-carry / non-EMA / non-residual / non-XS /
+non-Donchian / non-TSMOM / non-Bollinger** family: positions
+from the **UTC civil calendar** of bar t only. Not a
+price-indicator retune.
+
+- Same #96+A+B+C combined bar on Kraken public Spot **daily** 720
+  **and** the #102 Binance.US older-720 (non-overlapping).
+- Multi-asset rule (frozen before scoring): BTC and ETH WF/holdout
+  signs as before; SOL is reported and is **not** a gate.
+  Equal-weight portfolio metrics are not used.
+- Ranking key (frozen): Kraken BTC+ETH mean holdout excess among
+  dual-print passers. Venues are not averaged. The informational
+  control `ma_cross_10_30` cannot enter the passer set.
+- Timezone is UTC. Decision uses the UTC date of bar t. Fill at
+  t+1 open. Frozen sets: Mon / Fri / Mon+Fri; skip-weekend
+  (long Mon–Fri); Q4 / Jan / Nov+Dec; turn-of-month last 3 /
+  first 3 UTC calendar days (`calendar.monthrange`; no look-ahead).
+- Paper-executable on Kraken spot (`BTC/USD` + `ETH/USD`; SOL
+  optional).
+- This command never flips `PAPER_PROMOTE_*` and does not add a
+  new pin unless a committed report names a dual-print passer
+  (default false if added). Empty dual-print set is success.
+
+```bash
+.venv/bin/traderstack-calendar-seasonality --live
+.venv/bin/traderstack-calendar-seasonality --live --no-binance
+```
+
+See `docs/artifacts/strategy-search/calendar-seasonality.md` and
 the 2026-09-12 status memo
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 

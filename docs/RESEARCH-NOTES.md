@@ -134,3 +134,14 @@ At minimum:
   `mean_reversion_*` ids (#93 / #108 used different bars).
   Not an EMA, residual, XS, Donchian, or TSMOM reprint.
   See `docs/artifacts/strategy-search/bollinger-fade.md`.
+- Does a fee-aware UTC calendar seasonality book (day-of-week
+  Mon / Fri / Mon+Fri; skip-weekend; month-of-year Q4 / Jan /
+  Nov+Dec; turn-of-month last 3 / first 3 civil days) clear
+  the same #96+A+B+C dual-print bar (Kraken 720 + Binance.US
+  older-720)? `traderstack-calendar-seasonality` scores that
+  family. Timezone is UTC. Positions ignore OHLC. BTC and
+  ETH signs remain the gate; SOL is reported, not required.
+  Paper-executable on Kraken spot. Empty dual-print is
+  success. Not an EMA, residual, XS, Donchian, TSMOM, or
+  Bollinger reprint. See
+  `docs/artifacts/strategy-search/calendar-seasonality.md`.
