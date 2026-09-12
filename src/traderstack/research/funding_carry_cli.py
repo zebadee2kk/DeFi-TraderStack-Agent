@@ -146,8 +146,7 @@ def _load_candle_files(
             raise ValueError(f"{path}: no candles")
         if candles[0].interval != interval:
             raise ValueError(
-                f"{path}: interval {candles[0].interval!r} does not match "
-                f"--interval {interval!r}"
+                f"{path}: interval {candles[0].interval!r} does not match --interval {interval!r}"
             )
         histories[_history_key(candles)] = candles
         notes.append(
@@ -160,9 +159,7 @@ def _load_candle_files(
 def _load_live_kraken(
     symbols: tuple[str, ...], *, interval: str, max_candles: int
 ) -> tuple[dict[str, tuple[Candle, ...]], list[str]]:
-    fetched = asyncio.run(
-        download_spot_histories(symbols, (interval,), max_candles=max_candles)
-    )
+    fetched = asyncio.run(download_spot_histories(symbols, (interval,), max_candles=max_candles))
     histories: dict[str, tuple[Candle, ...]] = {}
     notes: list[str] = []
     for key, candles in fetched.items():
@@ -174,10 +171,7 @@ def _load_live_kraken(
         last = candles[-1].opened_at.isoformat()
         cap = ""
         if len(candles) >= KRAKEN_PUBLIC_OHLC_MAX_BARS or max_candles > len(candles):
-            cap = (
-                f" (public OHLC cap; requested {max_candles}, "
-                f"received {len(candles)} committed)"
-            )
+            cap = f" (public OHLC cap; requested {max_candles}, received {len(candles)} committed)"
         notes.append(f"{key}: {len(candles)} committed Kraken bars {first} → {last}{cap}")
     return histories, notes
 
@@ -239,9 +233,7 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
     history_notes = _as_history_notes(notes)
 
     funding = _parse_feature_series(args.funding_z) if args.funding_z else None
-    second_funding = (
-        _parse_feature_series(args.second_funding_z) if args.second_funding_z else None
-    )
+    second_funding = _parse_feature_series(args.second_funding_z) if args.second_funding_z else None
     funding_by_symbol = None
     second_funding_by_symbol = None
     primary_venue: str | None = "file" if funding is not None else None
@@ -251,9 +243,7 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
     fetch_funding = args.fetch_funding if args.fetch_funding is not None else bool(args.live)
     if fetch_funding:
         binance_map, okx_map, edge_notes = asyncio.run(fetch_funding_venues(symbols))
-        primary_map, primary_venue, second_map, second_venue = _pick_venues(
-            binance_map, okx_map
-        )
+        primary_map, primary_venue, second_map, second_venue = _pick_venues(binance_map, okx_map)
         funding_by_symbol = primary_map
         second_funding_by_symbol = second_map
         if funding_by_symbol is None and funding is None:
