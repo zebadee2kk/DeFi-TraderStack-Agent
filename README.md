@@ -177,6 +177,7 @@ simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-honesty-pack`,
 `traderstack-second-print`,
 `traderstack-dual-print-search`,
+`traderstack-liq-regime-search`,
 `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
@@ -220,7 +221,15 @@ Ranking is Kraken mean holdout excess among dual-print passers. Venues
 are not averaged. Default `PAPER_PROMOTE_*` stays false. An empty
 dual-print set is success. Report:
 `docs/artifacts/strategy-search/dual-print-search.md`.
-When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default
+`traderstack-liq-regime-search` is the next paper-only slice after
+that empty dual-print: it scores strategies **conditioned on**
+liquidation / funding / OI / cross-venue features when a historical
+series exists, plus candle-only vol-regime wrappers. Public
+liquidation history is typically missing; that run is labeled
+**single-print** and **cannot promote**. Default `PAPER_PROMOTE_*`
+stays false. Report:
+`docs/artifacts/strategy-search/liq-regime-search.md`.
+When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default)
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but
 is not traded under that envelope.
 
