@@ -338,7 +338,17 @@ current state is a no-op so repeated reconciliation passes are safe. Illegal
 transitions raise `IllegalStateTransition` and are refused before any quantity
 is mutated. `JsonExecutionLedgerStore` persists the ledger alongside the
 portfolio checkpoint (`--ledger-path`, default `var/state/execution_ledger.json`)
-with the same atomic-write discipline, and is written after every mutation.
+with the same atomic-write discipline (`write_atomic`: temp → `fsync` the file →
+`os.replace` → `fsync` the parent directory), and is written after every
+mutation. An existing-but-empty or unparsable ledger is **halt**, never a
+silent fresh start — that would forget every in-flight order and license a
+double submission. See `docs/RUNBOOK.md`, "Corrupt or torn checkpoint / ledger".
+
+Venue fills carry `fee_usd` and `fee_source` (`venue` when the venue reported
+a fee, `modelled` when `PAPER_FEE_BPS` was charged instead).
+`InMemoryPortfolioBook.apply_fill` debits cash and realized PnL by the fee so
+NAV, daily loss and drawdown — the numbers the risk engine's breakers read —
+are not systematically optimistic.
 
 **Idempotent submission** (`execution/submitter.py`). `IdempotentSubmitter`
 writes the `PLANNED` order to the ledger *before* calling the venue, so a crash

@@ -39,17 +39,36 @@ class RuntimeHealth:
     reconciliation_blocked: bool = False
     last_reconciliation_at: datetime | None = None
     last_reconciliation_error: str | None = None
+    # --- durability (#67) ---
+    # Set when an existing checkpoint or execution ledger is empty or
+    # unparsable at startup. This is not healed by a later venue pass: a torn
+    # ledger is the one way the idempotency guard can be lost, so submission
+    # stays blocked for the life of the process.
+    durable_state_error: str | None = None
 
     @property
     def healthy(self) -> bool:
+        if self.durable_state_error is not None:
+            return False
         return self.consecutive_errors < self.max_consecutive_errors
 
     # --- execution hardening (Epic 8) ---
     def record_reconciliation_success(self) -> None:
-        self.reconciliation_blocked = False
         self.last_reconciliation_at = datetime.now(UTC)
+        if self.durable_state_error is not None:
+            # A torn ledger/checkpoint is not healed by a later venue pass.
+            return
+        self.reconciliation_blocked = False
         self.last_reconciliation_error = None
         reconciliation_blocked.set(0)
+
+    # --- durability (#67) ---
+    def record_durable_state_failure(self, reason: str) -> None:
+        self.durable_state_error = reason
+        self.last_error = reason
+        self.reconciliation_blocked = True
+        runtime_healthy.set(0)
+        reconciliation_blocked.set(1)
 
     def record_reconciliation_failure(self, reason: str) -> None:
         self.reconciliation_blocked = True
@@ -63,7 +82,7 @@ class RuntimeHealth:
         self.symbol_success_at[symbol] = now
         cycles_total.labels(symbol=symbol, outcome="success").inc()
         last_success_unixtime.labels(symbol=symbol).set(now.timestamp())
-        runtime_healthy.set(1)
+        runtime_healthy.set(1 if self.healthy else 0)
 
     def record_error(self, symbol: str, error: BaseException) -> None:
         self.consecutive_errors += 1

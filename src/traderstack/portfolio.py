@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
@@ -11,6 +12,9 @@ from traderstack.models import PortfolioSnapshot, Side
 class PositionState(BaseModel):
     quantity: float = Field(ge=0)
     average_cost_usd: float = Field(ge=0)
+    # --- paper fees (#66) ---
+    # Additive across fills for this asset. Legacy checkpoints omit it (0).
+    fees_paid_usd: float = Field(default=0.0, ge=0)
 
 
 class PortfolioState(BaseModel):
@@ -35,6 +39,8 @@ class PortfolioState(BaseModel):
 class Position:
     quantity: float = 0.0
     average_cost_usd: float = 0.0
+    # --- paper fees (#66) ---
+    fees_paid_usd: float = 0.0
 
 
 @dataclass
@@ -74,6 +80,8 @@ class InMemoryPortfolioBook:
                 asset.upper(): Position(
                     quantity=position.quantity,
                     average_cost_usd=position.average_cost_usd,
+                    # --- paper fees (#66) ---
+                    fees_paid_usd=position.fees_paid_usd,
                 )
                 for asset, position in state.positions.items()
             },
@@ -95,6 +103,8 @@ class InMemoryPortfolioBook:
                 asset: PositionState(
                     quantity=position.quantity,
                     average_cost_usd=position.average_cost_usd,
+                    # --- paper fees (#66) ---
+                    fees_paid_usd=position.fees_paid_usd,
                 )
                 for asset, position in self.positions.items()
             },
@@ -109,9 +119,18 @@ class InMemoryPortfolioBook:
             raise ValueError("mark price must be positive")
         self.marks_usd[asset.upper()] = price_usd
 
-    def apply_fill(self, asset: str, side: Side, quantity: float, price_usd: float) -> None:
+    def apply_fill(
+        self,
+        asset: str,
+        side: Side,
+        quantity: float,
+        price_usd: float,
+        fee_usd: float = 0.0,
+    ) -> None:
         if quantity <= 0 or price_usd <= 0:
             raise ValueError("fill quantity and price must be positive")
+        if fee_usd < 0 or not math.isfinite(fee_usd):
+            raise ValueError("fill fee must be a finite non-negative number")
         asset = asset.upper()
         position = self.positions.setdefault(asset, Position())
         notional = quantity * price_usd
@@ -125,15 +144,21 @@ class InMemoryPortfolioBook:
                 (position.quantity * position.average_cost_usd) + notional
             ) / new_quantity
             position.quantity = new_quantity
-            self.cash_usd -= notional
+            self.cash_usd -= notional + fee_usd
+            # Fees are a realized cost even on the opening fill: they leave
+            # cash and never return as inventory.
+            self.realized_pnl_usd -= fee_usd
         else:
             if quantity > position.quantity:
                 raise ValueError("cannot sell more than current paper position")
-            self.cash_usd += notional
-            self.realized_pnl_usd += quantity * (price_usd - position.average_cost_usd)
+            self.cash_usd += notional - fee_usd
+            self.realized_pnl_usd += quantity * (price_usd - position.average_cost_usd) - fee_usd
             position.quantity -= quantity
             if position.quantity == 0:
                 position.average_cost_usd = 0.0
+
+        # --- paper fees (#66) ---
+        position.fees_paid_usd += fee_usd
 
         self.mark(asset, price_usd)
         nav = self.nav_usd

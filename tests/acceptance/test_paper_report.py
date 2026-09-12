@@ -31,6 +31,7 @@ from traderstack.candles import Candle
 from traderstack.execution.ledger import (
     ExecutionLedgerState,
     ExecutionOrder,
+    FeeSource,
     OrderLifecycleState,
 )
 from traderstack.market.models import MarketSource, MarketTick
@@ -228,6 +229,58 @@ async def test_open_inventory_is_closed_at_the_final_mark(paper_run) -> None:
     assert len(run.trades) == 1
     assert run.trades[0].exit_price == pytest.approx(_prices()[-1])
     assert run.open_quantity == pytest.approx(0.05)
+
+
+async def test_ledger_fees_are_applied_without_fee_bps(paper_run, tmp_path) -> None:
+    prices = _prices()
+    ledger = tmp_path / "ledger-with-fees.json"
+    write_ledger(
+        ledger,
+        [
+            ExecutionOrder(
+                order_id="ts-buy",
+                decision_id=BUY_DECISION,
+                asset="BTC",
+                side=Side.BUY,
+                requested_quantity=0.05,
+                state=OrderLifecycleState.FILLED,
+                filled_quantity=0.05,
+                average_fill_price_usd=prices[40],
+                last_updated_at=START + STEP * 40,
+                fees_paid_usd=12.5,
+                fee_source=FeeSource.MODELLED,
+            ),
+            ExecutionOrder(
+                order_id="ts-sell",
+                decision_id=SELL_DECISION,
+                asset="BTC",
+                side=Side.SELL,
+                requested_quantity=0.05,
+                state=OrderLifecycleState.FILLED,
+                filled_quantity=0.05,
+                average_fill_price_usd=prices[180],
+                last_updated_at=START + STEP * 180,
+                fees_paid_usd=12.5,
+                fee_source=FeeSource.VENUE,
+            ),
+        ],
+    )
+    events = load_runtime_events(paper_run["audit"])
+    marks = marks_from_events(events)
+    fills = fills_from_ledger(ledger)
+    assert [fill.fee_usd for fill in fills] == pytest.approx([12.5, 12.5])
+
+    free = reconstruct(marks, fills_from_ledger(paper_run["ledger"]), starting_equity=10_000.0)
+    charged = reconstruct(marks, fills, starting_equity=10_000.0)
+    assert charged.total_fees == pytest.approx(25.0)
+    assert charged.ending_equity == pytest.approx(free.ending_equity - 25.0)
+
+    report = build_report(
+        audit_path=paper_run["audit"], ledger_path=ledger, starting_equity=10_000.0
+    )
+    assert report.ledger_fees_usd == pytest.approx(25.0)
+    assert report.estimated_fees_usd == pytest.approx(0.0)
+    assert any("Fee drag" in note and "ledger" in note for note in report.notes)
 
 
 async def test_fees_are_only_modelled_when_asked_for(paper_run) -> None:

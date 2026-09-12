@@ -85,6 +85,96 @@ async def test_the_portfolio_checkpoint_survives_a_sink_outage(harness) -> None:
     assert resumed.cash_usd == pytest.approx(drill.portfolio.cash_usd)
 
 
+async def test_a_host_crash_that_truncates_the_ledger_tmp_does_not_resubmit(harness) -> None:
+    """Simulate the classic torn write: a leftover truncated ``.tmp``.
+
+    ``write_atomic`` only replaces the target after the temp file has been
+    fsynced, so a crash mid-write leaves the original ledger intact. Reloading
+    that ledger must still refuse the same decision — the one way the guard
+    can be lost is a wiped *target* file, which is halt (see
+    ``test_a_truncated_ledger_target_halts_submission``).
+    """
+
+    from traderstack.execution.ledger_store import JsonExecutionLedgerStore
+    from traderstack.execution.planner import ExecutionPlanner, client_order_id_for
+    from traderstack.execution.submitter import IdempotentSubmitter, SubmissionStatus
+
+    drill = await harness()
+    result = await drill.cycle()
+    assert result is not None and result.pipeline.paper_order is not None
+    intent = result.pipeline.paper_order
+    assert drill.venue_api.posts == 1
+
+    store = JsonExecutionLedgerStore(drill.ledger_store.path)
+    # Crash mid-write: a truncated tmp sits next to the intact target.
+    tmp = store.path.with_suffix(store.path.suffix + ".tmp")
+    tmp.write_text("{", encoding="utf-8")
+
+    reloaded = await store.load()
+    assert reloaded is not None
+    assert reloaded.has_order_for_decision(intent.decision_id)
+    assert client_order_id_for(intent.decision_id) in reloaded.orders
+
+    async def no_sleep(seconds: float) -> None:
+        return None
+
+    restarted = IdempotentSubmitter(
+        executor=drill.service.runtime.executor,
+        ledger=reloaded,
+        planner=ExecutionPlanner(lot_step=1e-8, min_notional_usd=10.0),
+        ledger_store=store,
+        backoff_seconds=0.0,
+        sleep=no_sleep,
+    )
+    outcome = await restarted.submit(
+        intent, execution_price_usd=intent.notional_usd, reference_price_usd=intent.notional_usd
+    )
+    assert outcome.status is SubmissionStatus.DUPLICATE
+    assert drill.venue_api.posts == 1, "a torn tmp must not license a resubmission"
+
+
+async def test_a_truncated_ledger_target_halts_submission(harness) -> None:
+    """If the rename landed on empty contents, startup must halt, not forget."""
+
+    from traderstack._fs import DurableStateError
+    from traderstack.cli import load_persisted_state
+    from traderstack.execution.ledger_store import JsonExecutionLedgerStore
+    from traderstack.health import RuntimeHealth
+    from traderstack.service import ContinuousPaperService
+
+    drill = await harness()
+    await drill.cycle()
+    assert drill.venue_api.posts == 1
+
+    store = JsonExecutionLedgerStore(drill.ledger_store.path)
+    # Host crash after replace, before the contents were durable: empty target.
+    store.path.write_text("", encoding="utf-8")
+
+    with pytest.raises(DurableStateError, match="empty"):
+        await store.load()
+
+    _book, _ledger, error = await load_persisted_state(
+        drill.checkpoint_store, store, starting_nav_usd=10_000
+    )
+    assert error is not None
+
+    health = RuntimeHealth()
+    health.record_durable_state_failure(error)
+    halted = ContinuousPaperService(
+        runtime=drill.service.runtime,
+        portfolio=drill.portfolio,
+        symbols=drill.service.symbols,
+        submit=True,
+        health=health,
+        execution_ledger=_ledger,
+        ledger_store=store,
+    )
+    assert not halted.submission_enabled
+    assert not halted.health.healthy
+    await halted.run()
+    assert drill.venue_api.posts == 1, "halt must not reach the venue"
+
+
 async def test_a_permanent_sink_outage_stops_the_service(harness) -> None:
     """Losing the durable trail entirely is not something to trade through."""
 

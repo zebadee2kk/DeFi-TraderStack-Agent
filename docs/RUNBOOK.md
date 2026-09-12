@@ -375,9 +375,11 @@ the attribution table. `--json` emits the same thing machine-readably.
 
 Two things it will not do, by design:
 
-- It never invents fees. Paper receipts carry no fee data, so fees are `0` unless you
-  pass `--fee-bps` to *estimate* them — and the report states which it used. Compare
-  net-of-cost numbers only when you supplied a cost.
+- It never invents fees that the ledger does not record. Venue-reported fees and
+  `PAPER_FEE_BPS`-modelled fees (applied when the venue reports none, default 10 bps,
+  matching `PRETRADE_FEE_BPS`) are read from the execution ledger and reported as
+  fee drag, labelled `venue` / `modelled`. `--fee-bps` is only a *fallback* for
+  fills that still carry no ledger fee — and the report states which it used.
 - It never assumes an unfilled order traded. Orders that were submitted but never
   reconciled to a fill are excluded, so a report showing "no fills" means reconciliation
   never confirmed one — check the ledger states, not the report.
@@ -786,7 +788,9 @@ client order id (`docs/EXECUTION-ARCHITECTURE.md`, "Retry and timeout").
 3. **Never hand-edit the ledger or portfolio checkpoint to force a state.**
    Let reconciliation's authoritative venue read resolve it, exactly as in
    the reconciliation-drift incident procedure below — the two situations
-   share the same underlying discipline (venue state wins).
+   share the same underlying discipline (venue state wins). See also
+   "Corrupt or torn checkpoint / ledger" below if the file itself will not
+   parse.
 4. If the venue is confirmed genuinely unreachable for an extended period,
    engage the kill switch while you investigate; new proposals keep being
    evaluated and audited, but no new submission is attempted regardless.
@@ -1070,6 +1074,49 @@ condition: service_healthy` blocks it), or, with `--persistent-events`, errors f
 4. If data on the `postgres_data` volume is suspected corrupted, restore from your
    most recent backup (`docs/INFRASTRUCTURE.md`, "Availability" calls for daily
    backups) rather than deleting the volume.
+
+### Corrupt or torn checkpoint / ledger
+
+Symptoms: startup logs `corrupt_execution_ledger` or `corrupt_portfolio_checkpoint`;
+`traderstack_runtime_healthy` is `0`; `traderstack_reconciliation_blocked` is `1`;
+`RuntimeHealth.durable_state_error` is set; the service refuses to submit (and
+does not enter the cycle loop). This is the fail-closed reading of a host crash
+or power loss that truncated `var/state/execution_ledger.json` or
+`var/state/portfolio.json` — the same failure mode as deleting the ledger file,
+reached without anyone deleting anything.
+
+The writers (`JsonExecutionLedgerStore`, `JsonPortfolioCheckpointStore`, the
+JSONL audit sinks) `fsync` the file after each critical write and `fsync` the
+parent directory after an atomic rename. That is durable on local POSIX
+filesystems (ext4, XFS, typically also APFS). On some NFS / overlayfs mounts
+directory `fsync` is not supported (`EINVAL`); the *file* fsync still happens.
+Put `--ledger-path` and `--checkpoint-path` on local POSIX storage, not a
+network mount, if you care about surviving a host crash. `os.fsync` behaviour
+is OS- and filesystem-dependent; the tests monkeypatch `os.fsync` rather than
+pulling the plug.
+
+**Recovery:**
+
+1. Engage the kill switch. Do not start the process with `--submit` against a
+   torn ledger.
+2. Look next to the target file for a leftover `.tmp` (`execution_ledger.json.tmp`,
+   `portfolio.json.tmp`). If the `.tmp` is a complete, parsable JSON document and
+   the target is empty or truncated, copy the `.tmp` over the target *only after*
+   you have verified it parses (`python -c "import json; json.load(open('...'))"`)
+   and you have a copy of both files. Then reconcile against the venue before
+   any new submission — the recovered ledger may pre-date the venue call that
+   was in flight when the host died.
+3. If neither file parses, restore the most recent backup of `var/state/` and
+   treat every in-flight `decision_id` as `SUBMISSION_UNCERTAIN`: query the
+   venue (Hummingbot / paper account) for those client order ids before
+   allowing `--submit` again. Starting with an empty ledger is the one way the
+   idempotency guard can be lost (`tests/acceptance/test_duplicate_order.py`).
+4. The JSONL audit trails (`var/audit/runtime.jsonl`,
+   `var/audit/risk_decisions.jsonl`) append and fsync each record. A truncated
+   tail line is skipped by `traderstack-paper-report`; a torn risk-audit line
+   fails `verify_chain` at that sequence. Do not edit them to "fix" the chain.
+5. Restart only once the ledger and checkpoint parse and a reconciliation pass
+   is clean. Release the kill switch after that.
 
 ### Drift detected (reconciliation mismatch against the venue)
 

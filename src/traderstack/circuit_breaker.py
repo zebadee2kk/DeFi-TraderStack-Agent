@@ -9,8 +9,11 @@ elapsing or an operator editing configuration and restarting.
 
 Outcomes reach the breaker from two deterministic sources:
 
+* ``record_reducing_fill`` -- a closing (reducing) fill, priced against the
+  position's entry cost and net of the fill's fee.
 * ``record_ledger_close`` -- a closing (reducing) order that filled on the
-  ``ExecutionLedger``, priced against the position's entry cost.
+  ``ExecutionLedger``, priced against the position's entry cost and net of
+  accumulated ``fees_paid_usd``.
 * ``PortfolioRealizedPnLFeeder`` -- the delta of ``InMemoryPortfolioBook``'s
   realized PnL between two observations.
 
@@ -156,6 +159,33 @@ class StrategyCircuitBreaker:
             state.trip_reason = TRIP_ROLLING_DRAWDOWN
         return state
 
+    def record_reducing_fill(
+        self,
+        strategy_id: str,
+        *,
+        quantity: float,
+        exit_price_usd: float,
+        entry_price_usd: float,
+        nav_usd: float,
+        fee_usd: float = 0.0,
+        at: datetime | None = None,
+    ) -> StrategyBreakerState:
+        """Record one reducing fill, net of fees.
+
+        Gross-positive, net-negative fills must count as losses: a strategy
+        that is only profitable before fees is not a strategy that should
+        stay un-tripped.
+        """
+
+        if quantity <= 0:
+            raise ValueError("quantity must be positive")
+        if exit_price_usd <= 0 or entry_price_usd <= 0:
+            raise ValueError("prices must be positive")
+        if fee_usd < 0:
+            raise ValueError("fee_usd must be non-negative")
+        pnl = quantity * (exit_price_usd - entry_price_usd) - fee_usd
+        return self.record_closed_trade(strategy_id, pnl_usd=pnl, nav_usd=nav_usd, at=at)
+
     def record_ledger_close(
         self,
         order: ExecutionOrder,
@@ -168,7 +198,8 @@ class StrategyCircuitBreaker:
         """Record the outcome of a filled reducing order from the execution ledger.
 
         Only a filled SELL (a position close/reduce) realizes PnL, so anything
-        else is ignored rather than guessed at.
+        else is ignored rather than guessed at. PnL is net of
+        ``order.fees_paid_usd``.
         """
 
         if order.side is not Side.SELL:
@@ -180,6 +211,7 @@ class StrategyCircuitBreaker:
         if entry_price_usd <= 0:
             raise ValueError("entry_price_usd must be positive")
         pnl = (order.average_fill_price_usd - entry_price_usd) * order.filled_quantity
+        pnl -= order.fees_paid_usd
         return self.record_closed_trade(
             strategy_id, pnl_usd=pnl, nav_usd=nav_usd, at=at or order.last_updated_at
         )
@@ -233,3 +265,7 @@ class PortfolioRealizedPnLFeeder:
             return False
         self.breaker.record_closed_trade(strategy_id, pnl_usd=delta, nav_usd=nav, at=at)
         return True
+
+
+# record_reducing_fill lives on StrategyCircuitBreaker above; the feeder
+# already sees fee-adjusted realized PnL once the book debits fees.

@@ -9,6 +9,20 @@ from pydantic import BaseModel, ConfigDict, Field
 from traderstack.models import Side
 
 
+class FeeSource(StrEnum):
+    """Where a fill's fee came from.
+
+    Paper connectors often report no fee. Those fills are charged
+    ``PAPER_FEE_BPS`` and labelled ``modelled`` so the audit trail is honest
+    about which number is a venue receipt and which is an estimate.
+    ``mixed`` is an order-level aggregate when fills disagree.
+    """
+
+    VENUE = "venue"
+    MODELLED = "modelled"
+    MIXED = "mixed"
+
+
 class OrderLifecycleState(StrEnum):
     """Order lifecycle per docs/EXECUTION-ARCHITECTURE.md.
 
@@ -135,6 +149,8 @@ class ExecutionFill(BaseModel):
     quantity: float = Field(gt=0)
     price_usd: float = Field(gt=0)
     fee_usd: float = Field(default=0.0, ge=0)
+    # --- paper fees (#66) ---
+    fee_source: FeeSource = FeeSource.VENUE
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -157,6 +173,11 @@ class ExecutionOrder(BaseModel):
     correlation_id: str | None = None
     submission_attempts: int = 0
     reason: str | None = None
+    # --- paper fees (#66) ---
+    # Accumulated across fills for this order so the paper report and the
+    # strategy breaker can score net of fees after a restart.
+    fees_paid_usd: float = Field(default=0.0, ge=0)
+    fee_source: FeeSource | None = None
 
 
 class ExecutionLedgerState(BaseModel):
@@ -237,6 +258,12 @@ class ExecutionLedger:
         new_notional = previous_notional + fill.price_usd * fill.quantity
         order.filled_quantity = new_filled_quantity
         order.average_fill_price_usd = new_notional / new_filled_quantity
+        # --- paper fees (#66) ---
+        order.fees_paid_usd += fill.fee_usd
+        if order.fee_source is None:
+            order.fee_source = fill.fee_source
+        elif order.fee_source is not fill.fee_source:
+            order.fee_source = FeeSource.MIXED
         order.last_updated_at = datetime.now(UTC)
         self.processed_fill_ids.add(fill.fill_id)
         return True
