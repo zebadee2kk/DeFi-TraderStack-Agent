@@ -174,9 +174,10 @@ remaining exit-gate step.** Hummingbot API integration, the order lifecycle
 state machine (`OrderLifecycleState`, including `SUBMISSION_UNCERTAIN`),
 idempotent submission, reconciliation (order/fill and NAV-drift) and retry/
 timeout handling are all implemented and covered by
-`tests/acceptance/`. The `traderstack-soak` runner exists and is tested, but
-the 24-hour window itself has not yet been run and archived — see
-`docs/MVP-BACKLOG.md` Epic 10 and `docs/RUNBOOK.md`, "24/7 acceptance soak".
+`tests/acceptance/`. The `traderstack-soak` runner exists, a short `--preset ci`
+path is exercised in CI and archives `report.json`, but the 24-hour window
+itself has not yet been run and archived — see `docs/MVP-BACKLOG.md` Epic 10
+and `docs/RUNBOOK.md`, "24/7 acceptance soak" (`--preset full` / `make soak-24h`).
 
 ## Phase 7 — Shadow-live validation
 
@@ -184,11 +185,14 @@ Consume live feeds and make live-time decisions without placing real orders. Com
 
 Exit gate: statistically adequate sample with acceptable execution assumptions and stable operations across market conditions.
 
-**Status (2026-09-04): Not started.** `Settings.trading_mode` accepts
-`"shadow"` as a literal, but `cli.build_service` only ever builds the paper
-loop and raises if `trading_mode != "paper"` — there is no distinct
-shadow-mode behaviour (live-time decisions without paper fills, compared
-against paper/reality) yet.
+**Status (2026-09-12): Runtime implemented; the statistical exit gate is not.**
+`TRADING_MODE=shadow` now builds the same decision/risk/meta-agent pipeline as
+paper, records would-have-been orders to `ShadowLedger` /
+`traderstack_shadow_intents_recorded_total`, and never constructs Hummingbot or
+broadcasts a chain transaction. `TRADING_MODE=live` remains rejected.
+Operator procedure: `docs/RUNBOOK.md`, "Shadow-live". The Phase 7 exit gate
+(statistically adequate sample vs paper/reality across market conditions) still
+requires an operator campaign; this change only makes that campaign possible.
 
 ## Phase 8 — On-chain security path
 

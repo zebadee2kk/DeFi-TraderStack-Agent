@@ -171,6 +171,31 @@ async def test_ticker_reconnects_on_stale_connection() -> None:
     assert connect.calls["n"] == 2
 
 
+@pytest.mark.asyncio
+async def test_ticker_ignores_ticks_for_unsubscribed_symbols() -> None:
+    connect = _connect_sequence(
+        [
+            FakeTickerSocket(
+                [
+                    ticker_message("ETH/USD", last=1.0),
+                    ticker_message("BTC/USD", last=2.0),
+                ]
+            )
+        ]
+    )
+    provider = KrakenTickerProvider(
+        connect=connect, sleep=_instant_sleep, random_jitter=lambda: 0.0
+    )
+
+    ticks = []
+    async for tick in provider.stream_ticks(("BTC/USD",)):
+        ticks.append(tick)
+        break
+
+    assert ticks[0].symbol == "BTC/USD"
+    assert ticks[0].last == 2.0
+
+
 # --- book: pure parsing -----------------------------------------------------------
 
 

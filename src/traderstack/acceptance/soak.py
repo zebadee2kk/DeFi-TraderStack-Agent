@@ -67,6 +67,8 @@ REPORTED_METRICS: tuple[str, ...] = (
     "traderstack_risk_decisions_total",
     "traderstack_proposals_total",
     "traderstack_paper_orders_submitted_total",
+    "traderstack_shadow_intents_recorded_total",
+    "traderstack_trading_mode_info",
     "traderstack_event_sink_failures_total",
     "traderstack_provider_calls_total",
     "traderstack_provider_breaker_state",
@@ -164,10 +166,16 @@ class SoakScenario(BaseModel):
 class SoakReport(BaseModel):
     """Machine-readable outcome of one soak run."""
 
+    schema_version: str = "1"
     scenario: str
     description: str = ""
     seed: int
     symbols: list[str]
+    trading_mode: str = "paper"
+    window: str = "cycles"
+    requested_cycles: int | None = None
+    requested_seconds: float | None = None
+    full_24h_window_executed: bool = False
     started_at: datetime
     finished_at: datetime
     elapsed_seconds: float
@@ -206,7 +214,13 @@ class SoakReport(BaseModel):
         lines.extend(
             [
                 f"seed={self.seed}  symbols={','.join(self.symbols)}",
+                f"trading_mode={self.trading_mode}  window={self.window}",
                 f"cycles={self.cycles}  elapsed={self.elapsed_seconds:.2f}s",
+                (
+                    f"requested_cycles={self.requested_cycles}  "
+                    f"requested_seconds={self.requested_seconds}"
+                ),
+                f"full_24h_window_executed={self.full_24h_window_executed}",
                 f"policy_version={self.policy_version}",
                 "",
                 "Outcomes",
@@ -472,11 +486,29 @@ class SoakRunner:
             else 0
         )
 
+        requested_seconds = self.scenario.seconds
+        requested_cycles = self.scenario.cycles
+        if requested_seconds is not None and requested_cycles is not None:
+            window = "cycles+timed"
+        elif requested_seconds is not None:
+            window = "timed"
+        else:
+            window = "cycles"
+        full_24h = bool(
+            requested_seconds is not None
+            and requested_seconds >= 86_400
+            and elapsed >= 86_400 * 0.95
+        )
         report = SoakReport(
             scenario=self.scenario.name,
             description=self.scenario.description,
             seed=self.scenario.seed,
             symbols=list(self.symbols),
+            trading_mode=self.settings.trading_mode,
+            window=window,
+            requested_cycles=requested_cycles,
+            requested_seconds=requested_seconds,
+            full_24h_window_executed=full_24h,
             started_at=started_at,
             finished_at=datetime.now(UTC),
             elapsed_seconds=elapsed,
@@ -575,14 +607,42 @@ def evaluate(report: SoakReport, ledger: ExecutionLedger) -> list[str]:
 # --- CLI --------------------------------------------------------------------
 
 
+FULL_WINDOW_SECONDS = 86_400.0
+
+
+def resolve_ci_scenario_path() -> Path:
+    """Locate the shipped CI soak scenario from the source tree or the cwd."""
+
+    candidates = (
+        Path(__file__).resolve().parents[3] / "ops" / "soak" / "scenarios" / "ci.json",
+        Path("ops/soak/scenarios/ci.json"),
+    )
+    for path in candidates:
+        if path.is_file():
+            return path
+    return candidates[0]
+
+
+CI_SCENARIO_PATH = resolve_ci_scenario_path()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Run the paper-trading acceptance soak: the real service wiring against a "
-            "synthetic market, with optional scheduled fault injection."
+            "synthetic market, with optional scheduled fault injection. "
+            "Use --preset ci for a short, CI-archivable run; --preset full for the "
+            "86400s window. A machine-readable JSON report is always written "
+            "(default: <workdir>/report.json)."
         )
     )
     parser.add_argument("--scenario", type=Path, default=None, help="JSON scenario file")
+    parser.add_argument(
+        "--preset",
+        choices=("ci", "full"),
+        default=None,
+        help="ci: short shipped scenario for CI; full: unbounded cycles for 86400 seconds",
+    )
     parser.add_argument("--cycles", type=int, default=None, help="stop after this many cycles")
     parser.add_argument("--seconds", type=float, default=None, help="stop after this long")
     parser.add_argument("--cycle-seconds", type=float, default=None, help="delay between cycles")
@@ -594,16 +654,29 @@ def build_parser() -> argparse.ArgumentParser:
         "--workdir",
         type=Path,
         default=Path("var/soak"),
-        help="where the run's audit trail, ledger and checkpoint are written",
+        help="where the run's audit trail, ledger, checkpoint and report are written",
     )
-    parser.add_argument("--report", type=Path, default=None, help="write the JSON report here")
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="write the JSON report here (default: <workdir>/report.json)",
+    )
     parser.add_argument("--json", action="store_true", help="print JSON instead of a table")
     return parser
 
 
 def scenario_from_args(args: argparse.Namespace) -> SoakScenario:
-    scenario = SoakScenario.load(args.scenario) if args.scenario else SoakScenario()
+    if args.preset == "ci" and args.scenario is None:
+        scenario = SoakScenario.load(CI_SCENARIO_PATH)
+    elif args.scenario:
+        scenario = SoakScenario.load(args.scenario)
+    else:
+        scenario = SoakScenario()
     updates: dict[str, Any] = {}
+    if args.preset == "full" and args.seconds is None and args.cycles is None:
+        updates["seconds"] = FULL_WINDOW_SECONDS
+        updates["cycles"] = None
     if args.cycles is not None:
         updates["cycles"] = args.cycles
         updates["seconds"] = None
@@ -620,6 +693,10 @@ def scenario_from_args(args: argparse.Namespace) -> SoakScenario:
     return scenario.model_copy(update=updates) if updates else scenario
 
 
+def default_report_path(workdir: Path, explicit: Path | None) -> Path:
+    return explicit if explicit is not None else Path(workdir) / "report.json"
+
+
 async def run_scenario(scenario: SoakScenario, workdir: Path) -> SoakReport:
     return await SoakRunner(scenario=scenario, workdir=workdir).run()
 
@@ -627,11 +704,11 @@ async def run_scenario(scenario: SoakScenario, workdir: Path) -> SoakReport:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     scenario = scenario_from_args(args)
+    report_path = default_report_path(args.workdir, args.report)
     report = asyncio.run(run_scenario(scenario, args.workdir))
     payload = report.model_dump(mode="json")
-    if args.report is not None:
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     print(json.dumps(payload, indent=2, default=str) if args.json else report.render())
     return 0 if report.passed else 1
 

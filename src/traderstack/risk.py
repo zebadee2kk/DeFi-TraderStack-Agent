@@ -65,6 +65,34 @@ RISK_LIMIT_FIELDS: tuple[str, ...] = (
     "kill_switch_file",
     "kill_switch_redis_key",
     "kill_switch_redis_enabled",
+    # --- SEC-2026-09-18: gates enforced *around* RiskEngine.evaluate ----------
+    # Pre-trade, market-data, execution-planner and chain-policy settings can
+    # change whether an order is built or submitted without the engine itself
+    # seeing a different proposal. Folding them into policy_version means two
+    # audit records with the same version cannot come from a run with the
+    # pre-trade gate on and a run with it off.
+    "pretrade_backtest_enabled",
+    "pretrade_candle_interval",
+    "pretrade_candle_count",
+    "pretrade_min_candles",
+    "pretrade_max_candle_age_seconds",
+    "pretrade_min_excess_return",
+    "pretrade_max_drawdown_pct",
+    "pretrade_min_sharpe",
+    "pretrade_min_trades",
+    "pretrade_require_walkforward",
+    "pretrade_fee_bps",
+    "pretrade_slippage_bps",
+    "max_spread_bps",
+    "max_reference_divergence_bps",
+    "max_market_data_age_seconds",
+    "execution_min_notional_usd",
+    "execution_lot_step",
+    "execution_max_slippage_bps",
+    "max_nav_drift_bps",
+    "robinhood_chain_max_notional_usd",
+    "robinhood_chain_max_gas_limit",
+    "robinhood_chain_max_gas_price_gwei",
 )
 
 

@@ -181,6 +181,7 @@ class ContinuousPaperService:
             log = log.bind(decision_id=decision_id)
             log.info(
                 "runtime_cycle_completed",
+                trading_mode=result.trading_mode,
                 outcome="accepted" if result.pipeline.accepted_market_data else "rejected",
                 rejection_reasons=result.pipeline.rejection_reasons,
                 risk_decision=(
@@ -188,6 +189,7 @@ class ContinuousPaperService:
                     if result.pipeline.risk_result is not None
                     else None
                 ),
+                execution_status=result.execution_status,
             )
             # --- end observability (Epic 9) ---
 

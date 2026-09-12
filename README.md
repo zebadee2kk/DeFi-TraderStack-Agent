@@ -4,11 +4,13 @@ An experimental autonomous crypto/DeFi trading research and execution platform
 combining quantitative signals, on-chain intelligence, market/news/social
 data, LLM reasoning, deterministic risk controls, and broker/DEX execution.
 
-> **Status:** MVP paper-trading platform. `TRADING_MODE=paper` is the only
-> supported mode today — live capital is explicitly out of scope until the
-> gates in `docs/MVP-BACKLOG.md` ("Remaining before live capital") and
-> `docs/ROADMAP.md` Phases 7-9 close. Nothing in this repository or its
-> defaults authorizes live trading.
+> **Status:** MVP paper-trading platform. `TRADING_MODE=paper` is the default
+> and the only mode that can place venue (paper) orders. `TRADING_MODE=shadow`
+> runs the same decision/risk/meta-agent pipeline and records would-have-been
+> orders without submitting them. Live capital is explicitly out of scope
+> until the remaining gates in `docs/MVP-BACKLOG.md` ("Remaining before live
+> capital") and `docs/ROADMAP.md` Phases 8-9 close. Nothing in this
+> repository or its defaults authorizes live trading.
 
 ## Safety principle
 
@@ -67,8 +69,10 @@ Validated market data (venue tick + independent references + candle history)
    -> Trade Proposal
    -> Deterministic Risk Engine (kill switch checked first, then account/strategy/asset/trade limits)
    -> Constrained meta-agent review (can only withhold or nudge confidence — advisory/veto/off)
-   -> Execution Planner -> Idempotent Submitter -> Hummingbot API -> Venue
-   -> Fill / Reconciliation (gates new submissions, never gates decisions or auditing)
+  -> Execution Planner
+       paper  -> Idempotent Submitter -> Hummingbot API -> Venue -> Fill / Reconciliation
+       shadow -> ShadowRecorder (would-have-been order; no venue call, no fill)
+  Paper reconciliation gates new submissions, never decisions or auditing.
 ```
 
 Each cycle, per symbol: the kill switch and reconciliation gate are

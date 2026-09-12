@@ -11,6 +11,19 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from traderstack.runtime import RuntimeResult
 
 ResultSink = Callable[[RuntimeResult], Awaitable[None]]
+
+# SEC-2026-09-20: runtime_events.symbol is String(32). A venue-authored symbol
+# longer than that must not fail the insert (which fails the sink, which fails
+# the cycle). The full symbol remains in the JSON payload.
+RUNTIME_EVENT_SYMBOL_MAX_LENGTH = 32
+
+
+def bounded_event_symbol(symbol: str, *, max_length: int = RUNTIME_EVENT_SYMBOL_MAX_LENGTH) -> str:
+    """Bound a venue-authored symbol to the runtime_events.symbol column width."""
+
+    if len(symbol) <= max_length:
+        return symbol
+    return symbol[:max_length]
 metadata = MetaData()
 runtime_events = Table(
     "runtime_events",
@@ -56,7 +69,7 @@ class PostgresRuntimeEventStore:
         payload = result.model_dump(mode="json")
         statement = insert(runtime_events).values(
             observed_at=datetime.now(UTC),
-            symbol=result.tick.symbol,
+            symbol=bounded_event_symbol(result.tick.symbol),
             accepted_market_data=int(result.pipeline.accepted_market_data),
             decision_id=_decision_id_of(result),  # observability (Epic 9)
             payload=payload,

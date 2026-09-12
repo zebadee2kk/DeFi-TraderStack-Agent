@@ -25,7 +25,7 @@ from traderstack.checkpoint import JsonPortfolioCheckpointStore
 
 # --- risk plane (Epic 7) ---
 from traderstack.circuit_breaker import StrategyCircuitBreaker
-from traderstack.config import Settings
+from traderstack.config import Settings, require_runtime_trading_mode
 from traderstack.eventing import FanoutResultSink, PostgresRuntimeEventStore, RedisRuntimePublisher
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
 
@@ -34,6 +34,7 @@ from traderstack.execution.ledger import ExecutionLedger
 from traderstack.execution.ledger_store import JsonExecutionLedgerStore
 from traderstack.execution.planner import ExecutionPlanner
 from traderstack.execution.reconcile import HummingbotExecutionReconciler
+from traderstack.execution.shadow import ShadowLedger, ShadowRecorder
 from traderstack.execution.submitter import IdempotentSubmitter
 from traderstack.intelligence_orchestrator import (
     IntelligenceCache,
@@ -73,6 +74,7 @@ from traderstack.market.registry import (
 )
 from traderstack.market.robinhood_chain_feed import swap_feed_from_settings
 from traderstack.market_features import CandleMarketFeatureBuilder
+from traderstack.metrics import record_trading_mode  # shadow-live (Roadmap Phase 7)
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.pretrade import PreTradeBacktestGate
@@ -328,6 +330,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--risk-audit-path", default="var/audit/risk_decisions.jsonl")
     # --- execution hardening (Epic 8) ---
     parser.add_argument("--ledger-path", default="var/state/execution_ledger.json")
+    # --- shadow-live (Roadmap Phase 7) ---
+    parser.add_argument("--shadow-ledger-path", default="var/audit/shadow_intents.jsonl")
     parser.add_argument("--cycle-seconds", type=float, default=5.0)
     parser.add_argument("--metrics-port", type=int, default=9108)
     parser.add_argument(
@@ -355,9 +359,11 @@ def build_service(
     ledger_store: JsonExecutionLedgerStore | None = None,
     # --- paper-trading acceptance (Epic 10) ---
     overrides: ServiceOverrides | None = None,
+    # --- shadow-live (Roadmap Phase 7) ---
+    shadow_ledger: ShadowLedger | None = None,
 ) -> ContinuousPaperService:
-    if settings.trading_mode != "paper":
-        raise RuntimeError("continuous paper service requires TRADING_MODE=paper")
+    trading_mode = require_runtime_trading_mode(settings.trading_mode)
+    record_trading_mode(trading_mode)
 
     # --- paper-trading acceptance (Epic 10) ---
     venue_client = overrides.venue_client if overrides is not None else None
@@ -367,7 +373,21 @@ def build_service(
     submitter = None
     execution_reconciler = None
     portfolio_reconciler = None
-    if submit:
+    # --- shadow-live (Roadmap Phase 7) ---
+    # Shadow never places venue orders: --submit is ignored, Hummingbot is not
+    # constructed, and reconcilers stay unwired. The decision pipeline still runs.
+    shadow_recorder = None
+    venue_submit = submit and trading_mode == "paper"
+    if trading_mode == "shadow":
+        planner = ExecutionPlanner(
+            lot_step=settings.execution_lot_step,
+            min_notional_usd=settings.execution_min_notional_usd,
+            max_slippage_bps=settings.execution_max_slippage_bps,
+        )
+        if shadow_ledger is None:
+            shadow_ledger = ShadowLedger(Path("var/audit/shadow_intents.jsonl"))
+        shadow_recorder = ShadowRecorder(ledger=shadow_ledger, planner=planner)
+    if venue_submit:
         if settings.hummingbot_api_username is None or settings.hummingbot_api_password is None:
             raise RuntimeError("paper submission requires Hummingbot API credentials")
         password = settings.hummingbot_api_password.get_secret_value()
@@ -583,12 +603,15 @@ def build_service(
         # --- paper-research edge data plane ---
         liquidations=liquidations,
         book_ticker=book_ticker,
+        # --- shadow-live (Roadmap Phase 7) ---
+        trading_mode=trading_mode,
+        shadow_recorder=shadow_recorder,
     )
     return ContinuousPaperService(
         runtime=runtime,
         portfolio=portfolio,
         symbols=symbols,
-        submit=submit,
+        submit=venue_submit,
         cycle_interval_seconds=cycle_seconds,
         on_result=on_result,
         on_portfolio=checkpoint_store.save,
@@ -635,6 +658,10 @@ async def _main_async(args: argparse.Namespace) -> None:
     # stops a decision whose order is already live from being submitted twice.
     ledger_store = JsonExecutionLedgerStore(Path(args.ledger_path))
     execution_ledger = await ledger_store.load() or ExecutionLedger()
+    # --- shadow-live (Roadmap Phase 7) ---
+    shadow_ledger = (
+        ShadowLedger(Path(args.shadow_ledger_path)) if settings.trading_mode == "shadow" else None
+    )
 
     sinks: list[ResultHandler] = [JsonlAuditSink(Path(args.audit_path))]
     postgres: PostgresRuntimeEventStore | None = None
@@ -668,6 +695,7 @@ async def _main_async(args: argparse.Namespace) -> None:
         # --- execution hardening (Epic 8) ---
         execution_ledger=execution_ledger,
         ledger_store=ledger_store,
+        shadow_ledger=shadow_ledger,
     )
     try:
         await service.run()

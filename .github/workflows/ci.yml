@@ -62,6 +62,24 @@ jobs:
       - name: bandit (static security lint)
         run: bandit -r src -ll
 
+  soak-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -e '.[dev]'
+      - name: Short acceptance soak (not the 24h window)
+        run: traderstack-soak --preset ci --workdir var/soak-ci
+      - name: Archive machine-readable soak report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-ci-report
+          path: var/soak-ci/report.json
+
   docker-build:
     runs-on: ubuntu-latest
     steps:

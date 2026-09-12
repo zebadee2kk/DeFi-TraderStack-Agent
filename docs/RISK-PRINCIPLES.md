@@ -110,9 +110,11 @@ Notes on the implemented semantics:
   with no restart, no API call and no cooperation from the agent runtime. An
   unreachable Redis halt channel is treated as engaged.
 - **Policy version is derived.** `RiskEngine.policy_version` is
-  `RISK_POLICY_LABEL` plus a SHA-256 digest of every risk limit in force, so any
-  limit change is visible in every audit record without anyone remembering to
-  bump a string.
+  `RISK_POLICY_LABEL` plus a SHA-256 digest of every risk limit in force
+  (`RISK_LIMIT_FIELDS`), including the pre-trade, market-data, execution-planner
+  and Robinhood Chain policy settings enforced *around* the engine
+  (SEC-2026-09-18), so any of those changing is visible in every audit record
+  without anyone remembering to bump a string.
 - **Every decision is evidence.** Each `evaluate` result recorded by the service
   is appended to a hash-chained JSONL file carrying the proposal, the full
   result, the policy version and the limits in force (inline and hashed).
