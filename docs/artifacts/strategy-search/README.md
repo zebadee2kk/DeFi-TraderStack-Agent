@@ -213,5 +213,17 @@ promote), WF maxDD on BTC/ETH/SOL vs the paper DD ceiling 0.30, and
 the gate-B multi-window table. Empty or negative Yahoo is success.
 The pin stays default **false**.
 
+On the 2026-09-12 reprint (same 720-bar Kraken daily window as #99):
+
+- Still combined **PASS** and still top-1 (mean HO +26.07%, ratio 0.712).
+- Yahoo BTC-USD holdout excess **−15.47%** (WF total +; cannot promote).
+  The older `ema_9_21` Yahoo BTC holdout was −9.28% — this path is worse.
+- Yahoo ETH-USD holdout excess +150.33% (WF total +; cannot promote).
+- SOL WF maxDD **+50.01%** still blows past the 0.30 paper ceiling.
+  BTC +17.93% and ETH +28.77% stay under.
+- Gate B 2/3 (W2 ETH WF −16.88%).
+
+Leave `PAPER_PROMOTE_EMA_9_21_ADX15=false`.
+
 See `ema-9-21-adx15-honesty.md`.
 

@@ -96,6 +96,7 @@ class SeriesHonestyRow(BaseModel):
     holdout_total: float | None = None
     holdout_max_drawdown: float | None = None
     wf_total_sign: str = "n/a"
+    wf_excess_sign: str = "n/a"
     holdout_excess_sign: str = "n/a"
     blows_past_dd_ceiling: bool | None = None
     skipped_reason: str | None = None
@@ -178,6 +179,7 @@ def _row_from_series(
         holdout_total=series.holdout.total_return if series.holdout is not None else None,
         holdout_max_drawdown=ho_dd,
         wf_total_sign=_sign(series.walkforward_mean_total_return),
+        wf_excess_sign=_sign(series.walkforward_mean_excess_return),
         holdout_excess_sign=_sign(ho),
         blows_past_dd_ceiling=blows,
         skipped_reason=series.skipped_reason,
@@ -228,6 +230,11 @@ def remaining_gaps(
         if row.wf_total is not None and row.wf_total <= 0:
             gaps.append(
                 f"Yahoo `{row.asset}` walk-forward total is {_pct(row.wf_total)} "
+                "(non-Kraken A/B; cannot promote)."
+            )
+        if row.wf_excess is not None and row.wf_excess <= 0:
+            gaps.append(
+                f"Yahoo `{row.asset}` walk-forward excess is {_pct(row.wf_excess)} "
                 "(non-Kraken A/B; cannot promote)."
             )
         if row.holdout_excess is not None and row.holdout_excess <= 0:
@@ -439,7 +446,16 @@ def run_honesty_pack(
         eligible_96=harder_row.eligible_96,
         windows=harder_row.windows,
         windows_passed=harder_row.windows_passed,
-        combined_passer_ids=list(harder.combined_passer_ids),
+        combined_passer_ids=[
+            row.candidate_id
+            for row in sorted(
+                (item for item in harder.candidates if item.combined),
+                key=lambda item: (
+                    item.combined_rank if item.combined_rank is not None else 10_000,
+                    item.candidate_id,
+                ),
+            )
+        ],
         selected_candidate_id=harder.selected_candidate_id,
         yahoo_rows=yahoo_rows,
         kraken_dd_rows=kraken_dd_rows,
@@ -560,18 +576,22 @@ def render_honesty_pack_markdown(report: HonestyPackReport) -> str:
                 "the #97 window) is a different path and is not copied here."
             ),
             "",
-            ("| series | bars | first → last | WF total | WF sign | holdout excess | HO sign |"),
-            "| --- | ---: | --- | ---: | :---: | ---: | :---: |",
+            (
+                "| series | bars | first → last | WF total | WF excess | "
+                "holdout excess | WF / HO signs |"
+            ),
+            "| --- | ---: | --- | ---: | ---: | ---: | :---: |",
         ]
     )
     if report.yahoo_rows:
         for row in report.yahoo_rows:
             span = f"{row.first} → {row.last}" if row.first and row.last else "n/a"
             skip = f" ({row.skipped_reason})" if row.skipped_reason else ""
+            signs = f"{row.wf_total_sign} / {row.holdout_excess_sign}"
             lines.append(
                 f"| `{row.asset}`{skip} | {row.bars} | {span} | "
-                f"{_pct(row.wf_total)} | {row.wf_total_sign} | "
-                f"{_pct(row.holdout_excess)} | {row.holdout_excess_sign} |"
+                f"{_pct(row.wf_total)} | {_pct(row.wf_excess)} | "
+                f"{_pct(row.holdout_excess)} | {signs} |"
             )
     else:
         lines.append("| — | — | — | n/a | n/a | n/a | n/a |")

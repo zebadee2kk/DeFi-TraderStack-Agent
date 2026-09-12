@@ -227,6 +227,8 @@ def test_yahoo_rows_are_labeled_and_do_not_enter_ranking() -> None:
     assert {row.asset for row in with_yahoo.yahoo_rows} == {"BTC-USD", "ETH-USD"}
     assert all(row.source == "yahoo (non-Kraken)" for row in with_yahoo.yahoo_rows)
     assert all(row.wf_total_sign in {"+", "−", "0", "n/a"} for row in with_yahoo.yahoo_rows)
+    assert all(row.wf_excess_sign in {"+", "−", "0", "n/a"} for row in with_yahoo.yahoo_rows)
+    assert all(row.holdout_excess_sign in {"+", "−", "0", "n/a"} for row in with_yahoo.yahoo_rows)
     rendered = render_honesty_pack_markdown(with_yahoo)
     assert "period1=1410912000" in rendered
     assert "Cannot promote" in rendered
