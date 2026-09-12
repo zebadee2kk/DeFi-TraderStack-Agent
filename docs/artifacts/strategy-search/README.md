@@ -504,3 +504,35 @@ See `funding-carry.md`, `funding-carry-daily.md`,
 `funding-carry-basis.md`, `pit-basis-archives.md`, and the
 2026-09-12 status memo `edge-status-2026-09-12.md`.
 
+## BTC−ETH relative-value residual (`traderstack-relative-value`)
+
+#115 left PIT basis archives UNAVAILABLE, so carry cannot promote.
+This command is a **different family**: fade/follow daily BTC minus
+ETH excess return at frozen |z| ≥ 1.0 / 1.5 / 2.0 (lookback 20).
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken primary 720 | public Spot daily; #96+A+B+C; rank dual-print passers by Kraken mean HO | Kraken mean HO only |
+| Binance.US older 720 | same #102 slice; must combined-PASS | no (gate only) |
+
+Catalog is frozen (K=7): six residual fade/follow names plus
+informational `ma_cross_10_30` (cannot promote). Residual is
+venue-local; unpaired days are skipped, not invented. Paper-
+executable on Kraken spot BTC/ETH. Empty dual-print set is
+success. `PAPER_PROMOTE_*` stays false. No new pin unless a
+committed report names a passer (default false if added).
+
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken primary still 2024-09-22 → 2026-09-11 (720). Residual
+  719 pair-days.
+- Binance.US older-720 still 2022-10-03 → 2024-09-21 (720; no
+  overlap). Residual 719 pair-days. Labeled Binance.US.
+- Kraken combined-passers: **0**. Every RV mean HO negative
+  (−5.49% to −15.64%).
+- Binance.US combined-passers: **0**. Informational `rv_follow_2_0`
+  Binance mean HO +6.12% with Kraken mean HO −7.11% — not an edge.
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
+See `btc-eth-relative-value.md`.
+

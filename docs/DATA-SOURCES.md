@@ -73,6 +73,14 @@ it is relied upon.
   8h interest every hour — not wired (would invent 8× carry). Gate
   `from` is capped at 180d; Bitget/MEXC public history is shorter
   than 720 UTC days from this environment.
+- **BTC−ETH relative-value residual (research only):** built from the
+  same public Spot daily closes already used by
+  `traderstack-dual-print-search` — Kraken `GET /0/public/OHLC`
+  (720-bar cap) and Binance.US older-720 (`api.binance.us` when
+  `api.binance.com` is HTTP 451). Residual is `r_BTC − r_ETH` on
+  aligned `opened_at`; a missing pair day is skipped, not
+  zero-filled. No exogenous series. Input to
+  `traderstack-relative-value`.
 
 ## Robinhood Chain
 

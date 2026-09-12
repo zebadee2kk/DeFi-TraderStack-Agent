@@ -92,3 +92,9 @@ At minimum:
   historical PIT basis, so a pin stays off. Empty / cannot-promote is
   success. See
   `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
+- Does a fee-aware fade/follow of daily BTC minus ETH excess return
+  at frozen |z| thresholds clear the same #96+A+B+C dual-print bar
+  (Kraken 720 + Binance.US older-720)? `traderstack-relative-value`
+  scores that residual family. It is paper-executable on Kraken
+  spot. Empty dual-print is success. Not an EMA reprint. See
+  `docs/artifacts/strategy-search/btc-eth-relative-value.md`.

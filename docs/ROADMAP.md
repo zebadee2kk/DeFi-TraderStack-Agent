@@ -92,7 +92,11 @@ geo-blocked). PIT basis is probed skip-not-invent (current mark/index
 only; public archives stay UNAVAILABLE — see
 `docs/artifacts/strategy-search/pit-basis-archives.md`). A paper
 perp/hedge stub exists and cannot promote. One venue is
-single-print and cannot promote. **Freqtrade
+single-print and cannot promote.
+`traderstack-relative-value` is the post-#115 non-carry slice:
+fade/follow daily BTC−ETH residual at frozen |z| thresholds on the
+same #96+A+B+C Kraken 720 + Binance.US older-720 bar. Paper-executable
+on Kraken spot. Empty dual-print is success. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.
