@@ -371,5 +371,15 @@ A Kraken-only combined-passer cannot promote. Empty dual-print set is
 success. `PAPER_PROMOTE_*` stays false. No new pin unless a committed
 report names a passer (default false if added).
 
+On the 2026-09-12 live run (catalog committed first):
+
+- Kraken 4h primary: 2026-05-15 16:00 → 2026-09-12 12:00 UTC (720).
+- Binance.US older-720 4h: 2026-01-15 16:00 → 2026-05-15 12:00 UTC
+  (720; no overlap). `api.binance.com` HTTP 451; labeled Binance.US.
+- OKX funding (~90d of 8h) and 1h OI scored; liquidation skipped.
+- Kraken combined-passers: **0**. Every Kraken mean HO was negative.
+- Binance.US combined-passers: **0**.
+- Dual-print passers: **0**. No new `PAPER_PROMOTE_*` pin.
+
 See `intraday-dual-print.md`.
 
