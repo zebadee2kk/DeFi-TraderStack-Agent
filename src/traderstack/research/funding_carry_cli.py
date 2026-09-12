@@ -2,8 +2,8 @@
 
 Scores the frozen funding-z threshold + spot-overlay + hedged-carry
 catalog on Kraken public Spot (default 4h) aligned to public
-funding-rate history. Probes Binance, Bybit, OKX, and Hyperliquid
-independently (skip-not-invent; do not blend). ``--interval 1d``
+funding-rate history. Probes Binance, Bybit, OKX, Hyperliquid, and
+BitMEX independently (skip-not-invent; do not blend). ``--interval 1d``
 resamples funding to UTC daily sums (empty days omitted) so the
 #96+A+B+C bar can be evaluated or recorded UNAVAILABLE. Dual-print
 only if two independent funding venues cover BTC and ETH. Basis is
@@ -27,6 +27,10 @@ from traderstack.research.daily_robustness import KRAKEN_PUBLIC_OHLC_MAX_BARS
 from traderstack.research.download_candles import download_spot_histories
 from traderstack.research.edge_series import (
     BINANCE_FAPI_BASE,
+    BITMEX_BASE,
+    BITMEX_DAILY_LIMIT_PAGES,
+    BITMEX_DAILY_LOOKBACK_DAYS,
+    BITMEX_DEFAULT_LOOKBACK_DAYS,
     BYBIT_BASE,
     HYPERLIQUID_BASE,
     HYPERLIQUID_DAILY_LIMIT_PAGES,
@@ -35,6 +39,7 @@ from traderstack.research.edge_series import (
     HYPERLIQUID_SYMBOL_PAUSE_SECONDS,
     OKX_BASE,
     fetch_binance_funding,
+    fetch_bitmex_funding,
     fetch_bybit_funding,
     fetch_hyperliquid_funding,
     fetch_okx_funding,
@@ -63,8 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Score a pre-registered funding-z / carry catalog on Kraken "
             "public Spot (default 4h) aligned to public funding-rate "
-            "history (OKX + Hyperliquid when reachable; Binance/Bybit "
-            "probed and skipped if geo-blocked). --interval 1d resamples "
+            "history (OKX + Hyperliquid + BitMEX when reachable; "
+            "Binance/Bybit probed and skipped if geo-blocked). --interval 1d resamples "
             "funding to UTC daily sums (empty days omitted) so #96+A+B+C "
             "can be evaluated or recorded UNAVAILABLE honestly. Dual-print "
             "only if two independent funding venues cover BTC and ETH. "
@@ -86,8 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "fetch BTC/ETH from Kraken public OHLC "
             f"(hard cap {KRAKEN_PUBLIC_OHLC_MAX_BARS} bars) and probe "
-            "Binance + Bybit + OKX + Hyperliquid funding-rate history "
-            "independently (skip-not-invent)"
+            "Binance + Bybit + OKX + Hyperliquid + BitMEX funding-rate "
+            "history independently (skip-not-invent)"
         ),
     )
     parser.add_argument(
@@ -212,6 +217,8 @@ async def fetch_funding_venues(
     timeout: float = 20.0,
     hyperliquid_lookback_days: int = HYPERLIQUID_DEFAULT_LOOKBACK_DAYS,
     hyperliquid_limit_pages: int = 16,
+    bitmex_lookback_days: int = BITMEX_DEFAULT_LOOKBACK_DAYS,
+    bitmex_limit_pages: int = 8,
 ) -> tuple[dict[str, dict[str, tuple]], list[dict[str, str]]]:
     """Fetch each venue independently. Do not blend the tapes."""
     venue_maps: dict[str, dict[str, tuple]] = {
@@ -219,6 +226,7 @@ async def fetch_funding_venues(
         "bybit": {},
         "okx": {},
         "hyperliquid": {},
+        "bitmex": {},
     }
     notes: list[dict[str, str]] = []
     async with httpx.AsyncClient(base_url=BINANCE_FAPI_BASE, timeout=timeout) as client:
@@ -252,6 +260,17 @@ async def fetch_funding_venues(
             notes.append(result.as_note())
             if result.status == "ok":
                 venue_maps["hyperliquid"][symbol.upper()] = result.points
+    async with httpx.AsyncClient(base_url=BITMEX_BASE, timeout=max(timeout, 30.0)) as client:
+        for symbol in symbols:
+            result = await fetch_bitmex_funding(
+                symbol,
+                client=client,
+                lookback_days=bitmex_lookback_days,
+                limit_pages=bitmex_limit_pages,
+            )
+            notes.append(result.as_note())
+            if result.status == "ok":
+                venue_maps["bitmex"][symbol.upper()] = result.points
     return venue_maps, notes
 
 
@@ -307,11 +326,17 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
             else HYPERLIQUID_DEFAULT_LOOKBACK_DAYS
         )
         hl_pages = HYPERLIQUID_DAILY_LIMIT_PAGES if args.interval == "1d" else 16
+        bitmex_lookback = (
+            BITMEX_DAILY_LOOKBACK_DAYS if args.interval == "1d" else BITMEX_DEFAULT_LOOKBACK_DAYS
+        )
+        bitmex_pages = BITMEX_DAILY_LIMIT_PAGES if args.interval == "1d" else 4
         venue_maps, edge_notes = asyncio.run(
             fetch_funding_venues(
                 symbols,
                 hyperliquid_lookback_days=hl_lookback,
                 hyperliquid_limit_pages=hl_pages,
+                bitmex_lookback_days=bitmex_lookback,
+                bitmex_limit_pages=bitmex_pages,
             )
         )
         primary_map, primary_venue, second_map, second_venue = _pick_venues(venue_maps)
@@ -321,8 +346,8 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
             history_notes.append(
                 {
                     "note": (
-                        "No usable Binance / Bybit / OKX / Hyperliquid funding "
-                        "series — families skipped, not invented. Labeled "
+                        "No usable Binance / Bybit / OKX / Hyperliquid / BitMEX "
+                        "funding series — families skipped, not invented. Labeled "
                         "single-print; cannot promote."
                     ),
                     "source": "funding_carry",

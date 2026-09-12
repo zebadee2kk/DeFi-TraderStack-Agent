@@ -13,6 +13,11 @@ Investigation (do not invent a series):
 * Hyperliquid ``POST /info`` ``fundingHistory`` is public hourly and
   typically reachable here — that is an independent second tape, not a
   reprint of OKX.
+* BitMEX ``GET /api/v1/funding`` is a public settlement tape (XBTUSD
+  from 2016, ETHUSD from 2018). Modern cadence is 8h. Uses
+  ``fundingRate`` only — ``fundingRateDaily`` is a restated multiple
+  and must not be treated as a second print. An 800d lookback yields
+  ≥720 UTC daily sums without inventing cadence.
 * A second candle venue (Binance.US older-720) without a second
   *funding* tape is not an independent funding print.
 * Splitting one OKX tape into prefix/suffix is the same venue — not
@@ -28,8 +33,9 @@ Investigation (do not invent a series):
 
 Print policy (frozen):
 
-* Dual-print requires two **independent funding venues** (e.g. OKX and
-  Hyperliquid) each covering BTC and ETH with a usable point count.
+* Dual-print requires two **independent funding venues** (e.g.
+  Hyperliquid and BitMEX) each covering BTC and ETH with a usable
+  point count.
 * Absent that, the run is **single-print** and **cannot promote**.
 * #96+A+B+C hard gates need 720 aligned **daily** bars on **each**
   venue that participates. A ~90d OKX tape cannot unlock them after
@@ -130,7 +136,7 @@ FUNDING_CARRY_RULES = (
     "zero-filled. Hedged carry is a research model of cash-and-carry: "
     "received |funding| minus two-leg (spot+perp) fees on each flip; "
     "perp-spot basis is not invented and is not in the PnL. Dual-print "
-    "requires two independent funding venues (e.g. OKX and Hyperliquid) each "
+    "requires two independent funding venues (e.g. Hyperliquid and BitMEX) each "
     "covering BTC and ETH. A second candle venue without a second funding "
     "tape is not dual-print. Same-venue prefix/suffix is not independent. "
     "Hard gates (#96+A+B+C) need 720 aligned daily bars on each funding "

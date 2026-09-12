@@ -8,6 +8,7 @@ from traderstack.research.candidates import FeatureZVoter
 from traderstack.research.edge_series import (
     fetch_binance_funding,
     fetch_binance_liquidations,
+    fetch_bitmex_funding,
     fetch_bybit_funding,
     fetch_hyperliquid_funding,
     fetch_okx_funding,
@@ -189,6 +190,62 @@ async def test_okx_funding_parses_pages() -> None:
     assert result.status == "ok"
     assert len(result.points) == 2
     assert result.points[0][1] == -0.0002
+
+
+@pytest.mark.asyncio
+async def test_bitmex_funding_uses_settlement_not_daily_restatement() -> None:
+    pages = [
+        [
+            {
+                "timestamp": "2024-09-22T04:00:00.000Z",
+                "symbol": "XBTUSD",
+                "fundingInterval": "2000-01-01T08:00:00.000Z",
+                "fundingRate": 0.0001,
+                "fundingRateDaily": 0.0003,
+            },
+            {
+                "timestamp": "2024-09-22T12:00:00.000Z",
+                "symbol": "XBTUSD",
+                "fundingInterval": "2000-01-01T08:00:00.000Z",
+                "fundingRate": -0.0002,
+                "fundingRateDaily": -0.0006,
+            },
+        ],
+        [],
+    ]
+    calls = {"n": 0}
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        idx = min(calls["n"], len(pages) - 1)
+        calls["n"] += 1
+        return httpx.Response(200, json=pages[idx])
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(base_url="https://www.bitmex.com", transport=transport) as client:
+        result = await fetch_bitmex_funding(
+            "BTC/USD",
+            client=client,
+            start_iso="2024-09-22T00:00:00.000Z",
+        )
+    assert result.status == "ok"
+    assert len(result.points) == 2
+    assert result.points[0][1] == 0.0001
+    assert result.points[1][1] == -0.0002
+    assert 0.0003 not in {point[1] for point in result.points}
+    assert "fundingRateDaily" in result.reason
+    assert "/api/v1/funding" in result.source
+
+
+@pytest.mark.asyncio
+async def test_bitmex_funding_records_http_error_as_skip() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, text="forbidden")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(base_url="https://www.bitmex.com", transport=transport) as client:
+        result = await fetch_bitmex_funding("ETH/USD", client=client)
+    assert result.status == "skipped"
+    assert "403" in result.reason
 
 
 def test_feature_z_voter_uses_per_symbol_series() -> None:

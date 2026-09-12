@@ -280,10 +280,11 @@ def test_pick_venues_selects_two_usable_and_skips_empty() -> None:
             "bybit": {},
             "okx": {"BTC/USD": series, "ETH/USD": series},
             "hyperliquid": {"BTC/USD": long_series, "ETH/USD": long_series},
+            "bitmex": {"BTC/USD": series + series, "ETH/USD": series + series},
         }
     )
     assert primary_name == "hyperliquid"
-    assert second_name == "okx"
+    assert second_name == "bitmex"
     assert primary is not None and second is not None
     none_primary, none_name, none_second, none_second_name = _pick_venues(
         {"binance": {}, "bybit": {}}

@@ -51,16 +51,24 @@ it is relied upon.
 - **Funding-rate history (research only):** OKX
   `GET /api/v5/public/funding-rate-history` is typically ~90d of 8h
   prints. Hyperliquid `POST /info` `fundingHistory` is public hourly
-  and typically reachable here (independent second tape). Binance
-  USDT-M `GET /fapi/v1/fundingRate` is paginable when reachable (often
-  HTTP 451). Bybit `GET /v5/market/funding/history` is often HTTP 403
-  (CloudFront country block) from this environment. These are
-  skip-not-invent inputs for `traderstack-funding-carry`. One venue /
-  one history length is single-print and cannot promote. Daily
-  evaluation sums settlements per UTC day and omits empty days.
+  and typically reachable here (independent tape). BitMEX
+  `GET /api/v1/funding` is a public **settlement** tape (XBTUSD from
+  2016, ETHUSD from 2018; modern cadence 8h). An 800d lookback yields
+  ≥720 UTC daily sums. Use `fundingRate` only — `fundingRateDaily` is
+  a restated multiple, not a second print. Binance USDT-M
+  `GET /fapi/v1/fundingRate` is paginable when reachable (often HTTP
+  451). `data.binance.vision` monthly `fundingRate` zips can respond
+  even when fapi is 451 — not wired this session (BitMEX already
+  covers the 720-day bar). Bybit `GET /v5/market/funding/history` is
+  often HTTP 403 (CloudFront country block) from this environment.
+  These are skip-not-invent inputs for `traderstack-funding-carry`.
+  One venue / one history length is single-print and cannot promote.
+  Daily evaluation sums settlements per UTC day and omits empty days.
   Perp-spot basis is not on those endpoints and must not be invented
   from last-trade or from `fundingHistory.premium`. Deribit restates
-  8h interest every hour — not wired (would invent 8× carry).
+  8h interest every hour — not wired (would invent 8× carry). Gate
+  `from` is capped at 180d; Bitget/MEXC public history is shorter
+  than 720 UTC days from this environment.
 
 ## Robinhood Chain
 

@@ -87,7 +87,7 @@ Empty dual-print set is success.
 `traderstack-funding-carry` is the post-#108 paper slice: funding-z
 thresholds, funding-agree spot overlays, and modeled hedged
 cash-and-carry on BTC+ETH. Dual-print needs two independent funding
-venues (OKX + Hyperliquid when reachable; Binance/Bybit often
+venues (OKX + Hyperliquid + BitMEX when reachable; Binance/Bybit often
 geo-blocked). One venue is single-print and cannot promote. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy

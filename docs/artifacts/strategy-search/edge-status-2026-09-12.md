@@ -264,29 +264,124 @@ folds. Empty dual-print set is success.
 
 See `funding-carry-daily.md`.
 
+## This session — second long settlement tape (BitMEX)
+
+Highest-leverage next step after #111: find **one** additional public
+funding history that can yield ≥720 UTC daily sums for BTC+ETH
+without inventing cadence, wire it skip-not-invent, and re-run
+`traderstack-funding-carry --live --interval 1d` with the two longest
+usable venues. Empty dual-print is success. No `PAPER_PROMOTE_*`
+flip unless hard gates + dual-print + PIT basis + paper path all
+clear.
+
+### Venue probe (this environment, 2026-09-12, after #111)
+
+| venue | public path | result |
+| --- | --- | --- |
+| Binance USDT-M REST | `GET /fapi/v1/fundingRate` | **UNAVAILABLE** — HTTP 451 (already skipped) |
+| Binance Vision | `data.binance.vision` monthly `fundingRate` zips | reachable (2020-01 and 2026-08 HTTP 200) — **not wired**; BitMEX already fills the 720-day bar without zip stitching |
+| Bybit linear | `GET /v5/market/funding/history` | **UNAVAILABLE** — HTTP 403 CloudFront |
+| OKX swap | `GET /api/v5/public/funding-rate-history` | **ok** — ~90d of 8h → ~97 daily (already wired; too short for hard gates) |
+| Hyperliquid | `POST /info` `fundingHistory` | **ok** — hourly → 801 daily (already wired) |
+| BitMEX | `GET /api/v1/funding` | **ok — wired** — XBTUSD from 2016-05-14, ETHUSD from 2018-08-02; 800d window = 2402 8h prints / **801 UTC days**, no day gaps. Uses `fundingRate` only |
+| Deribit | `public/get_funding_rate_history` | reachable, **not wired** — `interest_8h` restated every hour (would invent 8×) |
+| Gate USDT | `GET /futures/usdt/funding_rate` | reachable, **not wired** — `from` capped at 180d |
+| HTX linear | `swap_historical_funding_rate` | reachable (~2150d) — **not wired**; one long tape is enough |
+| KuCoin futures | `/contract/funding-rates` | reachable, short default page (~34d) — **not wired** |
+| MEXC | `/contract/funding_rate/history` | reachable, shorter than 720 UTC days in #110 — **not wired** |
+| dYdX v4 | `/v4/historicalFunding` | reachable hourly — **not wired** |
+| Kraken Futures | `/derivatives/api/v3/historicalfundingrates` | **UNAVAILABLE** — HTTP 404 from this environment |
+| Coinbase International | `/api/v1/instruments/{id}/funding` | reachable hourly snapshots — **not wired** (cadence not a settlement tape) |
+
+Wired long second tape: **BitMEX**. `_pick_venues` still prefers the
+two longest usable tapes by mean print count (Hyperliquid hourly
+then BitMEX 8h). OKX stays a documented short tape, not blended.
+
+### Live daily print (2026-09-12, after BitMEX)
+
+`traderstack-funding-carry --live --interval 1d` (Kraken public Spot
+1d BTC+ETH, 720-bar cap 2024-09-22 → 2026-09-11 UTC; costs 10+5 bps).
+
+| series | status |
+| --- | --- |
+| Binance USDT-M funding | **skipped** — HTTP 451 |
+| Bybit linear funding | **skipped** — HTTP 403 CloudFront |
+| OKX funding | **ok** — 290 8h → 97 UTC daily (not selected; shorter than BitMEX) |
+| Hyperliquid funding | **ok** — 19199 hourly → **801** UTC daily sums |
+| BitMEX funding | **ok** — 2400 8h settlements → **801** UTC daily sums |
+| Print kind | **dual_print** (Hyperliquid primary, BitMEX second) |
+| Aligned daily bars | primary **720** / second **720** |
+| Hard gates (#96+A+B+C) | **available** (both venues ≥720) |
+| Basis | **skipped** (no PIT perp−spot series) |
+| Paper path | **false** (Kraken spot fills only) |
+| Spot-signal dual-print passers | **0** |
+| Modeled dual-print passers | `carry_hedged_sign` only |
+
+Spot-signal / overlay (every name **ineligible** on both tapes).
+Informational top-1 is the control on both:
+
+| venue | top-1 | WF excess | WF total | holdout excess |
+| --- | --- | ---: | ---: | ---: |
+| Hyperliquid | `ma_cross_10_30` (control) | −4.41% | +7.80% | +4.94% |
+| BitMEX | `ma_cross_10_30` (control) | −4.41% | +7.80% | +4.94% |
+
+Modeled hedged carry (basis skipped; **not** paper-spot executable):
+
+| id | HL WF / HO / full | BitMEX WF / HO / full | both? |
+| --- | ---: | ---: | :---: |
+| `carry_hedged_sign` | +1.72% / +3.32% / +27.70% | +2.55% / +5.32% / +46.46% | yes* |
+| `carry_hedged_abs_1bp` | −1.36% / −8.17% / −18.98% | +0.20% / −3.80% / +16.24% | no |
+| `carry_hedged_abs_3bp` | −2.42% / −4.82% / −21.50% | −0.25% / −3.45% / +13.62% | no |
+| `carry_hedged_z_1_5` | −2.88% / −8.72% / −32.95% | −2.91% / −7.43% / −29.75% | no |
+
+\*Fee-aware signs > 0 on **both** independent daily tapes. The 4h #110
+passer **survives** daily resample once the second tape is long enough
+for walk-forward folds.
+
+Carry hard-gate analog (daily funding, not a Settings unlock):
+
+| venue | available | #96 | A | B | C | combined |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| Hyperliquid (801 daily) | yes | true | true (ratio 0.87) | true (3/3) | true | **true** |
+| BitMEX (801 daily) | yes | true | true (ratio 0.46) | true (3/3) | true | **true** |
+
+Dual-print **and** hard gates are now honest. That is still **not**
+basis-aware and **not** paper-executable. `can_promote` stays false.
+**Cannot promote. No new Settings pin.**
+
+See `funding-carry-daily.md`.
+
 ## Next falsifiable experiments
 
 Do not rerun #104 / #105 / #106 / #108 / the 4h #110 funding print
-on the same windows.
+on the same windows. Do not rerun the #111 daily print with only
+OKX as the second tape.
 
 1. **Second independent funding tape.** Done in #110: Hyperliquid +
    OKX dual-print. Spot-signal passers: **0**. Modeled
    `carry_hedged_sign` cleared fee-aware signs on both 4h-aligned
    tapes and still cannot promote.
-2. **Daily resample / #96+A+B+C honesty.** This session. See above
+2. **Daily resample / #96+A+B+C honesty.** Done in #111. See above
    and `funding-carry-daily.md`.
-3. **Basis-aware carry, only if a PIT perp−spot series exists on
+3. **Second long settlement tape.** This session: BitMEX. Daily
+   dual-print + hard gates are now available. Modeled
+   `carry_hedged_sign` clears both prints and the #96+A+B+C analog
+   and still cannot promote (basis skipped; no paper path).
+4. **Basis-aware carry, only if a PIT perp−spot series exists on
    both venues.** Do not invent basis from last-trade or from
-   funding itself. Skip if the series is missing.
-4. **Paper-executable path (still `TRADING_MODE=paper`).** A paper
+   funding itself. Skip if the series is missing. This is now the
+   data-plane blocker.
+5. **Paper-executable path (still `TRADING_MODE=paper`).** A paper
    perp simulator that applies venue funding at each settlement,
    and/or a two-leg paper hedge book, plus PIT basis mark-to-market.
-   Do not add a Settings pin that implies this path exists.
-5. **Not** another daily-EMA catalog expansion on the same Kraken 720
+   Do not add a Settings pin that implies this path exists. Not
+   scaffolded this session — a second ≥720 daily tape was found.
+   This remains the execution-plane blocker.
+6. **Not** another daily-EMA catalog expansion on the same Kraken 720
    + Binance.US older-720 pair.
-6. **Not** liquidation-conditioned promotion until a public historical
+7. **Not** liquidation-conditioned promotion until a public historical
    liquidation aggregate exists (it does not today).
-7. **Not** Polymarket weather promotion until a PIT CLOB mid +
+8. **Not** Polymarket weather promotion until a PIT CLOB mid +
    official station-high tape exists (it does not today).
 
 ## Pins
@@ -297,6 +392,6 @@ on the same windows.
 | `PAPER_PROMOTE_EMA_9_21` | false | stay false |
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
-| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled 4h dual-print passer only; daily hard gates / PIT basis / paper path are not all clear — do not add a pin |
+| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; PIT basis skipped and paper path false — do not add a pin |
 
 `TRADING_MODE=paper`. No live.
