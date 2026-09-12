@@ -184,7 +184,9 @@ winner, and promotion is pinned to that catalog id
 EMA 9/21 and 12/26 (optional ADX gate) with a GARCH(1,1) vol-targeted size
 overlay under fees. Promotion requires walk-forward **total return > 0**
 and holdout **excess return > 0**. Default `PAPER_GARCH_SIZE=false` stays
-off until a report shows a winner.
+off (no GARCH-sized candidate cleared). `PAPER_PROMOTE_EMA_9_21=false` is
+the documented paper-only switch to register `ema_9_21` as the sole paper
+voter; it does not enable live.
 
 ## Roadmap
 

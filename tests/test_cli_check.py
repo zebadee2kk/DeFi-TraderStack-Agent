@@ -157,6 +157,41 @@ def test_paper_garch_size_on_warns_until_a_winner_exists() -> None:
     assert any("PAPER_GARCH_SIZE" in warning for warning in report.warnings)
 
 
+def test_promote_ema_9_21_default_is_off_and_safe() -> None:
+    report = build_report(settings())
+    assert report.safe
+    item = next(i for i in report.items if i.label == "Promote ema_9_21 as paper voter")
+    assert item.value == "no"
+
+
+def test_promote_ema_9_21_on_paper_is_safe() -> None:
+    report = build_report(settings(paper_promote_ema_9_21=True))
+    assert report.safe
+    item = next(i for i in report.items if i.label == "Promote ema_9_21 as paper voter")
+    assert item.value == "active"
+    assert "ema_9_21" in item.detail
+
+
+def test_promote_ema_9_21_ignored_outside_paper() -> None:
+    report = build_report(settings(trading_mode="shadow", paper_promote_ema_9_21=True))
+    assert not report.safe
+    item = next(i for i in report.items if i.label == "Promote ema_9_21 as paper voter")
+    assert item.value == "ignored"
+    assert any("PAPER_PROMOTE_EMA_9_21" in warning for warning in report.warnings)
+
+
+def test_promote_ema_9_21_and_searched_together_warns() -> None:
+    report = build_report(
+        settings(
+            paper_promote_ema_9_21=True,
+            paper_promote_searched_strategies=True,
+            paper_search_report_path="var/ops/does-not-exist.json",
+        )
+    )
+    assert not report.safe
+    assert any("takes precedence" in warning for warning in report.warnings)
+
+
 def test_pretrade_gate_disabled_warns() -> None:
     report = build_report(settings(pretrade_backtest_enabled=False))
     assert not report.safe

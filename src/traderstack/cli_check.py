@@ -198,6 +198,39 @@ def build_report(settings: Settings) -> ConfigReport:
                         "an edge."
                     )
 
+    # --- miles-inspired ema_9_21 paper voter ------------------------------------------
+    items.append(
+        CheckItem(
+            "Promote ema_9_21 as paper voter",
+            (
+                "active"
+                if settings.paper_promote_ema_9_21_active
+                else "ignored"
+                if settings.paper_promote_ema_9_21
+                else "no"
+            ),
+            (
+                "sole voter ema_9_21; defaults suppressed"
+                if settings.paper_promote_ema_9_21_active
+                else (
+                    f"PAPER_PROMOTE_EMA_9_21 is paper-only; TRADING_MODE={settings.trading_mode}"
+                    if settings.paper_promote_ema_9_21
+                    else "default; ema_9_21 is not a paper voter"
+                )
+            ),
+        )
+    )
+    if settings.paper_promote_ema_9_21 and settings.trading_mode != "paper":
+        warnings.append(
+            "PAPER_PROMOTE_EMA_9_21=true is ignored unless TRADING_MODE=paper. "
+            "Live/shadow do not register ema_9_21."
+        )
+    if settings.paper_promote_ema_9_21_active and settings.paper_promote_searched_strategies:
+        warnings.append(
+            "PAPER_PROMOTE_EMA_9_21=true takes precedence over "
+            "PAPER_PROMOTE_SEARCHED_STRATEGIES; only ema_9_21 is registered."
+        )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(

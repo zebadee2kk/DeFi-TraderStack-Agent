@@ -688,6 +688,12 @@ def render_miles_markdown(report: MilesSearchReport) -> str:
                 "**`PAPER_GARCH_SIZE` stays false.** No GARCH-sized candidate "
                 "cleared the bar (vol-targeted size increased turnover and fee drag)."
             )
+        if any(row.promoted and row.candidate_id == "ema_9_21" for row in report.candidates):
+            lines.append(
+                "Register `ema_9_21` as a paper voter only via "
+                "`PAPER_PROMOTE_EMA_9_21=true` (default false; `TRADING_MODE=paper` "
+                "only). This report does not flip that flag and does not enable live."
+            )
         lines.append(
             "1h robustness (not in the promotion average) is in the per-series "
             "tables. A large daily holdout on one asset is one tail, not a "

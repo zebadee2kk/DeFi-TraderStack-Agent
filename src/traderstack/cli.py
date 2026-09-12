@@ -189,9 +189,15 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
     from traderstack.research.search import research_fee_bps
 
     # Promotion off (default): keep the paper-research ensemble from main.
-    # Promotion on: only gate-clearing searched voters; never a silent
-    # fallback to the unpromoted MA baseline under the promotion flag.
-    if settings.paper_promote_searched_strategies:
+    # PAPER_PROMOTE_EMA_9_21 (paper only) registers the documented Miles
+    # daily winner and takes precedence over the #89 search-report gate.
+    # PAPER_PROMOTE_SEARCHED_STRATEGIES: only gate-clearing searched voters;
+    # never a silent fallback to the unpromoted MA baseline.
+    if settings.paper_promote_ema_9_21_active:
+        from traderstack.research.miles_candidates import build_ema_9_21_paper_ensemble
+
+        ensemble = build_ema_9_21_paper_ensemble()
+    elif settings.paper_promote_searched_strategies:
         ensemble = build_paper_ensemble(settings)
     else:
         ensemble = paper_research_ensemble(settings)

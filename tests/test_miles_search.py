@@ -10,9 +10,13 @@ from traderstack.candles import Candle
 from traderstack.config import Settings
 from traderstack.indicators import average_directional_index
 from traderstack.models import Side
+from traderstack.cli import build_pretrade_gate
 from traderstack.research.miles_candidates import (
+    EMA_9_21_STRATEGY_ID,
     EmaCrossoverStrategy,
+    build_ema_9_21_paper_ensemble,
     default_miles_candidates,
+    ema_9_21_paper_voter,
 )
 from traderstack.research.miles_cli import build_parser, run
 from traderstack.research.miles_search import (
@@ -289,3 +293,70 @@ def test_garch_candidates_are_scored_not_skipped() -> None:
     garch = next(row for row in report.candidates if row.candidate_id == "ema_9_21_garch")
     assert garch.mean_wf_total_return is not None
     assert garch.family == "ema_cross_garch"
+
+
+def test_ema_9_21_paper_voter_is_only_the_pre_registered_winner() -> None:
+    voter = ema_9_21_paper_voter()
+    assert voter.strategy_id == EMA_9_21_STRATEGY_ID
+    assert voter.fast_span == 9
+    assert voter.slow_span == 21
+    assert voter.adx_threshold is None
+    ensemble = build_ema_9_21_paper_ensemble()
+    assert ensemble.suppress_defaults is True
+    assert ensemble.min_agreeing == 1
+    assert ensemble.paper_research_strategy is None
+    assert len(ensemble.extra_voters) == 1
+    assert ensemble.extra_voters[0] == voter
+
+
+def test_promote_ema_9_21_default_is_off_and_paper_only() -> None:
+    off = settings()
+    assert off.paper_promote_ema_9_21 is False
+    assert off.paper_promote_ema_9_21_active is False
+    live = settings(trading_mode="live", paper_promote_ema_9_21=True)
+    shadow = settings(trading_mode="shadow", paper_promote_ema_9_21=True)
+    paper = settings(trading_mode="paper", paper_promote_ema_9_21=True)
+    assert live.paper_promote_ema_9_21_active is False
+    assert shadow.paper_promote_ema_9_21_active is False
+    assert paper.paper_promote_ema_9_21_active is True
+
+
+def test_promote_ema_9_21_does_not_move_risk_policy_version() -> None:
+    off = settings(paper_promote_ema_9_21=False, paper_fee_bps=10.0)
+    on = settings(paper_promote_ema_9_21=True, paper_fee_bps=99.0)
+    assert derive_policy_version(off) == derive_policy_version(on)
+
+
+def test_build_pretrade_gate_registers_only_ema_9_21_when_flagged() -> None:
+    cfg = settings(paper_promote_ema_9_21=True, pretrade_backtest_enabled=True)
+    gate = build_pretrade_gate(cfg)
+    ensemble = gate.backtester.ensemble
+    assert ensemble.suppress_defaults is True
+    assert ensemble.min_agreeing == 1
+    assert [getattr(voter, "strategy_id") for voter in ensemble.extra_voters] == [
+        EMA_9_21_STRATEGY_ID
+    ]
+
+
+def test_build_pretrade_gate_ema_9_21_takes_precedence_over_search_flag() -> None:
+    cfg = settings(
+        paper_promote_ema_9_21=True,
+        paper_promote_searched_strategies=True,
+        paper_search_report_path="var/ops/does-not-exist.json",
+        pretrade_backtest_enabled=True,
+    )
+    gate = build_pretrade_gate(cfg)
+    ids = [getattr(voter, "strategy_id") for voter in gate.backtester.ensemble.extra_voters]
+    assert ids == [EMA_9_21_STRATEGY_ID]
+
+
+def test_build_pretrade_gate_ignores_ema_9_21_flag_outside_paper() -> None:
+    live = settings(
+        trading_mode="live",
+        paper_promote_ema_9_21=True,
+        paper_research_mode=False,
+        pretrade_backtest_enabled=True,
+    )
+    gate = build_pretrade_gate(live)
+    assert gate.backtester.ensemble.extra_voters == ()
+    assert gate.backtester.ensemble.suppress_defaults is False

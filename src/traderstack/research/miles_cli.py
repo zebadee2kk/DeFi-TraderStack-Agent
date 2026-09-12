@@ -3,7 +3,7 @@
 Loads Kraken Spot OHLC (JSON files or the public REST downloader), scores the
 pre-registered EMA 9/21 and 12/26 catalog with optional ADX gates and GARCH
 vol-targeted sizing, and writes JSON + Markdown. It never enables
-``PAPER_GARCH_SIZE`` or paper-voter promotion.
+``PAPER_GARCH_SIZE`` or ``PAPER_PROMOTE_EMA_9_21``.
 """
 
 from __future__ import annotations
@@ -36,7 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Score the Miles-inspired EMA 9/21 and 12/26 catalog (optional ADX "
             "gate, optional GARCH vol-targeted size) with fee-aware walk-forward "
-            "+ holdout. Writes a ranked report. Does not enable PAPER_GARCH_SIZE."
+            "+ holdout. Writes a ranked report. Does not enable "
+            "PAPER_GARCH_SIZE or PAPER_PROMOTE_EMA_9_21."
         )
     )
     source = parser.add_mutually_exclusive_group(required=True)
@@ -163,7 +164,7 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
             f"{status}: wrote {args.output_json} and {args.output_md} "
             f"(selected={report.selected_candidate_id or 'none'}; "
             f"promoted={', '.join(report.promoted_candidate_ids) or 'none'}). "
-            "PAPER_GARCH_SIZE is unchanged."
+            "PAPER_GARCH_SIZE and PAPER_PROMOTE_EMA_9_21 are unchanged."
         )
     return args.output_json, args.output_md
 

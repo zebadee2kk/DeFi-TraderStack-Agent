@@ -296,6 +296,16 @@ class Settings(BaseSettings):
     paper_garch_size: bool = False
     paper_garch_target_vol: float = Field(default=0.50, gt=0)
 
+    # --- miles-inspired ema_9_21 paper voter ---
+    # Documented paper-only switch. When TRADING_MODE=paper *and* this is
+    # true, the pre-trade ensemble registers only the pre-registered daily
+    # winner `ema_9_21` (EMA 9/21, no ADX, no GARCH). Default false. Not
+    # RiskEngine policy -- flipping it must not move policy_version. Takes
+    # precedence over PAPER_PROMOTE_SEARCHED_STRATEGIES. Ignored on
+    # live/shadow. Does not enable live trading. Does not flip
+    # PAPER_GARCH_SIZE.
+    paper_promote_ema_9_21: bool = False
+
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue
     # orders/fills and NAV on this interval; a failed pass or NAV drift beyond
@@ -468,6 +478,12 @@ class Settings(BaseSettings):
     def paper_garch_size_active(self) -> bool:
         """GARCH size overlay applies only on the paper path when opted in."""
         return self.trading_mode == "paper" and self.paper_garch_size
+
+    # --- miles-inspired ema_9_21 paper voter ---
+    @property
+    def paper_promote_ema_9_21_active(self) -> bool:
+        """Register ema_9_21 as the sole paper voter only on the paper path."""
+        return self.trading_mode == "paper" and self.paper_promote_ema_9_21
 
     # --- paper-only Polymarket weather research ---
     @property

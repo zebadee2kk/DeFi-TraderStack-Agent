@@ -25,7 +25,7 @@ without activating the venv.
 | `traderstack-trace` | Read-only: prints the full ordered runtime-event trace for one `decision_id` from Postgres (requires `--persistent-events` to have been running). `traderstack-trace <decision_id> [--limit N]`. |
 | `traderstack-research` | Runs the research harness end-to-end over a candle history (JSON file via `--candles`, or live from Kraken via `--symbol`): backtest with realistic costs, walk-forward, required baselines, and a performance attribution report. `--json` for machine-readable output. |
 | `traderstack-strategy-search` | Offline catalog search: scores the expanded pre-registered catalog (MA / momentum / mean-reversion + vol-regime filters; optional funding / OI / liquidation series) on Kraken charts-spot (~180d 1h) or public Spot OHLC (720-bar cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Promotion additionally requires WF **total** return > 0. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
-| `traderstack-miles-search` | Miles-inspired catalog search: EMA 9/21 and 12/26 (optional ADX gate) × optional GARCH vol-targeted sizing, scored on Kraken Spot OHLC (daily and 1h, 720-bar public cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout. Writes `docs/artifacts/strategy-search/miles-inspired-report.md`. Never flips `PAPER_GARCH_SIZE`. |
+| `traderstack-miles-search` | Miles-inspired catalog search: EMA 9/21 and 12/26 (optional ADX gate) × optional GARCH vol-targeted sizing, scored on Kraken Spot OHLC (daily and 1h, 720-bar public cap) with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout. Writes `docs/artifacts/strategy-search/miles-inspired-report.md`. Never flips `PAPER_GARCH_SIZE` or `PAPER_PROMOTE_EMA_9_21`. |
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
@@ -175,7 +175,13 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
   editing to see exactly what turned on.
 - Leave `PAPER_GARCH_SIZE=false` unless `traderstack-miles-search` shows
   walk-forward total return > 0 and holdout excess return > 0 after fees.
-  The overlay does not relax `RiskEngine`; it can only reduce size.
+  The overlay does not relax `RiskEngine`; it can only reduce size. No
+  GARCH-sized candidate cleared that bar on the committed daily window.
+- Leave `PAPER_PROMOTE_EMA_9_21=false` unless you intend to register
+  **only** the pre-registered daily winner `ema_9_21` as the paper
+  pre-trade voter. Paper-only; ignored on live/shadow. Does not enable
+  live. Does not flip `PAPER_GARCH_SIZE`. Takes precedence over
+  `PAPER_PROMOTE_SEARCHED_STRATEGIES`.
 - Prefer a secret manager or your platform's env-injection mechanism over a
   plaintext `.env` file for anything beyond a local paper-trading sandbox
   (`docs/INFRASTRUCTURE.md`, "Secrets"). If you must use a file, restrict its
@@ -408,9 +414,16 @@ Kraken's public OHLC endpoint cannot retrieve bars older than the most recent
 
 Promotion (research only): walk-forward **mean total return > 0 after fees**
 **and** holdout **mean excess return > 0 after fees**, plus min trades.
-`PAPER_GARCH_SIZE` stays **false** until a report shows a winner. When on,
-`RiskEngine` may only *reduce* approved notional. Leave the flag false if
-nothing cleared — that is not an edge.
+`PAPER_GARCH_SIZE` stays **false**. No GARCH-sized candidate cleared the
+bar (vol-targeted size increased turnover and fee drag). When on,
+`RiskEngine` may only *reduce* approved notional.
+
+`PAPER_PROMOTE_EMA_9_21` (default **false**) is the documented paper-only
+switch to register **only** `ema_9_21` as a pre-trade voter (`extra_voters`,
+`suppress_defaults=True`, `min_agreeing=1`). It does not enable live
+trading. Live/shadow ignore the flag. It does not flip `PAPER_GARCH_SIZE`.
+If both this and `PAPER_PROMOTE_SEARCHED_STRATEGIES` are true, `ema_9_21`
+wins and `traderstack-check-config` warns.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with
 the simple baselines from `docs/EVALUATION-FRAMEWORK.md`:

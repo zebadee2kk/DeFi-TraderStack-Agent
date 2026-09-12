@@ -5,8 +5,9 @@ low-ADX chop is skipped. GARCH is composed *only* as a size overlay:
 ``weight *= clip(target_vol / forecast_vol, 0.25, 2.0)``. GARCH never
 chooses a side.
 
-These are standalone voters. Search scores them under fees; nothing here
-registers as a paper voter by itself.
+These are standalone voters. Search scores them under fees. The only
+runtime registration path is ``PAPER_PROMOTE_EMA_9_21`` (paper only),
+which wires ``ema_9_21`` and nothing else.
 """
 
 from __future__ import annotations
@@ -18,7 +19,9 @@ from traderstack.candles import Candle
 from traderstack.garch import GarchForecast
 from traderstack.indicators import average_directional_index, ema
 from traderstack.models import Side
-from traderstack.strategies import Regime, StrategySignal
+from traderstack.strategies import Regime, StrategyEnsemble, StrategySignal
+
+EMA_9_21_STRATEGY_ID = "ema_9_21"
 
 CandidateFamily = Literal["ema_cross", "ema_cross_garch"]
 
@@ -138,3 +141,21 @@ def default_miles_candidates() -> tuple[SearchCandidate, ...]:
             )
         )
     return tuple(out)
+
+
+def ema_9_21_paper_voter() -> EmaCrossoverStrategy:
+    """The pre-registered daily winner. No ADX gate, no GARCH size."""
+    return EmaCrossoverStrategy(
+        strategy_id=EMA_9_21_STRATEGY_ID,
+        fast_span=9,
+        slow_span=21,
+    )
+
+
+def build_ema_9_21_paper_ensemble() -> StrategyEnsemble:
+    """Sole paper voter: `ema_9_21`. Defaults and the MA baseline stay off."""
+    return StrategyEnsemble(
+        extra_voters=(ema_9_21_paper_voter(),),
+        min_agreeing=1,
+        suppress_defaults=True,
+    )
