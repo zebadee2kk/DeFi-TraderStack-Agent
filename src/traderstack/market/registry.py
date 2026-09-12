@@ -27,9 +27,10 @@ candle history, intelligence fetchers) that in one wrapper:
 - a ``health()`` report and Prometheus counters/gauges, following the pattern
   in ``traderstack.health``
 
-Streaming venue feeds (Kraken ticker/book) are NOT wrapped here - they have
-their own reconnect/backoff/staleness handling in ``market.adapters`` because
-a circuit breaker and a request timeout don't apply to a long-lived
+Streaming venue and paper-research feeds (Kraken ticker/book, Binance USDT-M
+liquidations, optional Binance/Bybit bookTicker) are NOT wrapped here - they
+have their own reconnect/backoff/staleness handling in ``market.streaming``
+because a circuit breaker and a request timeout don't apply to a long-lived
 subscription the same way.
 """
 

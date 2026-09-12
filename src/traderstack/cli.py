@@ -49,16 +49,19 @@ from traderstack.market.adapters import (
     KrakenTickerProvider,
 )
 from traderstack.market.altfins import AltFinsSignalProvider
+from traderstack.market.book_ticker import BookTickerProvider
 from traderstack.market.intelligence_providers import (
     CryptoPanicNewsProvider,
     DuneOnChainProvider,
     LunarCrushSocialProvider,
 )
 from traderstack.market.kraken_candles import KrakenCandleProvider
+from traderstack.market.liquidations import BinanceForceOrderProvider
 from traderstack.market.perplexity import PerplexityNewsProvider
 from traderstack.market.providers import (
     BookSnapshotProvider,
     CandleHistoryProvider,
+    EdgeFeedCollector,
     ReferencePriceProvider,
     VenueMarketDataProvider,
 )
@@ -476,6 +479,40 @@ def build_service(
                 stale_after_seconds=settings.kraken_stale_after_seconds,
             )
 
+    # --- paper-research edge data plane ---
+    # Streaming collectors, same reconnect loop as Kraken. Not ProviderRegistry
+    # wrapped (long-lived subscriptions). Never an execution venue.
+    liquidations: BinanceForceOrderProvider | None = None
+    book_ticker: BookTickerProvider | None = None
+    edge_collectors: list[EdgeFeedCollector] = []
+    if settings.binance_liq_enabled:
+        liquidations = BinanceForceOrderProvider(
+            url=settings.binance_liq_url,
+            assets=settings.assets,
+            window_seconds=settings.binance_liq_window_seconds,
+            baseline_seconds=settings.binance_liq_baseline_seconds,
+            count_cap=settings.binance_liq_count_cap,
+            max_age_seconds=settings.binance_liq_max_age_seconds,
+            max_reconnect_attempts=settings.edge_max_reconnect_attempts,
+            backoff_base_seconds=settings.edge_backoff_base_seconds,
+            backoff_max_seconds=settings.edge_backoff_max_seconds,
+            stale_after_seconds=settings.binance_liq_stale_after_seconds,
+        )
+        edge_collectors.append(liquidations)
+    if settings.book_ticker_enabled:
+        book_ticker = BookTickerProvider(
+            venue=settings.book_ticker_venue,
+            url=settings.book_ticker_url,
+            assets=settings.assets,
+            quote=settings.book_ticker_quote,
+            max_age_seconds=settings.book_ticker_max_age_seconds,
+            max_reconnect_attempts=settings.edge_max_reconnect_attempts,
+            backoff_base_seconds=settings.edge_backoff_base_seconds,
+            backoff_max_seconds=settings.edge_backoff_max_seconds,
+            stale_after_seconds=settings.book_ticker_stale_after_seconds,
+        )
+        edge_collectors.append(book_ticker)
+
     # --- providers (Epic 2/3): provider health, quota and caching wrapper ------
     # --- paper reference resilience ---
     # Paper uses a longer cache and last-good reuse so a CoinGecko 429 does
@@ -543,6 +580,9 @@ def build_service(
         candle_sink=candle_sink,  # persistence (Epic 2)
         submitter=submitter,  # execution hardening (Epic 8)
         book=book,  # providers (Epic 2)
+        # --- paper-research edge data plane ---
+        liquidations=liquidations,
+        book_ticker=book_ticker,
     )
     return ContinuousPaperService(
         runtime=runtime,
@@ -562,6 +602,8 @@ def build_service(
         portfolio_reconciler=portfolio_reconciler,
         ledger_store=ledger_store,
         reconcile_interval_seconds=settings.reconcile_interval_seconds,
+        # --- paper-research edge data plane ---
+        edge_collectors=tuple(edge_collectors),
     )
 
 

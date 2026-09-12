@@ -729,6 +729,45 @@ themselves deterministic feature readers, not further model calls.
 `traderstack-check-config` reports the current mode, model, budgets and
 whether `ANTHROPIC_API_KEY` is present (never its value).
 
+## Paper-research edge feeds (Binance liquidations, optional bookTicker)
+
+Opt-in **paper-research** streams. They are **not** execution venues: enabling them does not add Binance or Bybit order routing, and `RiskEngine` does not read their features to size, side, or authorize a trade. They exist so the feature vector (and therefore the meta-agent's withhold-only context) can include liquidation-cascade intensity and a second-venue mid divergence.
+
+Both feeds use the same reconnect/backoff loop as Kraken ticker/book (`traderstack.market.streaming`). They are **not** wrapped by `ProviderRegistry` — a request timeout and circuit breaker do not fit a long-lived subscription. A collector that dies after reconnect exhaustion logs `edge_collector_stopped` and the cycle continues with missing `edge` fields; it does **not** halt trading.
+
+**Enable in paper mode** (after `cp .env.example .env` and `traderstack-check-config`):
+
+```bash
+# Binance USDT-M all-market liquidations → AssetFeatureVector.edge.liq_*
+BINANCE_LIQ_ENABLED=true
+# Optional. Default is the public forceOrder stream; leave as-is unless you have a reason.
+# BINANCE_LIQ_URL=wss://fstream.binance.com/ws/!forceOrder@arr
+# Rolling window (seconds) for the current notional/count, and the longer baseline
+# used for z-scores. Counts are bounded to [0, 1] via BINANCE_LIQ_COUNT_CAP.
+# BINANCE_LIQ_WINDOW_SECONDS=60
+# BINANCE_LIQ_BASELINE_SECONDS=900
+# BINANCE_LIQ_COUNT_CAP=20
+
+# Optional second-venue bookTicker → edge.cross_venue_mid_divergence_bps
+# Venue is binance (USDT-M combined bookTicker) or bybit (v5 linear tickers).
+BOOK_TICKER_ENABLED=true
+BOOK_TICKER_VENUE=binance
+# BOOK_TICKER_VENUE=bybit
+```
+
+`traderstack-check-config` reports both flags. `TRADING_MODE` stays `paper`. Do not point Hummingbot or `VENUE_FEED` at Binance/Bybit as a side effect of turning these on — the primary tick remains Kraken or `robinhood_chain`.
+
+**How to read the features.** On an accepted cycle the audit line's `feature_vector.edge` carries:
+
+| Field | Meaning |
+|---|---|
+| `liq_notional_long_z` / `liq_notional_short_z` | Current-window long/short liquidation notional vs. the baseline window totals, clipped to [-5, 5]. `null` until at least two baseline windows exist. A Binance `SELL` force order is a **long** liquidation; `BUY` is a **short** liquidation. |
+| `liq_count_long` / `liq_count_short` | Event count in the current window, bounded to [0, 1] as `min(n, CAP) / CAP`. |
+| `cross_venue_mid_divergence_bps` | `abs(second_venue_mid - primary_mid) / primary_mid * 10_000`. Kraken is typically USD and the second venue is USDT, so a small basis is expected. |
+| `cross_venue_mid_source` | `binance` or `bybit`. |
+
+Prometheus: `traderstack_stream_messages_total`, `traderstack_stream_reconnects_total`, `traderstack_stream_last_message_unixtime`, `traderstack_liq_window_notional_usd`, `traderstack_liq_window_zscore`, `traderstack_cross_venue_mid_divergence_bps`.
+
 ## Provider circuit breakers and quotas
 
 Every external provider — reference prices (CoinGecko, CoinMarketCap), candle

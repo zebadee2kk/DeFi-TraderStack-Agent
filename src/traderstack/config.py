@@ -98,6 +98,32 @@ class Settings(BaseSettings):
     kraken_book_enabled: bool = False
     kraken_book_depth: int = Field(default=10, gt=0)
 
+    # --- paper-research edge data plane ---------------------------------------
+    # Opt-in research feeds. Never an execution venue: they do not add Binance
+    # or Bybit order routing, and RiskEngine does not read their features to
+    # size or authorize a trade. Streaming reconnect uses the shared loop in
+    # market.streaming (same pattern as Kraken ticker/book).
+    binance_liq_enabled: bool = False
+    binance_liq_url: str = "wss://fstream.binance.com/ws/!forceOrder@arr"
+    binance_liq_window_seconds: float = Field(default=60.0, gt=0)
+    binance_liq_baseline_seconds: float = Field(default=900.0, gt=0)
+    binance_liq_count_cap: int = Field(default=20, gt=0)
+    # 0 disables application-level staleness (liquidations are sparse; WS pings
+    # remain the liveness signal).
+    binance_liq_stale_after_seconds: float = Field(default=0.0, ge=0)
+    binance_liq_max_age_seconds: float = Field(default=0.0, ge=0)
+    book_ticker_enabled: bool = False
+    book_ticker_venue: Literal["binance", "bybit"] = "binance"
+    # Empty uses the venue default (Binance USDT-M combined bookTicker, or
+    # Bybit v5 linear public). Not an execution endpoint.
+    book_ticker_url: str = ""
+    book_ticker_quote: str = "USDT"
+    book_ticker_max_age_seconds: float = Field(default=5.0, gt=0)
+    book_ticker_stale_after_seconds: float = Field(default=30.0, gt=0)
+    edge_max_reconnect_attempts: int = Field(default=10, gt=0)
+    edge_backoff_base_seconds: float = Field(default=1.0, gt=0)
+    edge_backoff_max_seconds: float = Field(default=30.0, gt=0)
+
     trading_mode: Literal["paper", "shadow", "live"] = "paper"
     # Which venue supplies the primary execution-quality tick stream.
     venue_feed: Literal["kraken", "robinhood_chain"] = "kraken"

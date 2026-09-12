@@ -92,6 +92,38 @@ def build_report(settings: Settings) -> ConfigReport:
                 + ". The runtime fails closed (raises) at startup without these."
             )
 
+    # --- paper-research edge data plane ----------------------------------------------
+    items.append(
+        CheckItem(
+            "Paper-research edge feeds",
+            "informational only — not an execution venue",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  Binance USDT-M liquidations",
+            _flag(settings.binance_liq_enabled),
+            "research/risk context; RiskEngine does not size from these",
+        )
+    )
+    book_ticker_value = settings.book_ticker_venue if settings.book_ticker_enabled else "no"
+    items.append(
+        CheckItem(
+            "  Second-venue bookTicker",
+            book_ticker_value,
+            "cross-venue mid feature only" if settings.book_ticker_enabled else "",
+        )
+    )
+    if settings.trading_mode != "paper" and (
+        settings.binance_liq_enabled or settings.book_ticker_enabled
+    ):
+        warnings.append(
+            "BINANCE_LIQ_ENABLED/BOOK_TICKER_ENABLED are paper-research features "
+            "only; they do not add Binance/Bybit order routing. TRADING_MODE is "
+            f"{settings.trading_mode!r} — confirm these feeds are not being treated "
+            "as an execution venue."
+        )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(

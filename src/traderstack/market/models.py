@@ -9,6 +9,10 @@ class MarketSource(StrEnum):
     COINGECKO = "coingecko"
     COINMARKETCAP = "coinmarketcap"
     ROBINHOOD_CHAIN = "robinhood_chain"
+    # --- paper-research edge data plane ---
+    # Research/risk-context feeds only. Never an execution venue.
+    BINANCE = "binance"
+    BYBIT = "bybit"
 
 
 class MarketTick(BaseModel):
@@ -96,3 +100,62 @@ class BookSnapshot(BaseModel):
             level.price * level.qty for level in self.asks if level.price <= ask_ceiling
         )
         return (bid_depth, ask_depth)
+
+
+# --- paper-research edge data plane -------------------------------------------
+#
+# Liquidation events and second-venue top-of-book are paper-research features.
+# They never route orders and are not consumed by RiskEngine to size or
+# authorize a trade. Adapters reduce untrusted venue payloads to these typed
+# values before anything reaches the pipeline.
+
+
+class LiquidationSide(StrEnum):
+    """Which side of the book was force-closed.
+
+    A Binance ``forceOrder`` with ``S=SELL`` is a long liquidation (the
+    exchange sells the bankrupt long). ``S=BUY`` is a short liquidation.
+    """
+
+    LONG = "long"
+    SHORT = "short"
+
+
+class LiquidationEvent(BaseModel):
+    source: MarketSource
+    symbol: str
+    asset: str
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    side: LiquidationSide
+    qty: float = Field(gt=0)
+    price: float = Field(gt=0)
+    notional: float = Field(gt=0)
+
+
+class LiquidationWindowSnapshot(BaseModel):
+    """Rolling-window liquidation features for one asset. Research context only."""
+
+    asset: str
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    source_id: str = "binance_liq"
+    liq_notional_long_z: float | None = Field(default=None, ge=-5, le=5)
+    liq_notional_short_z: float | None = Field(default=None, ge=-5, le=5)
+    liq_count_long: float = Field(default=0, ge=0, le=1)
+    liq_count_short: float = Field(default=0, ge=0, le=1)
+    long_notional: float = Field(default=0, ge=0)
+    short_notional: float = Field(default=0, ge=0)
+
+
+class BookTicker(BaseModel):
+    """Best bid/ask from a second venue. Paper feature only — not a venue tick."""
+
+    source: MarketSource
+    symbol: str
+    asset: str
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    bid: float = Field(gt=0)
+    ask: float = Field(gt=0)
+
+    @property
+    def mid(self) -> float:
+        return (self.bid + self.ask) / 2

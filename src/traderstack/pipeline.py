@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
-from traderstack.features import AssetFeatureVector, MarketFeatures
+from traderstack.features import AssetFeatureVector, MarketFeatures, ResearchEdgeFeatures
 from traderstack.intelligence import merge_external_intelligence
 from traderstack.intelligence_orchestrator import ExternalIntelligence
 from traderstack.market.models import MarketTick, PriceDivergence, ReferencePrice
@@ -61,6 +61,12 @@ class VerticalSlicePipeline:
         portfolio: PortfolioSnapshot,
         candles: tuple[Candle, ...] | None = None,
         intelligence: ExternalIntelligence | None = None,
+        # --- paper-research edge data plane ---
+        # Optional; informational. Merged onto the feature vector after market
+        # data is accepted. RiskEngine does not read these fields to size or
+        # authorize a trade.
+        edge: ResearchEdgeFeatures | None = None,
+        edge_source_ids: tuple[str, ...] = (),
     ) -> PipelineResult:
         asset = tick.symbol.split("/", 1)[0].upper()
         now = datetime.now(UTC)
@@ -119,6 +125,15 @@ class VerticalSlicePipeline:
             feature_vector.source_ids = [*source_ids, *feature_vector.source_ids]
         else:
             feature_vector = AssetFeatureVector(asset=asset, market=market, source_ids=source_ids)
+
+        # --- paper-research edge data plane ---
+        if edge is not None:
+            feature_vector = feature_vector.model_copy(
+                update={
+                    "edge": edge,
+                    "source_ids": [*feature_vector.source_ids, *edge_source_ids],
+                }
+            )
 
         if self.require_external_intelligence and (intelligence is None or intelligence.is_empty):
             return PipelineResult(

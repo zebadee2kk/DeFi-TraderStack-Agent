@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -105,3 +106,45 @@ async def test_service_marks_without_execution() -> None:
     await service._run_symbol_safely("ETH/USD")
 
     assert book.marks_usd["ETH"] == pytest.approx(1_000)
+
+
+class _ExplodingCollector:
+    feed_name = "test_edge"
+
+    async def collect(self) -> None:
+        raise RuntimeError("research feed died")
+
+
+@pytest.mark.asyncio
+async def test_edge_collector_failure_does_not_halt_the_paper_cycle() -> None:
+    tick = MarketTick(
+        source=MarketSource.KRAKEN,
+        symbol="BTC/USD",
+        observed_at=datetime.now(UTC),
+        bid=19_990,
+        ask=20_010,
+        last=20_000,
+    )
+    result = RuntimeResult(
+        tick=tick,
+        references=[],
+        pipeline=PipelineResult(accepted_market_data=False),
+    )
+    runtime = FakeRuntime(result)
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    service = ContinuousPaperService(
+        runtime=runtime,  # type: ignore[arg-type]
+        portfolio=book,
+        symbols=("BTC/USD",),
+        cycle_interval_seconds=0,
+        error_backoff_seconds=0,
+        edge_collectors=(_ExplodingCollector(),),
+    )
+
+    async def _stop_soon() -> None:
+        await asyncio.sleep(0.05)
+        service.stop()
+
+    await asyncio.gather(service.run(), _stop_soon())
+    assert runtime.calls
+    assert book.marks_usd["BTC"] == pytest.approx(20_000)

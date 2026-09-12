@@ -13,6 +13,7 @@ from traderstack.health import RuntimeHealth
 
 # --- risk plane (Epic 7) ---
 from traderstack.killswitch import KillSwitch
+from traderstack.market.providers import EdgeFeedCollector
 from traderstack.metrics import (  # --- observability (Epic 9) ---
     record_event_sink_failure,
     record_portfolio_snapshot,
@@ -68,6 +69,10 @@ class ContinuousPaperService:
     portfolio_reconciler: PortfolioReconcilerProtocol | None = None
     ledger_store: LedgerPersistence | None = None
     reconcile_interval_seconds: float = 60.0
+    # --- paper-research edge data plane ---
+    # Background WS collectors (Binance liquidations / optional bookTicker).
+    # Failure here is informational: missing features, not a halt.
+    edge_collectors: tuple[EdgeFeedCollector, ...] = ()
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
     _cycle: int = field(default=0, init=False)  # observability (Epic 9): monotonic cycle counter
     _last_reconcile_at: float | None = field(default=None, init=False)
@@ -75,9 +80,36 @@ class ContinuousPaperService:
     def stop(self) -> None:
         self._stop_event.set()
 
+    async def _run_edge_collector(self, collector: EdgeFeedCollector) -> None:
+        try:
+            await collector.collect()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - research feed; never halt the paper cycle.
+            _log.warning(
+                "edge_collector_stopped",
+                feed=collector.feed_name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
     async def run(self) -> None:
         if not self.symbols:
             raise ValueError("at least one symbol is required")
+        collector_tasks = [
+            asyncio.create_task(
+                self._run_edge_collector(collector), name=f"edge:{collector.feed_name}"
+            )
+            for collector in self.edge_collectors
+        ]
+        try:
+            await self._run_cycles()
+        finally:
+            for task in collector_tasks:
+                task.cancel()
+            if collector_tasks:
+                await asyncio.gather(*collector_tasks, return_exceptions=True)
+
+    async def _run_cycles(self) -> None:
         while not self._stop_event.is_set():
             # --- execution hardening (Epic 8) ---
             await self._maybe_reconcile()
