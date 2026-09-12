@@ -164,6 +164,18 @@ def test_xs_momentum_is_report_only() -> None:
     assert "SOL reported" in item.detail
 
 
+def test_donchian_breakout_is_report_only() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Donchian / channel-breakout search")
+    assert item.value == "report-only"
+    assert "traderstack-donchian-breakout" in item.detail
+    assert "PAPER_PROMOTE_*" in item.detail
+    assert "Kraken" in item.detail
+    assert "Binance.US" in item.detail
+    assert "paper-executable" in item.detail
+    assert "SOL reported" in item.detail
+
+
 def test_funding_carry_is_report_only() -> None:
     report = build_report(settings())
     item = next(i for i in report.items if i.label == "Funding / carry search")

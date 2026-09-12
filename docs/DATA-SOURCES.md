@@ -90,6 +90,13 @@ it is relied upon.
   is skipped, not zero-filled and not ranked on a two-asset
   subset. No exogenous series. Input to
   `traderstack-xs-momentum`.
+- **Donchian / channel breakout (research only):** built from the
+  same public Spot daily OHLC — Kraken `GET /0/public/OHLC`
+  (720-bar cap) and Binance.US older-720 (`api.binance.us` when
+  `api.binance.com` is HTTP 451). Channel uses prior N-day high/low
+  (bars `[t-N, t)`); ATR buffer uses Wilder ATR(14) through t−1.
+  A missing/short series is skipped, not zero-filled. No exogenous
+  series. Input to `traderstack-donchian-breakout`.
 
 ## Robinhood Chain
 

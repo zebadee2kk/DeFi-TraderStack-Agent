@@ -97,6 +97,12 @@ traderstack-relative-value = "traderstack.research.relative_value_cli:main"
 # a gate. Paper spot executable. Never flips PAPER_PROMOTE_*. Empty
 # dual-print is success. Not an EMA or residual reprint.
 traderstack-xs-momentum = "traderstack.research.cross_sectional_momentum_cli:main"
+# Donchian / channel-breakout at frozen N in {20, 55, 100} (optional
+# ATR-14 buffer on lo 20/55). Same #96+A+B+C dual-print bar as #104
+# (Kraken 720 + Binance.US older-720). SOL reported, not a gate.
+# Paper spot executable. Never flips PAPER_PROMOTE_*. Empty
+# dual-print is success. Not an EMA / residual / XS reprint.
+traderstack-donchian-breakout = "traderstack.research.donchian_breakout_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.

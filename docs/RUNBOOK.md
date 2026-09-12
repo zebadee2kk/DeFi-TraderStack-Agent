@@ -36,7 +36,8 @@ without activating the venv.
 | `traderstack-funding-carry` | Paper-only funding-z threshold + hedged cash-and-carry catalog on BTC+ETH. Aligns Kraken public Spot (default 4h) to public funding-rate history (OKX + Hyperliquid + BitMEX when reachable; Binance/Bybit probed and skipped if geo-blocked). Dual-print only if two **independent funding venues** cover BTC and ETH; one venue is **single-print** and **cannot promote**. Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars exist on **each** venue. Writes `docs/artifacts/strategy-search/funding-carry.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. |
 | `traderstack-relative-value` | Paper-only BTC−ETH relative-value residual: fade/follow daily `r_BTC − r_ETH` at frozen \|z\| ≥ 1.0 / 1.5 / 2.0 (lookback 20). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/btc-eth-relative-value.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA reprint. |
 | `traderstack-xs-momentum` | Paper-only BTC+ETH+SOL cross-sectional momentum: long top-1 / optional short bottom-1 by trailing N-day return (N in {21, 63, 126}; optional vol-scaled ranking; `ls` dollar-neutral or `lo` long-only). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH/SOL. Writes `docs/artifacts/strategy-search/cross-sectional-momentum.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA or residual reprint. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-donchian-breakout` | Paper-only Donchian / channel breakout: long-only or long/short on the prior N-day high/low (N in {20, 55, 100}; optional ATR(14) buffer on `lo` 20/55). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/donchian-breakout.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, or XS reprint. |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
@@ -829,6 +830,40 @@ retune.
 ```
 
 See `docs/artifacts/strategy-search/cross-sectional-momentum.md` and
+the 2026-09-12 status memo
+`docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
+
+## Donchian / channel breakout
+
+#117 left the BTC+ETH+SOL cross-sectional dual-print empty
+(informational `xs_mom_lo_vol_63` was ETH-carried / #96 FAIL).
+`traderstack-donchian-breakout` is the next **non-carry / non-EMA /
+non-residual / non-XS** family: long-only or long/short on a
+**pre-registered** prior N-day Donchian channel. Not another
+lookback retune.
+
+- Same #96+A+B+C combined bar on Kraken public Spot **daily** 720
+  **and** the #102 Binance.US older-720 (non-overlapping).
+- Multi-asset rule (frozen before scoring): BTC and ETH WF/holdout
+  signs as before; SOL is reported and is **not** a gate.
+  Equal-weight portfolio metrics are not used.
+- Ranking key (frozen): Kraken BTC+ETH mean holdout excess among
+  dual-print passers. Venues are not averaged. The informational
+  control `ma_cross_10_30` cannot enter the passer set.
+- Decision at bar t uses the prior channel (bars `[t-N, t)`). Fill
+  at t+1 open. Exit is `opposite_band_same_n`.
+- Paper-executable on Kraken spot (`BTC/USD` + `ETH/USD`; SOL
+  optional).
+- This command never flips `PAPER_PROMOTE_*` and does not add a
+  new pin unless a committed report names a dual-print passer
+  (default false if added). Empty dual-print set is success.
+
+```bash
+.venv/bin/traderstack-donchian-breakout --live
+.venv/bin/traderstack-donchian-breakout --live --no-binance
+```
+
+See `docs/artifacts/strategy-search/donchian-breakout.md` and
 the 2026-09-12 status memo
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 
