@@ -52,10 +52,10 @@ from traderstack.research.binance_spot import BINANCE_TAKER_BPS_NOTE
 from traderstack.research.daily_candidates import default_expanded_harder_gates_candidates
 from traderstack.research.daily_robustness import KRAKEN_DAILY_CAP_NOTE, is_yahoo_symbol
 from traderstack.research.harder_gates import (
-    CandidateHarderResult,
     MULTIWINDOW_BARS,
     MULTIWINDOW_COUNT,
     RANKING_KEY,
+    CandidateHarderResult,
     _pct,
     _ratio,
     _verdict,
@@ -130,7 +130,7 @@ def holdout_blind_prefix(
         return candles
     if holdout_fraction >= 1:
         return ()
-    holdout = max(1, int(round(len(candles) * holdout_fraction)))
+    holdout = max(1, round(len(candles) * holdout_fraction))
     prefix_len = len(candles) - holdout
     if prefix_len <= 0:
         return ()
@@ -335,7 +335,8 @@ def _kraken_only(histories: dict[str, tuple[Candle, ...]]) -> dict[str, tuple[Ca
     return {
         key: candles
         for key, candles in histories.items()
-        if candles and not is_yahoo_symbol(candles[0].symbol)
+        if candles
+        and not is_yahoo_symbol(candles[0].symbol)
         and candles[0].symbol.upper() not in BINANCE_TO_SCORE_SYMBOL
     }
 
@@ -350,26 +351,30 @@ def _recommendation(
     target_binance: PrintCandidateRow | None,
 ) -> str:
     lines = [
-        f"**Keep `{promote_flag}=false`.** This second print is "
-        "report-only. A multi-venue bar was not pre-registered, so a "
-        "Binance combined-pass cannot enter the promotion average and "
-        "cannot flip the pin. An honest FAIL is success.",
+        (
+            f"**Keep `{promote_flag}=false`.** This second print is "
+            "report-only. A multi-venue bar was not pre-registered, so a "
+            "Binance combined-pass cannot enter the promotion average and "
+            "cannot flip the pin. An honest FAIL is success."
+        ),
         "",
-        f"- Kraken second 720-bar era: "
-        f"{'available' if kraken_second.available else 'UNAVAILABLE'}"
-        + (
-            f" ({kraken_second.fail_closed_reason})"
-            if kraken_second.fail_closed_reason
-            else ""
-        )
-        + ".",
-        f"- Kraken `{KRAKEN_PREFIX_RULE}`: "
-        f"{prefix.bars_btc} BTC / {prefix.bars_eth} ETH bars "
-        f"({prefix.first} → {prefix.last}). Same venue; not independent.",
-        f"- Binance `{BINANCE_SLICE_RULE}`: "
-        f"{'scored' if binance.available else 'FAIL-CLOSED'} "
-        f"({binance.venue}; {binance.bars_btc} BTC / {binance.bars_eth} ETH; "
-        f"{binance.first} → {binance.last}).",
+        (
+            f"- Kraken second 720-bar era: "
+            f"{'available' if kraken_second.available else 'UNAVAILABLE'}"
+            + (f" ({kraken_second.fail_closed_reason})" if kraken_second.fail_closed_reason else "")
+            + "."
+        ),
+        (
+            f"- Kraken `{KRAKEN_PREFIX_RULE}`: "
+            f"{prefix.bars_btc} BTC / {prefix.bars_eth} ETH bars "
+            f"({prefix.first} → {prefix.last}). Same venue; not independent."
+        ),
+        (
+            f"- Binance `{BINANCE_SLICE_RULE}`: "
+            f"{'scored' if binance.available else 'FAIL-CLOSED'} "
+            f"({binance.venue}; {binance.bars_btc} BTC / {binance.bars_eth} ETH; "
+            f"{binance.first} → {binance.last})."
+        ),
     ]
     if target_binance is None:
         lines.append(
@@ -385,9 +390,7 @@ def _recommendation(
             f"combined=**{_verdict(target_binance.combined)}** "
             "(cannot promote)."
         )
-    lines.append(
-        f"- `{promote_flag}` stays default **false**. Do not enable live."
-    )
+    lines.append(f"- `{promote_flag}` stays default **false**. Do not enable live.")
     return "\n".join(lines)
 
 
@@ -468,9 +471,7 @@ def run_second_print(
         overlaps_primary_window=True,
         overlaps_primary_holdout=prefix_overlaps_holdout,
         fail_closed_reason=(
-            None
-            if prefix_available
-            else "Kraken BTC/ETH daily missing; prefix not scored"
+            None if prefix_available else "Kraken BTC/ETH daily missing; prefix not scored"
         ),
     )
 
@@ -557,12 +558,8 @@ def run_second_print(
             venue=binance_slice.venue,
         )
 
-    target_prefix = next(
-        (row for row in prefix_rows if row.candidate_id == candidate_id), None
-    )
-    target_binance = next(
-        (row for row in binance_rows if row.candidate_id == candidate_id), None
-    )
+    target_prefix = next((row for row in prefix_rows if row.candidate_id == candidate_id), None)
+    target_binance = next((row for row in binance_rows if row.candidate_id == candidate_id), None)
     binance_combined = bool(target_binance is not None and target_binance.combined)
 
     honesty = (
@@ -650,7 +647,7 @@ def _gate_table(row: PrintCandidateRow | None) -> list[str]:
         f"| B Multi-window | **{_verdict(row.gate_b_pass)}** |",
         f"| C Fee stress | **{_verdict(row.gate_c_pass)}** |",
         f"| Combined | **{_verdict(row.combined)}** |",
-        f"| can promote | **no** |",
+        "| can promote | **no** |",
         (
             f"| combined rank (in this print) | "
             f"{row.combined_rank if row.combined_rank is not None else '—'} |"
@@ -682,10 +679,7 @@ def _slice_lines(meta: SliceMeta) -> list[str]:
 
 def _passer_table(rows: list[PrintCandidateRow]) -> list[str]:
     lines = [
-        (
-            "| id | #96 | A | B | C | combined | mean HO | BTC HO | ETH HO | "
-            "can promote |"
-        ),
+        ("| id | #96 | A | B | C | combined | mean HO | BTC HO | ETH HO | can promote |"),
         "| --- | :---: | :---: | :---: | :---: | :---: | ---: | ---: | ---: | :---: |",
     ]
     if not rows:
@@ -712,7 +706,7 @@ def render_second_print_markdown(report: SecondPrintReport) -> str:
             f"`{report.promote_flag}`, default **false**)"
         ),
         (
-            f"Also re-scored (informational): "
+            "Also re-scored (informational): "
             + ", ".join(f"`{item}`" for item in report.candidate_ids)
             + "."
         ),
@@ -762,8 +756,10 @@ def render_second_print_markdown(report: SecondPrintReport) -> str:
     lines.extend(
         [
             "",
-            "This is **not** invented from Yahoo, charts-spot, or a shuffled "
-            "offset inside the same 720. Public OHLC cannot page backward.",
+            (
+                "This is **not** invented from Yahoo, charts-spot, or a shuffled "
+                "offset inside the same 720. Public OHLC cannot page backward."
+            ),
             "",
             "### 1b. Holdout-blind prefix (same venue; not independent)",
             "",

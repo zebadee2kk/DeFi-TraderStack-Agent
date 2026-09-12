@@ -247,5 +247,19 @@ Binance.US. Yahoo is not re-averaged. Same #96+A+B+C gates and 10+5
 bps (gate C 20+10). An honest FAIL is success.
 `PAPER_PROMOTE_EMA_9_21_ADX15` stays false.
 
+On the 2026-09-12 run (primary Kraken first bar 2024-09-22, last
+2026-09-11):
+
+- Kraken second 720: **UNAVAILABLE**.
+- Kraken prefix 576 bars (2024-09-22 → 2026-04-20): `ema_9_21_adx15`
+  combined **FAIL** (#96 FAIL on BTC WF −4.58%; B FAIL insufficient
+  bars; C FAIL). Same venue; not independent.
+- Binance.US Spot 720 (2022-10-03 → 2024-09-21, no overlap):
+  `ema_9_21_adx15` #96/A/B/C/combined all **FAIL**. Mean HO excess
+  **−15.80%** (BTC HO −29.21%, ETH −2.39%). WF totals were positive
+  (BTC +14.95% / ETH +3.03%) — beating a falling holdout while
+  losing the holdout is not an edge. The other three #99/#100
+  passers also combined-FAIL.
+
 See `ema-9-21-adx15-second-print.md`.
 

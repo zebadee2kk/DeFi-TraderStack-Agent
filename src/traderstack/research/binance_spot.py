@@ -79,12 +79,10 @@ def parse_binance_klines(
     """Parse a klines JSON array. Drops today's UTC bar when still open."""
     if isinstance(payload, dict):
         message = payload.get("msg") or payload.get("message") or str(payload)
-        raise ValueError(f"Binance klines error: {message}")
+        raise TypeError(f"Binance klines error: {message}")
     if not isinstance(payload, list):
         raise TypeError("Binance klines payload must be an array")
-    candles = [
-        parse_binance_kline(row, symbol=symbol, interval=interval) for row in payload
-    ]
+    candles = [parse_binance_kline(row, symbol=symbol, interval=interval) for row in payload]
     candles.sort(key=lambda candle: candle.opened_at)
     if drop_uncommitted_today and candles:
         today = datetime.now(UTC).date()
@@ -135,11 +133,7 @@ async def download_binance_spot_daily(
         end_ms = int(last_open * 1000.0)
 
     last_error = "no Binance Spot host attempted"
-    hosts = (
-        (("injected", ""),)
-        if client is not None
-        else tuple((base, base) for base in bases)
-    )
+    hosts = (("injected", ""),) if client is not None else tuple((base, base) for base in bases)
     for label, base in hosts:
         owned = client is None
         active = client or httpx.AsyncClient(base_url=base, timeout=30)
@@ -155,8 +149,7 @@ async def download_binance_spot_daily(
             notes.append(f"{symbol}: {last_error}")
             if exc.response.status_code == 451:
                 notes.append(
-                    f"{base or label} is geo-restricted (HTTP 451); "
-                    "not treated as confirmation."
+                    f"{base or label} is geo-restricted (HTTP 451); not treated as confirmation."
                 )
             if not owned:
                 break

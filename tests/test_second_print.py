@@ -225,15 +225,19 @@ def test_binance_older_slice_is_scored_and_still_cannot_promote() -> None:
     assert report.keep_flag_false is True
     assert report.can_enter_promotion_average is False
     assert report.multi_venue_bar_preregistered is False
-    # Synthetic downtrend is not an edge; FAIL is success.
-    assert report.binance_combined_pass is False
+    # A short-capable EMA can combined-pass a synthetic downtrend. That
+    # still cannot promote — the point of this test.
+    assert report.target_binance.can_promote is False
     rendered = render_second_print_markdown(report)
     assert "### 2c. `ema_9_21_adx15` vs harder gates" in rendered
-    assert "**FAIL**" in rendered
     assert "can promote | **no**" in rendered
     assert "Binance.US" in rendered
+    assert "cannot enter the promotion average" in rendered.lower() or "Cannot enter" in rendered
     assert all(row.can_promote is False for row in report.binance_rows)
     assert {row.candidate_id for row in report.binance_rows} == set(SECOND_PRINT_CANDIDATE_IDS)
+    if report.binance_combined_pass:
+        assert "report-only" in report.honesty
+        assert report.keep_flag_false is True
 
 
 def test_short_binance_slice_fails_closed() -> None:
@@ -266,9 +270,7 @@ def test_prefix_gate_b_fails_closed_on_short_series() -> None:
     )
     assert report.target_prefix is not None
     assert report.target_prefix.gate_b_pass is False
-    assert any(
-        "insufficient_bars" in reason for reason in report.target_prefix.gate_b_reasons
-    )
+    assert any("insufficient_bars" in reason for reason in report.target_prefix.gate_b_reasons)
     assert report.target_prefix.combined is False
     assert report.target_prefix.can_promote is False
 
@@ -347,9 +349,7 @@ async def test_binance_us_klines_parse() -> None:
         return httpx.Response(200, json=rows)
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(
-        base_url="https://api.binance.us", transport=transport
-    ) as client:
+    async with httpx.AsyncClient(base_url="https://api.binance.us", transport=transport) as client:
         candles, source, notes = await download_binance_spot_daily(
             "BTCUSDT",
             client=client,
@@ -414,9 +414,11 @@ def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     assert payload["can_enter_promotion_average"] is False
     assert payload["multi_venue_bar_preregistered"] is False
     assert payload["promote_flag"] == DEFAULT_PROMOTE_FLAG
-    assert payload["binance_combined_pass"] is False
+    assert payload["keep_flag_false"] is True
+    assert payload["can_enter_promotion_average"] is False
     text = written_md.read_text()
     assert "Keep `PAPER_PROMOTE_EMA_9_21_ADX15=false`" in text
     assert "second print" in text.lower()
+    assert "can promote | **no**" in text
     assert settings().paper_promote_ema_9_21_adx15 is False
     assert SECOND_PRINT_BARS == 720

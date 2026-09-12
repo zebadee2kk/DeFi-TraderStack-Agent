@@ -130,7 +130,9 @@ def _load_binance_files(paths: list[Path]) -> tuple[dict[str, tuple[Candle, ...]
     return histories, notes
 
 
-def _load_live_binance(end_before: datetime) -> tuple[dict[str, tuple[Candle, ...]], str | None, list[str]]:
+def _load_live_binance(
+    end_before: datetime,
+) -> tuple[dict[str, tuple[Candle, ...]], str | None, list[str]]:
     try:
         return asyncio.run(
             download_binance_spot_histories(
