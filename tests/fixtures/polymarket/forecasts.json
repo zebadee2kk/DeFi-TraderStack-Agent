@@ -1,0 +1,26 @@
+{
+  "miami:2026-09-12": {
+    "city_slug": "miami",
+    "event_date": "2026-09-12",
+    "high_f": 92.4,
+    "source": "open_meteo",
+    "issued_at": "2026-09-11T12:00:00+00:00",
+    "sigma_f": 2.5
+  },
+  "honolulu:2026-09-12": {
+    "city_slug": "honolulu",
+    "event_date": "2026-09-12",
+    "high_f": 86.5,
+    "source": "open_meteo",
+    "issued_at": "2026-09-11T12:00:00+00:00",
+    "sigma_f": 2.5
+  },
+  "phoenix:2026-09-12": {
+    "city_slug": "phoenix",
+    "event_date": "2026-09-12",
+    "high_f": 100.0,
+    "source": "open_meteo",
+    "issued_at": "2026-09-11T12:00:00+00:00",
+    "sigma_f": 2.5
+  }
+}

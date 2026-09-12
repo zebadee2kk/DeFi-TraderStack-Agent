@@ -153,6 +153,15 @@ running that profile anywhere network-reachable by others.
 9. CoinMarketCap MCP/API — market data and independent verification
 10. LunarCrush MCP — social/narrative intelligence
 
+**Polymarket weather (opt-in paper research).**
+`traderstack-polymarket-weather-paper` compares public NWP highs to
+Polymarket CLOB mids and writes would-trade intents to
+`var/audit/polymarket_weather_paper.jsonl`. It is a separate process from
+`traderstack-paper`, requires `TRADING_MODE=paper`, respects the kill
+switch, and has no private-key or CLOB-order surface. Claimed weather-market
+win rates are unproven; see `docs/EVALUATION-FRAMEWORK.md` and
+`docs/RUNBOOK.md` ("Polymarket weather paper research").
+
 ## Validation path
 
 Historical backtest → leakage/look-ahead checks → walk-forward validation →

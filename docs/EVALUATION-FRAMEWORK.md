@@ -158,3 +158,43 @@ estimates them, and the report says so — and orders that were submitted but ne
 reconciled to a fill are excluded rather than assumed to have traded.
 
 **Not yet implemented:** Freqtrade research integration, on-chain/social/narrative feature pipelines, news/event classifier, regime classifier v1 (the existing `RegimeClassifier` is a simple MVP version, not the Epic 4 deliverable), survivorship-bias review, and shadow-live/tiny-capital-pilot stages (5–6).
+
+## Polymarket weather — validation A/B
+
+`traderstack-polymarket-weather-paper` records *hypotheses* (model probability
+vs CLOB mid). It does not demonstrate a durable edge. Treat any external claim
+of a high weather-market win rate (often quoted without fees, without a
+resolution-station match, and without a holdout) as marketing until the gates
+below pass on *this* ledger.
+
+### Why skepticism is the default
+
+- Polymarket weather markets are short-dated binary/bucket contracts. A few
+  lucky days dominate a small sample.
+- NWP highs are not the same random variable as the market's official
+  observation station / rounding / timezone / "as of" cutoff.
+- CLOB mid is not a fill. Spread + taker fees + depth routinely erase a
+  5–10¢ "edge".
+- `POLYMARKET_WEATHER_SIGMA_F` (default 2.5°F) is an operator prior, not a
+  calibrated CRPS/skill score for that city and lead time.
+- Selection: only parsed, allowlisted, liquid-looking markets enter the
+  ledger. That is not a random sample of weather contracts.
+
+### Required A/B before anyone talks about promotion
+
+Run these as a research notebook / offline job against the paper ledger plus
+an independent resolution series. This module does **not** implement them
+yet — that is intentional. Shipping a calculator is not shipping a validated
+strategy.
+
+| Gate | Treatment (A) | Control (B) | Pass rule (pre-registered) |
+|---|---|---|---|
+| 1. Historical point-in-time | Intents that would have fired using only forecasts + mids available *before* market close | Always-pass / fade-the-mid / random side at the same notional | A excess vs B after fees+spread, p-value / CI pre-declared, n large enough for the horizon |
+| 2. Walk-forward | Fit `MIN_EDGE`, `SIGMA_F`, haircut on train folds only | Frozen defaults from fold 0 | Mean OOS excess > 0 after costs; no fold may peek at later resolutions |
+| 3. Paper A/B (live data, no orders) | Current edge rule → `would_trade` rows | Same markets, shuffled side or "always hold" | Compare *resolved* PnL of A vs B over ≥ one full season per city, not one heat wave |
+| 4. Station match | Same | Same | Drop any market whose resolution metadata (ASOS id, midnight-to-midnight local, °F rounding) cannot be paired to the NWP series used at decision time |
+| 5. Cost honesty | Mid ± half-spread − documented Polymarket taker fee | Fill at mid (forbidden as a primary metric) | Report both; promotion uses the conservative one |
+
+Until gates 1–5 are green, the only allowed statement is: "the paper ledger
+contains would-trade intents." Do not add a live CLOB path as a side effect
+of a later change.
