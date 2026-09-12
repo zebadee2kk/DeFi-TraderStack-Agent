@@ -98,3 +98,18 @@ paper candles to daily (`1d` / 1440m). Do not claim this daily edge on a
 1h runtime.
 
 See `miles-inspired-report.md`.
+
+## Daily robustness (`traderstack-daily-robustness`)
+
+Stress-test of the #93 daily winner plus dual-momentum and buy-the-dip
+mean-reversion on the longest **Kraken public Spot daily** window the API
+allows (720 committed bars, ~2 years). `since` cannot unlock older Kraken
+prints. Optional Yahoo Finance `BTC-USD` / `ETH-USD` daily is a longer
+**non-Kraken** A/B and never enters the promotion average.
+
+Promotion is stricter than #93: **BTC and ETH** must both have fee-aware
+walk-forward mean total return > 0, plus holdout mean excess > 0. The
+three-asset mean that let ETH dominate #93's holdout is not enough.
+
+See `daily-robustness-report.md`.
+

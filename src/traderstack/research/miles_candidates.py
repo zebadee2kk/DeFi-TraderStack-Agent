@@ -16,7 +16,7 @@ strategy.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from traderstack.candles import Candle
 from traderstack.garch import GarchForecast
@@ -26,7 +26,19 @@ from traderstack.strategies import Regime, StrategyEnsemble, StrategySignal
 
 EMA_9_21_STRATEGY_ID = "ema_9_21"
 
-CandidateFamily = Literal["ema_cross", "ema_cross_garch"]
+
+class DirectionStrategy(Protocol):
+    """Any frozen voter used by Miles / daily robustness search."""
+
+    def evaluate(self, candles: tuple[Candle, ...], regime: Regime) -> StrategySignal: ...
+
+
+CandidateFamily = Literal[
+    "ema_cross",
+    "ema_cross_garch",
+    "dual_momentum",
+    "buy_the_dip",
+]
 
 
 @dataclass(frozen=True)
@@ -82,10 +94,11 @@ class EmaCrossoverStrategy:
 @dataclass(frozen=True)
 class SearchCandidate:
     candidate_id: str
-    family: CandidateFamily
+    family: str
     label: str
     params: dict[str, Any]
-    strategy: EmaCrossoverStrategy
+    # Miles catalog uses EmaCrossoverStrategy; daily robustness adds others.
+    strategy: DirectionStrategy
     garch_sizing: bool = False
 
 
