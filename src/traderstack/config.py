@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     hummingbot_api_password: SecretStr | None = None
     hummingbot_account_name: str = "paper_account"
     hummingbot_connector_name: str = "kraken_paper_trade"
-    # Provider credentials (runtime-injected; never committed). A missing key
-    # simply leaves that provider out of the intelligence set.
+    # Provider credentials (runtime-injected; never committed). A missing or
+    # blank key simply leaves that provider out of the intelligence set.
     coingecko_api_key: SecretStr | None = None
     coinmarketcap_api_key: SecretStr | None = None
     dune_api_key: SecretStr | None = None

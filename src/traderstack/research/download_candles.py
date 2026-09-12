@@ -32,57 +32,19 @@ import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import httpx
 
 from traderstack.candles import Candle, interval_to_seconds
+from traderstack.market.kraken_candles import (
+    INTERVAL_MINUTES as _INTERVAL_MINUTES,
+    KRAKEN_REST_BASE_URL,
+    fetch_ohlc_page,
+    kraken_pair as _kraken_pair,
+    parse_ohlc_row,
+)
 
-KRAKEN_REST_BASE_URL = "https://api.kraken.com"
-KRAKEN_OHLC_PATH = "/0/public/OHLC"
 MAX_CANDLES_PER_CALL = 720
-
-# Kraken's `interval` query parameter is in minutes and only accepts this fixed set.
-_INTERVAL_MINUTES: dict[str, int] = {
-    "1m": 1,
-    "5m": 5,
-    "15m": 15,
-    "30m": 30,
-    "1h": 60,
-    "4h": 240,
-    "1d": 1440,
-    "1w": 10080,
-}
-
-
-def _kraken_pair(symbol: str) -> str:
-    base, _, quote = symbol.upper().partition("/")
-    if not quote:
-        raise ValueError(f"symbol must be formatted BASE/QUOTE, got {symbol!r}")
-    return f"{base}{quote}"
-
-
-async def fetch_ohlc_page(
-    client: httpx.AsyncClient, *, pair: str, interval_minutes: int, since: int | None
-) -> tuple[list[list[Any]], int]:
-    """One call to Kraken's public OHLC endpoint; returns (rows, last-cursor)."""
-    params: dict[str, str | int] = {"pair": pair, "interval": interval_minutes}
-    if since is not None:
-        params["since"] = since
-    response = await client.get(KRAKEN_OHLC_PATH, params=params)
-    response.raise_for_status()
-    payload = response.json()
-    errors = payload.get("error") or []
-    if errors:
-        raise RuntimeError(f"Kraken OHLC error: {errors}")
-    result = dict(payload["result"])
-    last = int(result.pop("last"))
-    if len(result) != 1:
-        raise TypeError(f"unexpected Kraken OHLC result shape: {sorted(result)}")
-    (rows,) = result.values()
-    if not isinstance(rows, list):
-        raise TypeError("unexpected Kraken OHLC row payload")
-    return rows, last
 
 
 async def download_candles(
@@ -117,17 +79,8 @@ async def download_candles(
                 break
             new_count = 0
             for row in rows:
-                timestamp = int(row[0])
-                candle = Candle(
-                    symbol=symbol.upper(),
-                    interval=resolution,
-                    opened_at=datetime.fromtimestamp(timestamp, tz=UTC),
-                    open=float(row[1]),
-                    high=float(row[2]),
-                    low=float(row[3]),
-                    close=float(row[4]),
-                    volume=float(row[6]),
-                )
+                candle = parse_ohlc_row(row, symbol=symbol, resolution=resolution)
+                timestamp = int(candle.opened_at.timestamp())
                 if timestamp not in collected:
                     new_count += 1
                 collected[timestamp] = candle

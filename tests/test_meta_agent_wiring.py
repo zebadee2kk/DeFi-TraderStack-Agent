@@ -153,6 +153,12 @@ def test_no_client_is_built_in_advisory_mode_without_a_key() -> None:
     assert build_meta_reviewer(settings) is None
 
 
+def test_no_client_is_built_in_advisory_mode_with_a_blank_key() -> None:
+    settings = Settings(meta_agent_mode="advisory", anthropic_api_key="", kill_switch=False)
+
+    assert build_meta_reviewer(settings) is None
+
+
 def test_veto_mode_without_a_key_fails_at_startup() -> None:
     settings = Settings(meta_agent_mode="veto", anthropic_api_key=None, kill_switch=False)
 
