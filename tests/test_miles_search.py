@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 
 from traderstack.candles import Candle
+from traderstack.cli import build_pretrade_gate
 from traderstack.config import Settings
 from traderstack.indicators import average_directional_index
 from traderstack.models import Side
-from traderstack.cli import build_pretrade_gate
 from traderstack.research.miles_candidates import (
     EMA_9_21_STRATEGY_ID,
     EmaCrossoverStrategy,
@@ -333,9 +333,7 @@ def test_build_pretrade_gate_registers_only_ema_9_21_when_flagged() -> None:
     ensemble = gate.backtester.ensemble
     assert ensemble.suppress_defaults is True
     assert ensemble.min_agreeing == 1
-    assert [getattr(voter, "strategy_id") for voter in ensemble.extra_voters] == [
-        EMA_9_21_STRATEGY_ID
-    ]
+    assert [voter.strategy_id for voter in ensemble.extra_voters] == [EMA_9_21_STRATEGY_ID]
 
 
 def test_build_pretrade_gate_ema_9_21_takes_precedence_over_search_flag() -> None:
@@ -346,7 +344,7 @@ def test_build_pretrade_gate_ema_9_21_takes_precedence_over_search_flag() -> Non
         pretrade_backtest_enabled=True,
     )
     gate = build_pretrade_gate(cfg)
-    ids = [getattr(voter, "strategy_id") for voter in gate.backtester.ensemble.extra_voters]
+    ids = [voter.strategy_id for voter in gate.backtester.ensemble.extra_voters]
     assert ids == [EMA_9_21_STRATEGY_ID]
 
 
