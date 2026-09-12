@@ -6,8 +6,13 @@ holdout expansion (slower EMAs, a tiny dual-mom / dip grid, asset-local
 and BTC-overlay MA risk-off, two GARCH size overlays).
 ``default_expanded_harder_gates_candidates`` is the post-#97 harder-gates
 grid (more ADX, faster/slower EMAs, SMA200 variants, dual-mom, dip+vol).
-Each grid is frozen before any Kraken window is scored. Do not grow a
-list to chase a winner.
+``default_dual_print_search_candidates`` is the post-#102 expansion of
+that grid (more EMA/ADX, SMA100/200 risk-off, dual-mom, dip+vol, and
+candle-only vol-regime wrappers). Liquidation / funding / OI voters
+are not instantiated unless an aligned series is supplied — they are
+skipped, not zero-filled, on the Kraken / Binance.US Spot OHLC path.
+Each grid is frozen before any window is scored. Do not grow a list
+to chase a winner.
 
 GARCH never chooses a side. ``PAPER_GARCH_SIZE`` stays false unless a
 GARCH-sized candidate clears the bar in a committed report
@@ -22,6 +27,7 @@ from datetime import datetime
 from traderstack.candles import Candle
 from traderstack.indicators import momentum, moving_average, realized_volatility, zscore
 from traderstack.models import Side
+from traderstack.research.candidates import vol_regime_agrees
 from traderstack.research.miles_candidates import EmaCrossoverStrategy, SearchCandidate
 from traderstack.strategies import Regime, StrategySignal
 
@@ -221,6 +227,33 @@ class ReferenceMaRiskOffStrategy:
         return signal
 
 
+@dataclass(frozen=True)
+class VolRegimeAgreeStrategy:
+    """Inner EMA signal, flattened when classified vol/trend regime disagrees.
+
+    Candle-only. Uses the same ``vol_regime_agrees`` rule as the #89
+    catalog wrappers. Liquidation-z is not applied here (no aligned
+    historical series on the daily Spot OHLC path).
+    """
+
+    strategy_id: str
+    inner: EmaCrossoverStrategy
+    family: str = "ema_cross"
+
+    def evaluate(self, candles: tuple[Candle, ...], regime: Regime) -> StrategySignal:
+        signal = self.inner.evaluate(candles, regime)
+        if signal.side is None:
+            return signal
+        if not vol_regime_agrees(self.family, signal.side, regime):
+            return _flat_signal(
+                self.strategy_id,
+                candles,
+                regime,
+                f"vol-regime {regime} disagrees with {signal.side}",
+            )
+        return signal
+
+
 def _ema(
     candidate_id: str,
     *,
@@ -287,6 +320,39 @@ def _ema_ma_riskoff(
             "risk_off": "asset_sma",
         },
         strategy=MaRiskOffStrategy(strategy_id=candidate_id, inner=inner, ma_span=ma_span),
+    )
+
+
+def _ema_vol_regime(
+    candidate_id: str,
+    *,
+    fast: int,
+    slow: int,
+    adx_threshold: float | None = None,
+) -> SearchCandidate:
+    inner = EmaCrossoverStrategy(
+        strategy_id=candidate_id,
+        fast_span=fast,
+        slow_span=slow,
+        adx_threshold=adx_threshold,
+    )
+    parts = [f"EMA {fast}/{slow}"]
+    if adx_threshold is not None:
+        parts.append(f"ADX>{adx_threshold:g}")
+    parts.append("vol-regime agree (candle-only)")
+    return SearchCandidate(
+        candidate_id=candidate_id,
+        family="ema_cross_vol_regime",
+        label=" × ".join(parts),
+        params={
+            "fast_span": fast,
+            "slow_span": slow,
+            "adx_threshold": adx_threshold,
+            "garch_sizing": False,
+            "strategy_id": candidate_id,
+            "vol_regime_filter": True,
+        },
+        strategy=VolRegimeAgreeStrategy(strategy_id=candidate_id, inner=inner),
     )
 
 
@@ -649,4 +715,147 @@ def default_expanded_harder_gates_candidates(
     )
     if ids != expected:
         raise RuntimeError("expanded harder-gates catalog drifted from the frozen id list")
+    return tuple(catalog)
+
+
+# --- dual-print search catalog (frozen before any Kraken / Binance pull) ---
+# Superset of the #99 expanded harder-gates grid. Do not grow, shrink, or
+# reorder after seeing a live print. Overlay BTC-SMA names are appended
+# only when a venue-local BTC daily series is bound.
+DUAL_PRINT_SEARCH_CORE_IDS: tuple[str, ...] = EXPANDED_HARDER_GATES_CORE_IDS + (
+    "ema_6_19",
+    "ema_10_30",
+    "ema_15_45",
+    "ema_21_63",
+    "ema_9_21_adx12",
+    "ema_12_26_adx12",
+    "ema_9_21_adx16",
+    "ema_12_26_adx16",
+    "ema_8_21_adx15",
+    "ema_20_50_adx15",
+    "ema_9_21_ma100_riskoff",
+    "ema_12_26_ma100_riskoff",
+    "ema_9_21_adx15_ma200_riskoff",
+    "dual_mom_8_40",
+    "dual_mom_12_90",
+    "dual_mom_21_252",
+    "dip_mr_30_1_5_vol",
+    "dip_mr_20_1_25_vol",
+    "ema_9_21_vol_regime",
+    "ema_12_26_vol_regime",
+)
+DUAL_PRINT_SEARCH_OVERLAY_IDS: tuple[str, ...] = EXPANDED_HARDER_GATES_OVERLAY_IDS + (
+    "ema_8_21_btc_ma200_riskoff",
+    "ema_13_34_btc_ma200_riskoff",
+)
+DUAL_PRINT_SEARCH_GRID_NOTE = (
+    "Pre-registered dual-print catalog (frozen before any Kraken or "
+    "Binance.US pull). Superset of the #99 expanded harder-gates grid "
+    "(K=45 core) plus more EMA pairs (6/19, 10/30, 15/45, 21/63), ADX 12/16 "
+    "on 9/21 and 12/26, ADX15 on 8/21 and 20/50, asset-local SMA100 "
+    "risk-off on 9/21 and 12/26, SMA200 risk-off on 9/21+ADX15, dual-mom "
+    "8/40 12/90 21/252, dip+vol lookback 30 and z=1.25, and candle-only "
+    "vol-regime wrappers on ema_9_21 / ema_12_26. BTC SMA200 overlays "
+    "on 9/21, 12/26, 20/50, 8/21, and 13/34 when a venue-local BTC daily "
+    "series is bound. Liquidation / funding / OI feature voters are not "
+    "in this K: no aligned historical series is available on public "
+    "Spot OHLC, and they are skipped rather than zero-filled. SOL is "
+    "reported, not a gate. Do not grow this list after seeing PnL. "
+    "PAPER_PROMOTE_* stays false unless a committed dual-print report "
+    "names a paper-only pin and an operator flips it."
+)
+
+
+def default_dual_print_search_candidates(
+    *,
+    btc_overlay: tuple[Candle, ...] | None = None,
+) -> tuple[SearchCandidate, ...]:
+    """Frozen dual-print catalog. Do not grow after seeing PnL."""
+    catalog: list[SearchCandidate] = [
+        *default_expanded_harder_gates_candidates(),
+        _ema("ema_6_19", fast=6, slow=19),
+        _ema("ema_10_30", fast=10, slow=30),
+        _ema("ema_15_45", fast=15, slow=45),
+        _ema("ema_21_63", fast=21, slow=63),
+        _ema("ema_9_21_adx12", fast=9, slow=21, adx_threshold=12.0),
+        _ema("ema_12_26_adx12", fast=12, slow=26, adx_threshold=12.0),
+        _ema("ema_9_21_adx16", fast=9, slow=21, adx_threshold=16.0),
+        _ema("ema_12_26_adx16", fast=12, slow=26, adx_threshold=16.0),
+        _ema("ema_8_21_adx15", fast=8, slow=21, adx_threshold=15.0),
+        _ema("ema_20_50_adx15", fast=20, slow=50, adx_threshold=15.0),
+        _ema_ma_riskoff("ema_9_21_ma100_riskoff", fast=9, slow=21, ma_span=100),
+        _ema_ma_riskoff("ema_12_26_ma100_riskoff", fast=12, slow=26, ma_span=100),
+        _ema_ma_riskoff(
+            "ema_9_21_adx15_ma200_riskoff",
+            fast=9,
+            slow=21,
+            ma_span=200,
+            adx_threshold=15.0,
+        ),
+        _dual_mom("dual_mom_8_40", fast_lookback=8, slow_lookback=40),
+        _dual_mom("dual_mom_12_90", fast_lookback=12, slow_lookback=90),
+        _dual_mom("dual_mom_21_252", fast_lookback=21, slow_lookback=252),
+        _dip(
+            "dip_mr_30_1_5_vol",
+            lookback=30,
+            entry_z=1.5,
+            vol_lookback=20,
+            baseline_vol_lookback=60,
+            vol_multiple=1.5,
+        ),
+        _dip(
+            "dip_mr_20_1_25_vol",
+            lookback=20,
+            entry_z=1.25,
+            vol_lookback=20,
+            baseline_vol_lookback=60,
+            vol_multiple=1.5,
+        ),
+        _ema_vol_regime("ema_9_21_vol_regime", fast=9, slow=21),
+        _ema_vol_regime("ema_12_26_vol_regime", fast=12, slow=26),
+    ]
+    if btc_overlay:
+        catalog.extend(
+            [
+                _ema_btc_ma_riskoff(
+                    "ema_9_21_btc_ma200_riskoff",
+                    fast=9,
+                    slow=21,
+                    ma_span=200,
+                    btc_overlay=btc_overlay,
+                ),
+                _ema_btc_ma_riskoff(
+                    "ema_12_26_btc_ma200_riskoff",
+                    fast=12,
+                    slow=26,
+                    ma_span=200,
+                    btc_overlay=btc_overlay,
+                ),
+                _ema_btc_ma_riskoff(
+                    "ema_20_50_btc_ma200_riskoff",
+                    fast=20,
+                    slow=50,
+                    ma_span=200,
+                    btc_overlay=btc_overlay,
+                ),
+                _ema_btc_ma_riskoff(
+                    "ema_8_21_btc_ma200_riskoff",
+                    fast=8,
+                    slow=21,
+                    ma_span=200,
+                    btc_overlay=btc_overlay,
+                ),
+                _ema_btc_ma_riskoff(
+                    "ema_13_34_btc_ma200_riskoff",
+                    fast=13,
+                    slow=34,
+                    ma_span=200,
+                    btc_overlay=btc_overlay,
+                ),
+            ]
+        )
+    ids = tuple(item.candidate_id for item in catalog)
+    expected = DUAL_PRINT_SEARCH_CORE_IDS + (DUAL_PRINT_SEARCH_OVERLAY_IDS if btc_overlay else ())
+    if ids != expected:
+        raise RuntimeError("dual-print catalog drifted from the frozen id list")
     return tuple(catalog)

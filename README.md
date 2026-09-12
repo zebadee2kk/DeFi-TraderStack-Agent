@@ -176,6 +176,7 @@ simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-daily-robustness`, `traderstack-harder-gates`,
 `traderstack-honesty-pack`,
 `traderstack-second-print`,
+`traderstack-dual-print-search`,
 `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
@@ -212,6 +213,13 @@ older Binance Spot daily 720 (report-only; cannot enter the promotion
 average) after documenting that Kraken public OHLC cannot unlock a
 second 720. An honest FAIL is success. An empty promotee would also
 have been success.
+`traderstack-dual-print-search` expands the daily catalog beyond #99
+and **pre-registers** the dual-print bar: combined harder gates on the
+Kraken primary 720 **and** on that same #102 Binance.US older-720.
+Ranking is Kraken mean holdout excess among dual-print passers. Venues
+are not averaged. Default `PAPER_PROMOTE_*` stays false. An empty
+dual-print set is success. Report:
+`docs/artifacts/strategy-search/dual-print-search.md`.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but
 is not traded under that envelope.

@@ -65,6 +65,11 @@ traderstack-honesty-pack = "traderstack.research.honesty_pack_cli:main"
 # prefix + Binance Spot daily older 720. Report-only; never flips
 # PAPER_PROMOTE_*. An honest FAIL is success.
 traderstack-second-print = "traderstack.research.second_print_cli:main"
+# Dual-print daily search: expanded catalog must clear Kraken primary
+# harder combined gates AND the #102 Binance.US older-720. Ranking is
+# Kraken mean HO among dual-print passers. Never flips PAPER_PROMOTE_*.
+# An empty dual-print set is success.
+traderstack-dual-print-search = "traderstack.research.dual_print_search_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
