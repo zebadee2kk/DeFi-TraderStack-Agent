@@ -175,3 +175,22 @@ not enter the average.
 
 See `magnitude-multiwindow-report.md`.
 
+## Expanded harder-gates catalog (`traderstack-harder-gates`, default)
+
+Same A/B/C gates and Kraken 720-bar daily window as #97, with a
+**larger catalog frozen before the live pull**: more ADX thresholds,
+faster/slower EMAs, SMA200 risk-off variants, dual-mom lookbacks, and
+dip+vol grids. Yahoo remains A/B only.
+
+Ranking key (frozen before scoring): **mean holdout excess among
+combined-passers** (`#96` + A + B + C). Walk-forward rank of the full
+catalog is informational. #97 required the WF-total #1 to also clear
+A+B+C and therefore did not promote `ema_12_26_adx20` (combined PASS,
+rank 4). This key selects among names that already cleared the bar.
+
+`PAPER_PROMOTE_EMA_9_21` stays false. If a combined-passer top-1
+exists, the report names `PAPER_PROMOTE_<ID>` default false and does
+not flip it. An empty promotee is success.
+
+See `expanded-harder-gates-report.md`.
+

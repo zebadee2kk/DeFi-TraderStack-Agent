@@ -2,9 +2,10 @@
 
 Loads the longest Kraken public Spot daily OHLC the API will return (720
 committed bars, ~2y), optionally a Yahoo Finance daily A/B (non-Kraken),
-scores the pre-registered balanced-holdout catalog under gates A/B/C,
-and writes JSON + Markdown. It never enables ``PAPER_PROMOTE_EMA_9_21``
-or ``PAPER_PROMOTE_SEARCHED_STRATEGIES``.
+scores the pre-registered **expanded** catalog under gates A/B/C, ranks
+combined-passers by mean holdout excess, and writes JSON + Markdown.
+It never enables ``PAPER_PROMOTE_EMA_9_21`` or
+``PAPER_PROMOTE_SEARCHED_STRATEGIES``.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from traderstack.research.harder_gates import (
     MULTIWINDOW_BARS,
     MULTIWINDOW_COUNT,
     MULTIWINDOW_MIN_PASSES,
+    RANKING_KEY,
     render_harder_gates_markdown,
     run_harder_gates,
 )
@@ -30,15 +32,16 @@ from traderstack.research.miles_search import research_fee_bps
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Stress-test the #96 Kraken daily catalog under pre-registered "
+            "Stress-test the expanded pre-registered daily catalog under "
             "harder honesty gates: A magnitude balance "
             f"(min/max holdout ratio >= {MAGNITUDE_RATIO_MIN:.2f}), B "
             f"{MULTIWINDOW_COUNT}x{MULTIWINDOW_BARS}-bar multi-window "
             f"(>= {MULTIWINDOW_MIN_PASSES} of {MULTIWINDOW_COUNT} with "
             "BTC and ETH WF total > 0), C "
             f"{FEE_STRESS_MULTIPLIER:g}x fees still clearing #96 "
-            "balanced signs. Writes a ranked report. Does not enable "
-            "PAPER_PROMOTE_* flags. An honest FAIL is success."
+            "balanced signs. Ranking key (frozen before scoring): "
+            f"{RANKING_KEY}. Writes a ranked report. Does not enable "
+            "PAPER_PROMOTE_* flags. An empty promotee is success."
         )
     )
     source = parser.add_mutually_exclusive_group(required=True)
@@ -79,19 +82,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-trades", type=int, default=3)
     parser.add_argument(
         "--catalog",
-        choices=("balanced", "legacy"),
-        default="balanced",
-        help="balanced = expanded pre-registered grid; legacy = frozen #95 K=8",
+        choices=("expanded", "balanced", "legacy"),
+        default="expanded",
+        help=(
+            "expanded = frozen post-#97 harder-gates grid (default); "
+            "balanced = frozen #96 K=19+overlay; legacy = frozen #95 K=8"
+        ),
     )
     parser.add_argument(
         "--output-json",
         type=Path,
-        default=Path("var/ops/harder_gates_search.json"),
+        default=Path("var/ops/expanded_harder_gates_search.json"),
     )
     parser.add_argument(
         "--output-md",
         type=Path,
-        default=Path("docs/artifacts/strategy-search/magnitude-multiwindow-report.md"),
+        default=Path("docs/artifacts/strategy-search/expanded-harder-gates-report.md"),
     )
     parser.add_argument("--stdout-md", action="store_true")
     return parser
@@ -134,6 +140,8 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
             f"{status}: wrote {args.output_json} and {args.output_md} "
             f"(selected={report.selected_candidate_id or 'none'}; "
             f"promoted={', '.join(report.promoted_candidate_ids) or 'none'}; "
+            f"combined_passers={len(report.combined_passer_ids)}; "
+            f"ranking_key={report.ranking_key}; "
             f"ema_9_21 A={report.ema_9_21_gate_a} "
             f"B={report.ema_9_21_gate_b} C={report.ema_9_21_gate_c} "
             f"combined={report.ema_9_21_combined}). "

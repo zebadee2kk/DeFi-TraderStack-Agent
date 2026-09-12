@@ -3,13 +3,15 @@
 ``default_daily_robustness_candidates`` is the frozen #95 list (K=8).
 ``default_balanced_holdout_candidates`` is the pre-registered balanced-
 holdout expansion (slower EMAs, a tiny dual-mom / dip grid, asset-local
-and BTC-overlay MA risk-off, two GARCH size overlays). The grid is
-frozen before any Kraken window is scored. Ranking is pre-registered
-top-1; do not grow this list to chase a winner.
+and BTC-overlay MA risk-off, two GARCH size overlays).
+``default_expanded_harder_gates_candidates`` is the post-#97 harder-gates
+grid (more ADX, faster/slower EMAs, SMA200 variants, dual-mom, dip+vol).
+Each grid is frozen before any Kraken window is scored. Do not grow a
+list to chase a winner.
 
 GARCH never chooses a side. ``PAPER_GARCH_SIZE`` stays false unless a
-GARCH-sized candidate clears the balanced-holdout bar in a committed
-report (research-only pin; never live).
+GARCH-sized candidate clears the bar in a committed report
+(research-only pin; never live).
 """
 
 from __future__ import annotations
@@ -259,16 +261,27 @@ def _ema_ma_riskoff(
     fast: int,
     slow: int,
     ma_span: int,
+    adx_threshold: float | None = None,
 ) -> SearchCandidate:
-    inner = EmaCrossoverStrategy(strategy_id=candidate_id, fast_span=fast, slow_span=slow)
+    inner = EmaCrossoverStrategy(
+        strategy_id=candidate_id,
+        fast_span=fast,
+        slow_span=slow,
+        adx_threshold=adx_threshold,
+    )
+    parts = [f"EMA {fast}/{slow}"]
+    if adx_threshold is not None:
+        parts.append(f"ADX>{adx_threshold:g}")
+    parts.append(f"asset SMA{ma_span} risk-off (flat below MA)")
     return SearchCandidate(
         candidate_id=candidate_id,
         family="ema_cross_riskoff",
-        label=f"EMA {fast}/{slow} × asset SMA{ma_span} risk-off (flat below MA)",
+        label=" × ".join(parts),
         params={
             "fast_span": fast,
             "slow_span": slow,
             "ma_span": ma_span,
+            "adx_threshold": adx_threshold,
             "garch_sizing": False,
             "strategy_id": candidate_id,
             "risk_off": "asset_sma",
@@ -460,5 +473,182 @@ def default_balanced_holdout_candidates(
                 ma_span=200,
                 btc_overlay=btc_overlay,
             )
+        )
+    return tuple(catalog)
+
+
+# --- expanded harder-gates catalog (frozen before any Kraken pull) ---
+# Do not grow, shrink, or reorder this list after seeing a live print.
+# Overlay BTC-SMA names are appended only when a Kraken BTC/USD daily
+# series is bound (same rule as the #96 balanced catalog).
+EXPANDED_HARDER_GATES_CORE_IDS: tuple[str, ...] = (
+    "ema_9_21",
+    "ema_12_26",
+    "ema_9_21_adx20",
+    "ema_12_26_adx20",
+    "ema_9_21_adx25",
+    "ema_12_26_adx25",
+    "ema_20_50",
+    "ema_50_200",
+    "ema_20_50_adx20",
+    "ema_9_21_garch",
+    "ema_20_50_garch",
+    "dual_mom_12_60",
+    "dual_mom_21_63",
+    "dual_mom_21_126",
+    "dual_mom_63_126",
+    "dip_mr_20_1_5_vol",
+    "dip_mr_20_2_0_vol",
+    "ema_9_21_ma200_riskoff",
+    "ema_20_50_ma200_riskoff",
+    "ema_9_21_adx15",
+    "ema_12_26_adx15",
+    "ema_9_21_adx18",
+    "ema_12_26_adx18",
+    "ema_9_21_adx22",
+    "ema_12_26_adx22",
+    "ema_9_21_adx30",
+    "ema_12_26_adx30",
+    "ema_5_13",
+    "ema_8_21",
+    "ema_13_34",
+    "ema_21_55",
+    "ema_8_21_adx20",
+    "ema_13_34_adx20",
+    "ema_12_26_ma200_riskoff",
+    "ema_8_21_ma200_riskoff",
+    "ema_13_34_ma200_riskoff",
+    "ema_12_26_adx20_ma200_riskoff",
+    "dual_mom_10_50",
+    "dual_mom_15_90",
+    "dual_mom_21_90",
+    "dual_mom_42_126",
+    "dip_mr_10_1_5_vol",
+    "dip_mr_15_1_5_vol",
+    "dip_mr_20_1_0_vol",
+    "dip_mr_20_1_5_vol2",
+)
+EXPANDED_HARDER_GATES_OVERLAY_IDS: tuple[str, ...] = (
+    "ema_9_21_btc_ma200_riskoff",
+    "ema_12_26_btc_ma200_riskoff",
+    "ema_20_50_btc_ma200_riskoff",
+)
+EXPANDED_HARDER_GATES_GRID_NOTE = (
+    "Pre-registered expanded harder-gates catalog (frozen before the "
+    "Kraken window is scored). Includes the #96/#97 balanced grid plus "
+    "ADX 15/18/22/30 on EMA 9/21 and 12/26; faster EMA 5/13 and 8/21; "
+    "slower EMA 13/34 and 21/55; ADX20 on 8/21 and 13/34; asset-local "
+    "SMA200 risk-off on 12/26, 8/21, 13/34, and 12/26+ADX20; dual-mom "
+    "lookbacks 10/50, 15/90, 21/90, 42/126; dip+vol lookbacks 10/15 and "
+    "z=1.0 plus a 2× vol-filter variant. BTC SMA200 overlays on "
+    "ema_9_21 / ema_12_26 / ema_20_50 when a Kraken BTC/USD daily series "
+    "is bound. SOL is reported, not a gate. Yahoo never enters ranking "
+    "or A/B/C averages. Do not grow this list after seeing PnL. "
+    "PAPER_GARCH_SIZE and PAPER_PROMOTE_EMA_9_21 stay false unless a "
+    "committed report names a paper-only pin and an operator flips it."
+)
+
+
+def default_expanded_harder_gates_candidates(
+    *,
+    btc_overlay: tuple[Candle, ...] | None = None,
+) -> tuple[SearchCandidate, ...]:
+    """Frozen expanded harder-gates catalog. Do not grow after seeing PnL."""
+    catalog: list[SearchCandidate] = [
+        *default_balanced_holdout_candidates(),
+        _ema("ema_9_21_adx15", fast=9, slow=21, adx_threshold=15.0),
+        _ema("ema_12_26_adx15", fast=12, slow=26, adx_threshold=15.0),
+        _ema("ema_9_21_adx18", fast=9, slow=21, adx_threshold=18.0),
+        _ema("ema_12_26_adx18", fast=12, slow=26, adx_threshold=18.0),
+        _ema("ema_9_21_adx22", fast=9, slow=21, adx_threshold=22.0),
+        _ema("ema_12_26_adx22", fast=12, slow=26, adx_threshold=22.0),
+        _ema("ema_9_21_adx30", fast=9, slow=21, adx_threshold=30.0),
+        _ema("ema_12_26_adx30", fast=12, slow=26, adx_threshold=30.0),
+        _ema("ema_5_13", fast=5, slow=13),
+        _ema("ema_8_21", fast=8, slow=21),
+        _ema("ema_13_34", fast=13, slow=34),
+        _ema("ema_21_55", fast=21, slow=55),
+        _ema("ema_8_21_adx20", fast=8, slow=21, adx_threshold=20.0),
+        _ema("ema_13_34_adx20", fast=13, slow=34, adx_threshold=20.0),
+        _ema_ma_riskoff("ema_12_26_ma200_riskoff", fast=12, slow=26, ma_span=200),
+        _ema_ma_riskoff("ema_8_21_ma200_riskoff", fast=8, slow=21, ma_span=200),
+        _ema_ma_riskoff("ema_13_34_ma200_riskoff", fast=13, slow=34, ma_span=200),
+        _ema_ma_riskoff(
+            "ema_12_26_adx20_ma200_riskoff",
+            fast=12,
+            slow=26,
+            ma_span=200,
+            adx_threshold=20.0,
+        ),
+        _dual_mom("dual_mom_10_50", fast_lookback=10, slow_lookback=50),
+        _dual_mom("dual_mom_15_90", fast_lookback=15, slow_lookback=90),
+        _dual_mom("dual_mom_21_90", fast_lookback=21, slow_lookback=90),
+        _dual_mom("dual_mom_42_126", fast_lookback=42, slow_lookback=126),
+        _dip(
+            "dip_mr_10_1_5_vol",
+            lookback=10,
+            entry_z=1.5,
+            vol_lookback=20,
+            baseline_vol_lookback=60,
+            vol_multiple=1.5,
+        ),
+        _dip(
+            "dip_mr_15_1_5_vol",
+            lookback=15,
+            entry_z=1.5,
+            vol_lookback=20,
+            baseline_vol_lookback=60,
+            vol_multiple=1.5,
+        ),
+        _dip(
+            "dip_mr_20_1_0_vol",
+            lookback=20,
+            entry_z=1.0,
+            vol_lookback=20,
+            baseline_vol_lookback=60,
+            vol_multiple=1.5,
+        ),
+        _dip(
+            "dip_mr_20_1_5_vol2",
+            lookback=20,
+            entry_z=1.5,
+            vol_lookback=20,
+            baseline_vol_lookback=60,
+            vol_multiple=2.0,
+        ),
+    ]
+    if btc_overlay:
+        catalog.extend(
+            [
+                _ema_btc_ma_riskoff(
+                    "ema_9_21_btc_ma200_riskoff",
+                    fast=9,
+                    slow=21,
+                    ma_span=200,
+                    btc_overlay=btc_overlay,
+                ),
+                _ema_btc_ma_riskoff(
+                    "ema_12_26_btc_ma200_riskoff",
+                    fast=12,
+                    slow=26,
+                    ma_span=200,
+                    btc_overlay=btc_overlay,
+                ),
+                _ema_btc_ma_riskoff(
+                    "ema_20_50_btc_ma200_riskoff",
+                    fast=20,
+                    slow=50,
+                    ma_span=200,
+                    btc_overlay=btc_overlay,
+                ),
+            ]
+        )
+    ids = tuple(item.candidate_id for item in catalog)
+    expected = EXPANDED_HARDER_GATES_CORE_IDS + (
+        EXPANDED_HARDER_GATES_OVERLAY_IDS if btc_overlay else ()
+    )
+    if ids != expected:
+        raise RuntimeError(
+            "expanded harder-gates catalog drifted from the frozen id list"
         )
     return tuple(catalog)

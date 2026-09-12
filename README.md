@@ -196,9 +196,11 @@ on the 720-bar Kraken daily cap and only documents a `PAPER_PROMOTE_*`
 id if **BTC and ETH** both have walk-forward total > 0 **and** both have
 holdout excess > 0 after fees. `traderstack-harder-gates` adds three
 pre-registered honesty gates on that same Kraken daily window
-(magnitude balance, 3×240-bar multi-window, 2× fee stress). Combined
-promotion stays off unless top-1 clears all three; Yahoo stays A/B
-only. Default `PAPER_PROMOTE_EMA_9_21` remains false.
+(magnitude balance, 3×240-bar multi-window, 2× fee stress) and scores
+the frozen expanded catalog. Combined-passers are ranked by mean
+holdout excess; a non-passer is never promoted. Yahoo stays A/B only.
+Default `PAPER_PROMOTE_EMA_9_21` remains false. An empty promotee is
+success.
 
 ## Roadmap
 

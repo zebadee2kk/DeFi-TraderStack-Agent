@@ -57,8 +57,11 @@ GARCH size) on the 720-bar Kraken daily cap with a balanced-holdout bar:
 BTC **and** ETH walk-forward total > 0 **and** BTC **and** ETH holdout
 excess > 0 (Yahoo daily is a labeled non-Kraken A/B only).
 `traderstack-harder-gates` adds pre-registered magnitude, 3×240-bar
-multi-window, and 2× fee-stress bars on that same window; combined
-promotion stays off unless top-1 clears all three. **Freqtrade
+multi-window, and 2× fee-stress bars on that same window. The default
+catalog is the frozen expanded post-#97 grid; ranking is top-1 by mean
+holdout excess among combined-passers (#96 + A + B + C). Combined
+promotion stays off unless that passer set is non-empty, and any
+documented pin defaults false. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.
