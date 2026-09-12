@@ -122,6 +122,13 @@ traderstack-bollinger-fade = "traderstack.research.bollinger_fade_cli:main"
 # Never flips PAPER_PROMOTE_*. Empty dual-print is success. Not
 # an EMA / residual / XS / Donchian / TSMOM / Bollinger reprint.
 traderstack-calendar-seasonality = "traderstack.research.calendar_seasonality_cli:main"
+# BTC→ETH lead-lag (ETH follows lagged BTC L-day return; not
+# #116 residual z-score). Same #96+A+B+C dual-print bar as #104
+# (Kraken 720 + Binance.US older-720). Other leg frozen flat.
+# Paper spot executable. Never flips PAPER_PROMOTE_*. Empty
+# dual-print is success. Not an EMA / residual / XS / Donchian /
+# TSMOM / Bollinger / calendar reprint.
+traderstack-lead-lag = "traderstack.research.lead_lag_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
