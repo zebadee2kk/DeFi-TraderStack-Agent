@@ -171,8 +171,10 @@ still backtests on the base asset's Kraken USD candles.
 |---|---|---|---|---|
 | Kraken WS v2 `wss://ws.kraken.com/v2` [V] | ticker, book (10–1000), trade, ohlc | REST OHLC 720/call; Trades 1000/call with ns `since` (full history walkable) | ≤200 symbols/conn; rate counter 200/s (500/s Pro) [S] | ccxt, python-kraken-sdk |
 | Coinbase Advanced Trade WS [V] | ticker, ticker_batch, level2, market_trades, candles | Public candles 350/call | 8 msg/s/IP outbound; must subscribe within 5 s | coinbase-advanced-py, ccxt |
+| Binance USDT-M `!forceOrder@arr` [V] | all-market liquidations | — | 24 h connection life; public, no auth | **Implemented** as paper-research only (`BinanceForceOrderProvider`; not an execution venue) |
+| Binance USDT-M `bookTicker` [V] | best bid/ask | — | combined stream; 24 h connection life | **Implemented** as optional second-venue mid (`BookTickerProvider`, `BOOK_TICKER_VENUE=binance`) |
 | Binance Spot WS [V] | bookTicker, depth, aggTrade, kline | Binance Vision bulk | 1024 streams/conn; 24 h connection life; geo-restricted | python-binance, ccxt |
-| Bybit v5 WS [V] | orderbook, publicTrade, tickers, kline | REST kline | ≤500 conns / 5 min | pybit, ccxt |
+| Bybit v5 WS [V] | orderbook, publicTrade, tickers, kline | REST kline | ≤500 conns / 5 min | pybit, ccxt; **tickers.*** wired as optional paper-research bookTicker (`BOOK_TICKER_VENUE=bybit`) |
 | OKX WS [V] | tickers, books, bbo-tbt, trades, candles | REST candles | 3 conn req/s/IP; 30 conns/channel | python-okx, ccxt |
 
 ## Historical OHLCV

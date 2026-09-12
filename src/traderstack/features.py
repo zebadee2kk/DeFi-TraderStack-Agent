@@ -32,6 +32,23 @@ class NewsFeatures(BaseModel):
     adverse_event: bool = False
 
 
+# --- paper-research edge data plane -------------------------------------------
+#
+# Research/risk context only. RiskEngine reads market.spread_bps and
+# market.volatility_z; it does not read this slice to size, side, or
+# authorize a trade. The meta-agent may see these numbers as withhold-only
+# context. Bounded counts are in [0, 1]; z-scores are clipped to [-5, 5].
+
+
+class ResearchEdgeFeatures(BaseModel):
+    liq_notional_long_z: float | None = Field(default=None, ge=-5, le=5)
+    liq_notional_short_z: float | None = Field(default=None, ge=-5, le=5)
+    liq_count_long: float | None = Field(default=None, ge=0, le=1)
+    liq_count_short: float | None = Field(default=None, ge=0, le=1)
+    cross_venue_mid_divergence_bps: float | None = Field(default=None, ge=0)
+    cross_venue_mid_source: str | None = None
+
+
 class AssetFeatureVector(BaseModel):
     asset: str
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -39,5 +56,7 @@ class AssetFeatureVector(BaseModel):
     onchain: OnChainFeatures = Field(default_factory=OnChainFeatures)
     narrative: NarrativeFeatures = Field(default_factory=NarrativeFeatures)
     news: NewsFeatures = Field(default_factory=NewsFeatures)
+    # --- paper-research edge data plane ---
+    edge: ResearchEdgeFeatures = Field(default_factory=ResearchEdgeFeatures)
     source_ids: list[str] = Field(default_factory=list)
-    schema_version: str = "1.0"
+    schema_version: str = "1.1"

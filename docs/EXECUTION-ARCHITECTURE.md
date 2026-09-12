@@ -129,6 +129,12 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
              concurrent, isolated failures, cached)
         vi.  fetch order-book snapshot (Kraken only, opt-in, informational -- not consumed
              by the pipeline or risk engine today)
+        vi-b. read paper-research edge snapshots (Binance USDT-M liquidations and/or
+             optional Binance/Bybit bookTicker; in-process, no network on the cycle
+             path — background collectors own the sockets). Informational: merged onto
+             AssetFeatureVector.edge after market-data acceptance. RiskEngine does
+             not read these fields to size, side, or authorize a trade. A snapshot
+             read failure never fails the cycle.
         vii. VerticalSlicePipeline.process(...):
              - market-data validation (stale tick, spread, reference divergence)
              - intelligence merge + adverse-news gate (deterministic, before any proposal)

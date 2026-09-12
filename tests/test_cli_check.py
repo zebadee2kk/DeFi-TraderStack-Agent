@@ -148,6 +148,22 @@ def test_meta_agent_off_reports_mode_without_extra_detail() -> None:
     assert not any("model" in item.label for item in report.items)
 
 
+def test_edge_feeds_are_reported_and_default_off() -> None:
+    report = build_report(settings())
+    liq = next(i for i in report.items if "liquidations" in i.label)
+    ticker = next(i for i in report.items if "bookTicker" in i.label)
+    assert liq.value == "no"
+    assert ticker.value == "no"
+
+
+def test_edge_feeds_enabled_in_non_paper_mode_warns_as_not_an_execution_venue() -> None:
+    report = build_report(
+        settings(trading_mode="live", binance_liq_enabled=True, book_ticker_enabled=True)
+    )
+    assert not report.safe
+    assert any("paper-research" in w or "order routing" in w for w in report.warnings)
+
+
 def test_altfins_is_reported_as_an_intelligence_provider() -> None:
     without = build_report(settings())
     with_key = build_report(settings(altfins_api_key="secret-key"))

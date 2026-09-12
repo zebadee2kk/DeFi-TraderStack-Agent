@@ -40,6 +40,14 @@ Create a canonical data plane that prevents individual agents from consuming inc
   "news": {
     "event_score": 0,
     "adverse_event": false
+  },
+  "edge": {
+    "liq_notional_long_z": null,
+    "liq_notional_short_z": null,
+    "liq_count_long": null,
+    "liq_count_short": null,
+    "cross_venue_mid_divergence_bps": null,
+    "cross_venue_mid_source": null
   }
 }
 ```

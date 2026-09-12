@@ -8,11 +8,18 @@ from traderstack.agents.review import MetaAgentReview, MetaAgentReviewer
 from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
 from traderstack.execution.submitter import IdempotentSubmitter
+from traderstack.features import ResearchEdgeFeatures
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
+from traderstack.market.book_ticker import (
+    cross_venue_divergence_bps,
+    record_cross_venue_divergence,
+)
 from traderstack.market.models import BookSnapshot, MarketTick, ReferencePrice
 from traderstack.market.providers import (
     BookSnapshotProvider,
+    BookTickerSnapshotProvider,
     CandleHistoryProvider,
+    LiquidationSnapshotProvider,
     ReferencePriceProvider,
     VenueMarketDataProvider,
 )
@@ -48,6 +55,9 @@ class RuntimeResult(BaseModel):
     # --- providers (Epic 2): order-book snapshot handling -----------------------
     book_snapshot: BookSnapshot | None = None
     book_error: str | None = None
+    # --- paper-research edge data plane ---
+    # Snapshot read failures are informational; they never fail the cycle.
+    edge_error: str | None = None
 
 
 @dataclass
@@ -80,6 +90,11 @@ class PaperRuntime:
     # --- providers (Epic 2): order-book snapshot handling -----------------------
     # Optional; informational only today (not consumed by the risk plane yet).
     book: BookSnapshotProvider | None = None
+    # --- paper-research edge data plane ---
+    # In-process snapshot readers fed by background WS collectors. Research
+    # context only — never an execution venue, never a risk-limit input.
+    liquidations: LiquidationSnapshotProvider | None = None
+    book_ticker: BookTickerSnapshotProvider | None = None
 
     async def run_once(
         self,
@@ -182,8 +197,24 @@ class PaperRuntime:
                 except Exception as exc:  # noqa: BLE001 - book depth is informational; never blocks the cycle.
                     book_error = f"{type(exc).__name__}: {exc}"
 
+            # --- paper-research edge data plane ---
+            edge: ResearchEdgeFeatures | None = None
+            edge_source_ids: tuple[str, ...] = ()
+            edge_error: str | None = None
+            if self.liquidations is not None or self.book_ticker is not None:
+                try:
+                    edge, edge_source_ids = self._edge_features(asset, tick)
+                except Exception as exc:  # noqa: BLE001 - research context; never blocks the cycle.
+                    edge_error = f"{type(exc).__name__}: {exc}"
+
             pipeline_result = self.pipeline.process(
-                tick, prices, portfolio, candles=history, intelligence=external
+                tick,
+                prices,
+                portfolio,
+                candles=history,
+                intelligence=external,
+                edge=edge,
+                edge_source_ids=edge_source_ids,
             )
 
             # --- meta-agent (Epic 6) ---
@@ -241,12 +272,47 @@ class PaperRuntime:
                 execution_reason=execution_reason,
                 book_snapshot=book_snapshot,
                 book_error=book_error,
+                edge_error=edge_error,
             )
 
     async def _next_tick(self, symbol: str) -> MarketTick:
         async for tick in self.venue.stream_ticks((symbol,)):
             return tick
         raise RuntimeError("venue stream ended before producing a tick")
+
+    def _edge_features(
+        self, asset: str, tick: MarketTick
+    ) -> tuple[ResearchEdgeFeatures | None, tuple[str, ...]]:
+        """Read local liquidation / bookTicker snapshots. No network."""
+        features = ResearchEdgeFeatures()
+        source_ids: list[str] = []
+        if self.liquidations is not None:
+            snap = self.liquidations.snapshot(asset)
+            if snap is not None:
+                features = features.model_copy(
+                    update={
+                        "liq_notional_long_z": snap.liq_notional_long_z,
+                        "liq_notional_short_z": snap.liq_notional_short_z,
+                        "liq_count_long": snap.liq_count_long,
+                        "liq_count_short": snap.liq_count_short,
+                    }
+                )
+                source_ids.append(snap.source_id)
+        if self.book_ticker is not None:
+            ticker = self.book_ticker.latest(asset)
+            if ticker is not None:
+                divergence = cross_venue_divergence_bps(tick.mid, ticker.mid)
+                features = features.model_copy(
+                    update={
+                        "cross_venue_mid_divergence_bps": divergence,
+                        "cross_venue_mid_source": ticker.source.value,
+                    }
+                )
+                record_cross_venue_divergence(asset, ticker.source.value, divergence)
+                source_ids.append(f"book_ticker:{ticker.source.value}")
+        if not source_ids:
+            return (None, ())
+        return (features, tuple(source_ids))
 
     async def _next_book(self, symbol: str) -> BookSnapshot:
         assert self.book is not None

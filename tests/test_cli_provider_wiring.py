@@ -4,6 +4,8 @@ from traderstack.checkpoint import JsonPortfolioCheckpointStore
 from traderstack.cli import build_intelligence, build_provider_registry, build_service
 from traderstack.config import Settings
 from traderstack.market.adapters import KrakenBookProvider, KrakenTickerProvider
+from traderstack.market.book_ticker import BookTickerProvider
+from traderstack.market.liquidations import BinanceForceOrderProvider
 from traderstack.market.registry import (
     RegisteredCandleHistoryProvider,
     RegisteredReferencePriceProvider,
@@ -83,6 +85,9 @@ def test_build_service_wraps_reference_and_candle_providers_through_the_registry
     assert isinstance(service.runtime.candles, RegisteredCandleHistoryProvider)
     assert isinstance(service.runtime.venue, KrakenTickerProvider)
     assert service.runtime.book is None
+    assert service.runtime.liquidations is None
+    assert service.runtime.book_ticker is None
+    assert service.edge_collectors == ()
 
 
 def test_build_service_carries_kraken_reconnect_settings_and_optional_book(tmp_path: Path) -> None:
@@ -109,3 +114,31 @@ def test_build_service_carries_kraken_reconnect_settings_and_optional_book(tmp_p
     book = service.runtime.book
     assert isinstance(book, KrakenBookProvider)
     assert book.depth == 25
+
+
+def test_build_service_wires_opt_in_edge_feeds_without_changing_venue(tmp_path: Path) -> None:
+    settings = base_settings(
+        binance_liq_enabled=True,
+        book_ticker_enabled=True,
+        book_ticker_venue="bybit",
+        edge_max_reconnect_attempts=3,
+    )
+    checkpoint_store = JsonPortfolioCheckpointStore(tmp_path / "portfolio.json")
+    service = build_service(
+        settings,
+        submit=False,
+        cycle_seconds=5.0,
+        portfolio=InMemoryPortfolioBook(settings.paper_starting_nav_usd),
+        on_result=_noop,
+        checkpoint_store=checkpoint_store,
+    )
+    assert isinstance(service.runtime.venue, KrakenTickerProvider)
+    assert isinstance(service.runtime.liquidations, BinanceForceOrderProvider)
+    assert service.runtime.liquidations.max_reconnect_attempts == 3
+    assert isinstance(service.runtime.book_ticker, BookTickerProvider)
+    assert service.runtime.book_ticker.venue == "bybit"
+    assert len(service.edge_collectors) == 2
+    assert {c.feed_name for c in service.edge_collectors} == {
+        "binance_force_order",
+        "bybit_book_ticker",
+    }

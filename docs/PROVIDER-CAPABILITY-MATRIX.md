@@ -17,6 +17,8 @@ This matrix defines intended roles rather than marketing claims. Pricing, rate l
 | Hummingbot | exchange/DEX execution abstraction | **Yes** | Yes | **Yes** | sole MVP order-routing spine |
 | Robinhood Chain (EVM) | on-chain swap execution venue | No for MVP | Unsigned-tx preparation only | Research only | `traderstack.execution.robinhood_chain` prepares policy-checked, simulated, **unsigned** transactions; chain id/RPC are operator-configured, never hardcoded; no signing/broadcast in this repo until a Phase 8 signing service exists |
 | Robinhood Chain swap feed | venue-native real-time DEX price/flow (Uniswap v3/v4 `Swap` logs via `eth_subscribe`) | Yes when `VENUE_FEED=robinhood_chain` | No (read-only) | Research / paper | `traderstack.market.robinhood_chain_feed`; verifies chain id before subscribing; watches only operator-listed pools; bid/ask synthesised from pool fee tier |
+| Binance USDT-M liquidations | paper-research liquidation intensity (long/short notional z-score + bounded counts) | No | No | Paper research | `BinanceForceOrderProvider` on `!forceOrder@arr`; **not an execution venue**; `RiskEngine` does not size from these features |
+| Binance/Bybit bookTicker | paper-research cross-venue mid divergence | No | No | Paper research | `BookTickerProvider`; second-venue mid only; never an order-routing destination |
 | Freqtrade | research/backtest/dry-run harness | No | Can trade but disabled in architecture | **Yes** | independent research harness, not production executor |
 | Direct venue WS/REST | venue-native market data and reconciliation | **Yes** | execution delegated to Hummingbot | **Yes** | authoritative venue state for execution checks |
 | Claude API | reasoning, proposal synthesis, meta-agent | No for safety | No direct execution | **Yes** | failure must degrade to no-new-risk state |
@@ -44,16 +46,20 @@ Every reference-price provider (CoinGecko, CoinMarketCap), the Kraken candle pro
 - Prometheus counters/gauges (`traderstack_provider_calls_total`, `traderstack_provider_last_latency_seconds`, `traderstack_provider_breaker_state`, `traderstack_provider_quota_rejections_total`, `traderstack_provider_cache_hits_total`), following the pattern in `traderstack.health`
 - a `health()` report (state, consecutive failures, last latency/error, calls in the current minute/day) satisfying the `ProviderHealth` protocol in `traderstack.market.providers`
 
-Streaming venue feeds (Kraken ticker/book) are deliberately **not** wrapped by `ProviderRegistry` — a request timeout and circuit breaker don't fit a long-lived subscription. They get their own resilience instead (next section).
+Streaming venue and paper-research feeds (Kraken ticker/book, Binance USDT-M liquidations, optional Binance/Bybit bookTicker) are deliberately **not** wrapped by `ProviderRegistry` — a request timeout and circuit breaker don't fit a long-lived subscription. They get their own resilience instead (`traderstack.market.streaming`).
 
 ### Kraken WS v2 resilience (`traderstack.market.adapters`)
 
-`KrakenTickerProvider.stream_ticks` and the new `KrakenBookProvider.stream_books` share a reconnect loop (`_stream_with_reconnect`) that:
+`KrakenTickerProvider.stream_ticks` and `KrakenBookProvider.stream_books` share `traderstack.market.streaming.stream_with_reconnect` (still re-exported from `market.adapters` as `_stream_with_reconnect`) that:
 
 - reconnects on any transport error or a stalled connection (no message within `KRAKEN_STALE_AFTER_SECONDS`, default 30s) with capped exponential backoff plus full jitter (`KRAKEN_BACKOFF_BASE_SECONDS`/`KRAKEN_BACKOFF_MAX_SECONDS`)
 - gives up only after `KRAKEN_MAX_RECONNECT_ATTEMPTS` consecutive reconnect failures, raising `KrakenFeedExhausted`
 - yields ticks/book snapshots continuously across reconnects (the caller sees one uninterrupted stream)
 - takes an injectable `connect` factory (matching `RobinhoodChainSwapFeed.connect`) plus injectable `sleep`/`random_jitter`, so reconnect/backoff/stale-detection are unit-tested without a real socket or real wall-clock delay (`tests/test_kraken_resilience.py`)
+
+### Paper-research edge feeds (Binance liquidations + optional bookTicker)
+
+Opt-in, **not an execution venue**. `BinanceForceOrderProvider` consumes Binance USDT-M `!forceOrder@arr` (`wss://fstream.binance.com/ws/!forceOrder@arr`) and reduces each payload to typed `LiquidationEvent`s, then a rolling window of long/short notional (z-score clipped to [-5, 5]) and bounded event counts in [0, 1]. Optional `BookTickerProvider` (Binance USDT-M `bookTicker` or Bybit v5 linear `tickers.*`) supplies a second-venue mid for `cross_venue_mid_divergence_bps` versus the primary tick. Both use the same reconnect loop as Kraken. Features land on `AssetFeatureVector.edge` as research/risk context only — `RiskEngine` does not read them to size, side, or authorize a trade. Enable with `BINANCE_LIQ_ENABLED` / `BOOK_TICKER_ENABLED` (see `docs/RUNBOOK.md`).
 
 ### Order-book snapshots (`KrakenBookProvider`, Epic 2)
 

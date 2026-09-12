@@ -1,7 +1,7 @@
 import asyncio
 import json
 import random
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -16,6 +16,19 @@ from traderstack.market.models import (
     MarketTick,
     ReferencePrice,
 )
+from traderstack.market.streaming import (
+    DEFAULT_BACKOFF_BASE_SECONDS,
+    DEFAULT_BACKOFF_MAX_SECONDS,
+    DEFAULT_MAX_RECONNECT_ATTEMPTS,
+    DEFAULT_STALE_AFTER_SECONDS,
+    ConnectFactory,
+    FeedError,
+    FeedExhausted,
+    SleepFn,
+    compute_backoff,
+    recv_or_stale,
+    stream_with_reconnect,
+)
 
 COINGECKO_IDS = {"BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana"}
 
@@ -28,75 +41,14 @@ COINGECKO_IDS = {"BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana"}
 # the venue feed. They now reconnect with capped exponential backoff and full
 # jitter, detect a stalled connection (no message within `stale_after_seconds`)
 # and reconnect it too, and give up only after `max_reconnect_attempts`.
+# The reconnect loop is shared with the paper-research edge feeds
+# (`traderstack.market.streaming`).
 
-DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
-DEFAULT_BACKOFF_BASE_SECONDS = 1.0
-DEFAULT_BACKOFF_MAX_SECONDS = 30.0
-DEFAULT_STALE_AFTER_SECONDS = 30.0
-
-ConnectFactory = Callable[..., Any]
-SleepFn = Callable[[float], Awaitable[None]]
-
-
-class KrakenFeedError(RuntimeError):
-    """Raised when one connection attempt to a Kraken feed cannot be trusted
-    (stalled, disconnected). Caught and retried by the reconnect loop.
-    """
-
-
-class KrakenFeedExhausted(KrakenFeedError):
-    """Raised when reconnect attempts are exhausted; the stream truly ends."""
-
-
-def _compute_backoff(attempt: int, base_seconds: float, max_seconds: float, jitter: float) -> float:
-    """Capped exponential backoff with full jitter: `jitter` in [0, 1] scales
-    the delay into [0.5x, 1x] of the nominal value so many reconnecting clients
-    don't all retry in lockstep.
-    """
-    nominal = min(max_seconds, base_seconds * (2 ** (attempt - 1)))
-    return nominal * (0.5 + max(0.0, min(1.0, jitter)) * 0.5)
-
-
-async def _stream_with_reconnect[T](
-    open_once: Callable[[], AsyncIterator[T]],
-    *,
-    feed_name: str,
-    max_reconnect_attempts: int,
-    backoff_base_seconds: float,
-    backoff_max_seconds: float,
-    sleep: SleepFn,
-    random_jitter: Callable[[], float],
-) -> AsyncIterator[T]:
-    """Run `open_once()` (a fresh connection + subscribe + read loop each call)
-    and reconnect with backoff on failure, yielding items continuously across
-    reconnects. `open_once` should raise `KrakenFeedError` on a stale/dead
-    connection; transport errors (`OSError`, timeouts, websockets exceptions)
-    are caught here too.
-    """
-    attempt = 0
-    while True:
-        try:
-            async for item in open_once():
-                attempt = 0  # any successful message resets the backoff counter
-                yield item
-            # A generator that returns instead of raising is still a lost
-            # connection (server closed cleanly) - treat it as one.
-            raise KrakenFeedError(f"{feed_name} stream ended unexpectedly")
-        except (
-            KrakenFeedError,
-            OSError,
-            TimeoutError,
-            websockets.exceptions.WebSocketException,
-        ) as exc:
-            attempt += 1
-            if attempt > max_reconnect_attempts:
-                raise KrakenFeedExhausted(
-                    f"{feed_name} failed after {attempt - 1} reconnect attempt(s)"
-                ) from exc
-            delay = _compute_backoff(
-                attempt, backoff_base_seconds, backoff_max_seconds, random_jitter()
-            )
-            await sleep(delay)
+# Backwards-compatible names: existing tests and docs refer to these.
+KrakenFeedError = FeedError
+KrakenFeedExhausted = FeedExhausted
+_compute_backoff = compute_backoff
+_stream_with_reconnect = stream_with_reconnect
 
 
 @dataclass
@@ -133,12 +85,11 @@ class KrakenTickerProvider:
                 )
             )
             while True:
-                try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=self.stale_after_seconds)
-                except TimeoutError as exc:
-                    raise KrakenFeedError(
-                        f"no ticker message within {self.stale_after_seconds}s"
-                    ) from exc
+                raw = await recv_or_stale(
+                    ws,
+                    stale_after_seconds=self.stale_after_seconds,
+                    feed_name="kraken ticker",
+                )
                 message = json.loads(raw)
                 tick = parse_kraken_ticker(message)
                 if tick is not None:
@@ -299,12 +250,11 @@ class KrakenBookProvider:
                 )
             )
             while True:
-                try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=self.stale_after_seconds)
-                except TimeoutError as exc:
-                    raise KrakenFeedError(
-                        f"no book message within {self.stale_after_seconds}s"
-                    ) from exc
+                raw = await recv_or_stale(
+                    ws,
+                    stale_after_seconds=self.stale_after_seconds,
+                    feed_name="kraken book",
+                )
                 message = json.loads(raw)
                 snapshot = parse_kraken_book_message(message, self._books, depth=self.depth)
                 if snapshot is not None and snapshot.symbol in symbols:
