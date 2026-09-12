@@ -422,8 +422,10 @@ def build_report(settings: Settings) -> ConfigReport:
             "report-only",
             "traderstack-funding-carry; OKX + Hyperliquid funding-z + "
             "hedged carry on BTC+ETH (Binance/Bybit probed, skip-not-invent); "
-            "single-print cannot promote; no new PAPER_PROMOTE_* unless a "
-            "dual-print passer exists (default false)",
+            "1d resamples funding to UTC daily sums; basis skipped unless "
+            "PIT; no paper perp path; single-print cannot promote; no new "
+            "PAPER_PROMOTE_* unless dual-print + hard gates + PIT basis + "
+            "paper path all clear (default false)",
         )
     )
 

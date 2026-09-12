@@ -13,12 +13,15 @@ from traderstack.research.funding_carry import (
     FUNDING_CARRY_RULES,
     FUNDING_Z_IDS,
     OVERLAY_IDS,
+    PAPER_CARRY_PATH_READY,
     PRINT_DUAL,
     PRINT_SINGLE,
     choose_walkforward,
+    evaluate_carry_hard_gates,
     funding_usable,
     hard_gates_available,
     render_funding_carry_markdown,
+    resample_funding_to_daily,
     run_funding_carry,
     score_hedged_carry,
     skipped_funding_families,
@@ -131,6 +134,25 @@ def test_hard_gates_need_daily_720() -> None:
     assert hard_gates_available(interval="1d", aligned_bars=720) is True
     assert hard_gates_available(interval="4h", aligned_bars=720) is False
     assert hard_gates_available(interval="1d", aligned_bars=90) is False
+    assert hard_gates_available(interval="1d", aligned_bars=720, second_aligned_bars=90) is False
+    assert hard_gates_available(interval="1d", aligned_bars=720, second_aligned_bars=720) is True
+
+
+def test_resample_funding_sums_utc_days_and_skips_empty() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    series = (
+        (start.replace(hour=0), 0.0001),
+        (start.replace(hour=8), 0.0002),
+        (start.replace(hour=16), -0.00005),
+        (start + timedelta(days=2, hours=8), 0.0003),
+    )
+    daily = resample_funding_to_daily(series)
+    assert len(daily) == 2
+    assert daily[0] == (start, 0.00025)
+    assert daily[1][0] == start + timedelta(days=2)
+    assert daily[1][1] == 0.0003
+    assert resample_funding_to_daily(None) == ()
+    assert resample_funding_to_daily(()) == ()
 
 
 def test_choose_walkforward_adapts_when_short() -> None:
@@ -433,3 +455,128 @@ def test_parser_defaults_keep_promote_paths_off() -> None:
     assert "funding-carry.md" in str(args.output_md)
     assert settings().trading_mode == "paper"
     assert FUNDING_CARRY_RULES.startswith("Pre-registered funding/carry")
+    assert PAPER_CARRY_PATH_READY is False
+
+
+def test_daily_resample_skips_basis_and_cannot_promote() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    btc = downtrend(360, symbol="BTC/USD", start=start)
+    eth = downtrend(360, symbol="ETH/USD", start=start)
+    # Three 8h prints per day → resample should collapse to ~360 daily sums.
+    eight_hour = tuple((start + timedelta(hours=8 * index), 0.0004) for index in range(360 * 3))
+    report = _search(
+        {"BTC/USD@1d": btc, "ETH/USD@1d": eth},
+        funding_by_symbol={"BTC/USD": eight_hour, "ETH/USD": eight_hour},
+        primary_venue="hyperliquid",
+        interval="1d",
+    )
+    assert report.funding_resampled_to == "1d"
+    assert report.basis_status == "skipped"
+    assert report.paper_path_ready is False
+    assert report.can_promote is False
+    assert report.hard_gates_available is False
+    assert report.primary_carry_hard_gates is not None
+    assert report.primary_carry_hard_gates.available is False
+    assert "720" in report.primary_carry_hard_gates.note
+    text = render_funding_carry_markdown(report)
+    assert "Basis (skip-not-invent)" in text
+    assert "skipped" in text
+    assert "Paper-executable path" in text
+    assert "no perp book" in text
+    assert "Do not add a Settings pin" in text
+
+
+def test_short_second_venue_keeps_hard_gates_unavailable() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    other = datetime(2023, 1, 1, tzinfo=UTC)
+    btc = downtrend(720, symbol="BTC/USD", start=start)
+    eth = downtrend(720, symbol="ETH/USD", start=start)
+    short_btc = downtrend(90, symbol="BTC/USD", start=other)
+    short_eth = downtrend(90, symbol="ETH/USD", start=other)
+    long_series = tuple((candle.opened_at, 0.001) for candle in btc)
+    short_series = tuple((candle.opened_at, 0.001) for candle in short_btc)
+    report = _search(
+        {"BTC/USD@1d": btc, "ETH/USD@1d": eth},
+        funding_by_symbol={"BTC/USD": long_series, "ETH/USD": long_series},
+        second_funding_by_symbol={"BTC/USD": short_series, "ETH/USD": short_series},
+        second_histories={"BTC/USD@1d": short_btc, "ETH/USD@1d": short_eth},
+        primary_venue="hyperliquid",
+        second_venue="okx",
+        interval="1d",
+        min_trades=1,
+    )
+    assert report.print_kind == PRINT_DUAL
+    assert report.primary_aligned_bars >= 720
+    assert report.second_aligned_bars < 720
+    assert report.hard_gates_available is False
+    assert report.can_promote is False
+    assert report.basis_status == "skipped"
+    assert report.paper_path_ready is False
+    assert report.recommended_promote_flag is None
+    assert report.second_carry_hard_gates is not None
+    assert report.second_carry_hard_gates.available is False
+    text = render_funding_carry_markdown(report)
+    assert "UNAVAILABLE" in text
+    assert "No candidate is promoted" in text
+
+
+def test_basis_file_is_modeled_but_still_cannot_promote_without_paper_path() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    series = tuple((start + timedelta(days=index), 0.001) for index in range(80))
+    # Falling basis while harvesting is a cash-and-carry gain.
+    basis = tuple((start + timedelta(days=index), 0.01 - 0.0001 * index) for index in range(80))
+    without = score_hedged_carry(
+        series,
+        abs_threshold=None,
+        z_threshold=None,
+        fee_bps=10.0,
+        slippage_bps=5.0,
+        train_size=40,
+        test_size=20,
+        step_size=20,
+    )
+    with_basis = score_hedged_carry(
+        series,
+        abs_threshold=None,
+        z_threshold=None,
+        fee_bps=10.0,
+        slippage_bps=5.0,
+        train_size=40,
+        test_size=20,
+        step_size=20,
+        basis=basis,
+    )
+    assert with_basis["basis_modeled"] is True
+    assert int(with_basis["basis_days_applied"] or 0) > 0
+    assert float(with_basis["full_sample_total_return"] or 0) > float(
+        without["full_sample_total_return"] or 0
+    )
+
+    btc = downtrend(360, symbol="BTC/USD", start=start)
+    eth = downtrend(360, symbol="ETH/USD", start=start)
+    funding = aligned_funding(btc)
+    report = _search(
+        {"BTC/USD@1d": btc, "ETH/USD@1d": eth},
+        funding_by_symbol={"BTC/USD": funding, "ETH/USD": funding},
+        primary_venue="file",
+        interval="1d",
+        basis=funding,
+    )
+    assert report.basis_status == "ok"
+    assert report.can_promote is False
+    assert report.paper_path_ready is False
+    assert report.any_promoted is False
+
+
+def test_evaluate_carry_hard_gates_unavailable_on_short_daily_tape() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    short = tuple((start + timedelta(days=index), 0.0002) for index in range(90))
+    gates = evaluate_carry_hard_gates(
+        {"BTC/USD": short, "ETH/USD": short},
+        fee_bps=10.0,
+        slippage_bps=5.0,
+        holdout_fraction=0.2,
+    )
+    assert gates.available is False
+    assert gates.combined is False
+    assert "720" in gates.note

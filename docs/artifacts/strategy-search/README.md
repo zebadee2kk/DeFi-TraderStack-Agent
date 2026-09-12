@@ -398,8 +398,11 @@ OKX public funding-rate-history is typically ~90d of 8h prints.
 Hyperliquid `fundingHistory` is hourly and typically reachable here.
 Binance USDT-M is often HTTP 451; Bybit linear is often HTTP 403.
 Hard gates (#96+A+B+C) stay UNAVAILABLE unless 720 aligned daily bars
-exist on two venues. Hedged carry does not invent basis.
-`PAPER_PROMOTE_*` stays false. Empty dual-print is success.
+exist on **each** participating venue. `--interval 1d` resamples
+funding to UTC daily sums (empty days omitted). Hedged carry does not
+invent basis (Hyperliquid funding premium is not a PIT perp−spot mid).
+There is no paper perp / hedge path. `PAPER_PROMOTE_*` stays false.
+Empty / cannot-promote is success.
 
 On the 2026-09-12 live run (catalog committed first):
 
@@ -424,6 +427,15 @@ Follow-up the same day (Hyperliquid wired as the second tape):
   UNAVAILABLE. **No new pin.**
 - `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
-See `funding-carry.md` and the 2026-09-12 status memo
-`edge-status-2026-09-12.md`.
+Follow-up the same day (daily resample / hard-gate honesty):
+
+- `traderstack-funding-carry --live --interval 1d` resamples both
+  funding tapes to UTC daily sums and evaluates the #96+A+B+C analog
+  or records UNAVAILABLE. OKX public history is still ~90d, so the
+  dual-print hard-gate bar cannot unlock. Basis skipped (no PIT
+  series). No paper perp path. **No new pin.** See
+  `funding-carry-daily.md`.
+
+See `funding-carry.md`, `funding-carry-daily.md`, and the 2026-09-12
+status memo `edge-status-2026-09-12.md`.
 

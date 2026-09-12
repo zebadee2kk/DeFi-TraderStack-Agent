@@ -69,6 +69,11 @@ _HYPERLIQUID_COIN: dict[str, str] = {
 }
 HYPERLIQUID_PAGE_SIZE = 500
 HYPERLIQUID_DEFAULT_LOOKBACK_DAYS = 180
+# Daily hard gates need ~720 aligned days. Hourly fundingHistory is
+# paginable from listing (~2023-05); 800d is enough to cover a Kraken
+# 720-bar daily window without inventing prints.
+HYPERLIQUID_DAILY_LOOKBACK_DAYS = 800
+HYPERLIQUID_DAILY_LIMIT_PAGES = 48
 
 MIN_LIQUIDATION_SPAN_SECONDS = 7 * 24 * 3600
 
