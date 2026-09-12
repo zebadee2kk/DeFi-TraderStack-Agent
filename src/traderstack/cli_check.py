@@ -354,10 +354,7 @@ def build_report(settings: Settings) -> ConfigReport:
                     "daily pin is ignored unless TRADING_MODE=paper; "
                     f"full MVP_ASSETS still cycles ({', '.join(settings.assets) or 'none'})"
                     if settings.paper_promote_ema_9_21 or settings.paper_promote_ema_9_21_adx15
-                    else (
-                        f"used only when a daily paper pin is on; "
-                        f"hard envelope {envelope}"
-                    )
+                    else (f"used only when a daily paper pin is on; hard envelope {envelope}")
                 )
             ),
         )

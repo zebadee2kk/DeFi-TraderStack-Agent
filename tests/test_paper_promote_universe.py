@@ -39,18 +39,19 @@ def _settings(**overrides: object) -> Settings:
     return Settings(_env_file=None, **values)  # type: ignore[arg-type]
 
 
-def _tick(symbol: str, last: float = 100.0) -> MarketTick:
+def _tick(symbol: str, last: float = 1_000.0) -> MarketTick:
+    half = last * 0.0005  # ~10 bps, inside MAX_SPREAD_BPS=30
     return MarketTick(
         source=MarketSource.KRAKEN,
         symbol=symbol,
         observed_at=NOW,
-        bid=last - 0.5,
-        ask=last + 0.5,
+        bid=last - half,
+        ask=last + half,
         last=last,
     )
 
 
-def _refs(asset: str, price: float = 100.0) -> list[ReferencePrice]:
+def _refs(asset: str, price: float = 1_000.0) -> list[ReferencePrice]:
     return [ReferencePrice(source=MarketSource.COINGECKO, asset=asset, price=price)]
 
 
@@ -60,7 +61,6 @@ def _flat_book() -> PortfolioSnapshot:
         cash_usd=10_000,
         daily_pnl_usd=0,
         peak_nav_usd=10_000,
-        observed_at=NOW,
     )
 
 
@@ -211,7 +211,6 @@ def test_promote_universe_does_not_block_a_leftover_sol_exit() -> None:
         daily_pnl_usd=0,
         peak_nav_usd=10_000,
         asset_exposure_usd={"SOL": 900.0},
-        observed_at=NOW,
         held_positions={"SOL": held},
     )
     pipe = VerticalSlicePipeline(risk_engine=RiskEngine(settings))
@@ -270,9 +269,7 @@ def test_check_config_warns_when_universe_tries_to_add_sol() -> None:
 
 
 def test_check_config_warns_when_promote_universe_is_empty() -> None:
-    report = build_report(
-        _settings(paper_promote_ema_9_21=True, paper_promote_universe="SOL/USD")
-    )
+    report = build_report(_settings(paper_promote_ema_9_21=True, paper_promote_universe="SOL/USD"))
     assert not report.safe
     assert any("empty" in warning for warning in report.warnings)
 
