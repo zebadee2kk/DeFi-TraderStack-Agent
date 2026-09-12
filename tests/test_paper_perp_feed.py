@@ -149,3 +149,96 @@ async def test_funding_tape_is_same_venue_and_filters_before_since() -> None:
     assert len(tape.settlements) == 1
     assert tape.settlements[0][1] == pytest.approx(0.0002)
     assert tape.source.startswith("hyperliquid")
+
+
+def test_feed_rejects_non_positive_timeouts() -> None:
+    with pytest.raises(ValueError, match="timeout"):
+        PaperPerpVenueFeed(timeout_seconds=0)
+    with pytest.raises(ValueError, match="funding_lookback"):
+        PaperPerpVenueFeed(funding_lookback_hours=0)
+
+
+@pytest.mark.asyncio
+async def test_feed_respects_venue_preference_and_cache() -> None:
+    calls = {"n": 0}
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(
+            200,
+            json=[{"symbol": "XBTUSD", "midPrice": 77137.4, "markPrice": 77156.96}],
+        )
+
+    async with httpx.AsyncClient(
+        base_url="https://www.bitmex.com",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        feed = PaperPerpVenueFeed(
+            venue_preference="bitmex",
+            bitmex_client=client,
+            mid_cache_seconds=60,
+        )
+        first = await feed.fetch_mid("BTC/USD")
+        second = await feed.fetch_mid("BTC/USD")
+    assert first is not None and second is not None
+    assert first.venue == "bitmex"
+    assert first.mid_usd == second.mid_usd
+    assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_feed_methods_refuse_if_mode_is_mutated() -> None:
+    feed = PaperPerpVenueFeed()
+    feed.trading_mode = "live"
+    with pytest.raises(ExecutionSafetyError, match="outside paper mode"):
+        await feed.fetch_mid("BTC/USD")
+    with pytest.raises(ExecutionSafetyError, match="outside paper mode"):
+        await feed.fetch_funding_since(
+            "BTC/USD",
+            venue="hyperliquid",
+            since=datetime(2026, 9, 12, tzinfo=UTC),
+        )
+
+
+@pytest.mark.asyncio
+async def test_bitmex_funding_tape_uses_funding_rate_only() -> None:
+    since = datetime(2026, 9, 12, 0, 0, tzinfo=UTC)
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "timestamp": "2026-09-12T08:00:00.000Z",
+                    "fundingRate": 0.0001,
+                    "fundingRateDaily": 0.0003,
+                }
+            ],
+        )
+
+    async with httpx.AsyncClient(
+        base_url="https://www.bitmex.com",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        feed = PaperPerpVenueFeed(bitmex_client=client)
+        tape = await feed.fetch_funding_since("BTC/USD", venue="bitmex", since=since)
+    assert tape.venue == "bitmex"
+    assert len(tape.settlements) == 1
+    assert tape.settlements[0][1] == pytest.approx(0.0001)
+    assert 0.0003 not in {rate for _ts, rate in tape.settlements}
+
+
+@pytest.mark.asyncio
+async def test_mid_http_error_is_a_skip() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="down")
+
+    async with httpx.AsyncClient(
+        base_url="https://api.hyperliquid.xyz",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        feed = PaperPerpVenueFeed(
+            venue_preference="hyperliquid",
+            hyperliquid_client=client,
+        )
+        assert await feed.fetch_mid("BTC/USD") is None
