@@ -565,7 +565,10 @@ def _passer_table(rows: list[DualPrintRow], *, venue: str) -> list[str]:
         sep = "| --- | ---: | ---: | ---: | ---: | ---: | :---: | :---: | :---: | :---: |"
     lines = [header, sep]
     if not rows:
-        lines.append("| — | — | n/a | n/a | n/a | n/a | — | — | — | — | no |")
+        if venue == "kraken":
+            lines.append("| — | — | n/a | n/a | n/a | n/a | — | — | — | — | no |")
+        else:
+            lines.append("| — | n/a | n/a | n/a | n/a | — | — | — | — | no |")
         return lines
     for row in rows:
         if venue == "kraken":
