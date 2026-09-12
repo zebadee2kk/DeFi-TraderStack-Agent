@@ -80,9 +80,7 @@ async def _noop(result: RuntimeResult) -> None:
 
 
 def _intent() -> PaperOrderIntent:
-    return PaperOrderIntent(
-        decision_id="dec-1", asset="BTC", side=Side.BUY, notional_usd=100
-    )
+    return PaperOrderIntent(decision_id="dec-1", asset="BTC", side=Side.BUY, notional_usd=100)
 
 
 def test_require_runtime_trading_mode_rejects_live() -> None:
