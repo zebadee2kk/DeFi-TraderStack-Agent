@@ -24,6 +24,8 @@ def bounded_event_symbol(symbol: str, *, max_length: int = RUNTIME_EVENT_SYMBOL_
     if len(symbol) <= max_length:
         return symbol
     return symbol[:max_length]
+
+
 metadata = MetaData()
 runtime_events = Table(
     "runtime_events",
