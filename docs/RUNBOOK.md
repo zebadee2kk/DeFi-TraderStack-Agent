@@ -37,7 +37,8 @@ without activating the venv.
    Fill in `.env` — see "Filling in `.env` safely" below. You can run with every
    provider key left blank; the runtime treats a missing key as "that feature is
    off" (see `traderstack-check-config`), never as an error, except where a setting
-   you *did* turn on requires it (e.g. `VENUE_FEED=robinhood_chain`).
+   you *did* turn on requires it (e.g. `VENUE_FEED=robinhood_chain`, or
+   `VENUE_FEED=kraken_rest` which is paper-only).
 3. **Verify configuration before starting anything**:
    ```bash
    make setup            # creates .venv, installs the package + dev tools
@@ -128,6 +129,19 @@ get that voter rule.
 - `ROBINHOOD_CHAIN_*` values (RPC URL, chain id, router/token allowlists) must come
   from Robinhood's own official chain docs, never guessed — see the warnings
   already in `.env.example` and `docs/DATA-SOURCES.md`.
+- **`VENUE_FEED=kraken_rest`**: paper-only public Spot REST ticker
+  (`GET https://api.kraken.com/0/public/Ticker`). Use it when Kraken WS v2
+  hangs, is firewalled, or `KrakenFeedExhausted` keeps ending the cycle. It
+  is rejected at startup unless `TRADING_MODE=paper`. Poll interval is
+  `KRAKEN_REST_POLL_SECONDS` (default 1s) — keep it under
+  `MAX_MARKET_DATA_AGE_SECONDS`. No order-book snapshots on this feed.
+  See "Kraken REST ticker fallback" below.
+- **`CRUCIX_*`**: optional local intel. The adapter is registered only when
+  `CRUCIX_ENABLED=true` or `CRUCIX_BASE_URL` / `CRUCIX_API_KEY` is set. A
+  copied blank `.env.example` does **not** register it. High-tier alerts
+  become `NewsFeatures.adverse_event` (an extra rejection source only;
+  never a way to size up or authorise). Default URL when registered
+  without an override is `http://host.docker.internal:8787`.
 
 ## Starting and stopping
 
@@ -388,7 +402,7 @@ vector exists — a data-quality gate, not risk policy):
 
 | Reason | Meaning | Operator action |
 |---|---|---|
-| `stale_primary_tick` | The venue tick is older than `MAX_MARKET_DATA_AGE_SECONDS`. | Usually transient (network/venue latency). Persistent → check the venue feed (Kraken WS reconnects, or the Robinhood Chain websocket) is actually delivering. |
+| `stale_primary_tick` | The venue tick is older than `MAX_MARKET_DATA_AGE_SECONDS`. | Usually transient (network/venue latency). Persistent → check the venue feed (Kraken WS reconnects, `VENUE_FEED=kraken_rest` as a paper-only fallback, or the Robinhood Chain websocket) is actually delivering. |
 | `spread_limit_exceeded` | Bid/ask spread on the primary tick exceeds `MAX_SPREAD_BPS`. | Expected in thin/volatile conditions. Persistent on a liquid pair → check venue/pool liquidity, not a bug. |
 | `no_independent_reference_price` | Neither CoinGecko nor CoinMarketCap returned a price for this asset (and, on paper, no last-good mid was still inside `PAPER_REFERENCE_LAST_GOOD_SECONDS`). | On paper, a burst of CoinGecko HTTP 429s should be absorbed by last-good / the longer paper cache — see "Paper reference-price resilience". Persistent rejects after that window, or any reject on live/shadow, mean both providers failed cold (or last-good expired): check keys, circuit breakers, and "Provider circuit breakers and quotas". |
 | `reference_price_divergence` | The primary tick diverges from the independent reference(s) by more than `MAX_REFERENCE_DIVERGENCE_BPS`. | Investigate before loosening the threshold — this is the control that catches a wrong/manipulated venue price. |
@@ -398,7 +412,7 @@ proposal):
 
 | Reason | Meaning | Operator action |
 |---|---|---|
-| `no_external_intelligence` | `INTELLIGENCE_REQUIRED=true` but no configured provider (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS) returned anything this cycle. | Check provider keys/circuit breakers, or set `INTELLIGENCE_REQUIRED=false` if trading on market data alone is acceptable. |
+| `no_external_intelligence` | `INTELLIGENCE_REQUIRED=true` but no configured provider (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS/Crucix) returned anything this cycle. | Check provider keys/circuit breakers, or set `INTELLIGENCE_REQUIRED=false` if trading on market data alone is acceptable. |
 | `adverse_news_event` | `INTELLIGENCE_BLOCK_ON_ADVERSE_NEWS=true` (default) and a news provider flagged an adverse event for this asset — new risk is blocked for the cycle; existing positions are untouched. | Expected behaviour during a real news event. Read the `news` feature fields in the audit line for which provider/asset triggered it. |
 
 **Pre-trade backtest gate** (`PreTradeBacktestGate.evaluate`, only when
@@ -772,7 +786,7 @@ Prometheus: `traderstack_stream_messages_total`, `traderstack_stream_reconnects_
 
 Every external provider — reference prices (CoinGecko, CoinMarketCap), candle
 history (Kraken), and every intelligence adapter (Dune, LunarCrush,
-CryptoPanic, Perplexity, altFINS) — is wrapped in a per-provider
+CryptoPanic, Perplexity, altFINS, Crucix) — is wrapped in a per-provider
 `traderstack.market.registry.ProviderRegistry` (`build_provider_registry` in
 `cli.py`), giving each one, independently:
 
@@ -804,6 +818,36 @@ or `traderstack-check-config`'s per-provider quota lines. A provider showing
 as configured (`traderstack-check-config`) but whose feature keeps rejecting
 with `no_independent_reference_price`/`no_external_intelligence` is very
 likely sitting behind an open breaker — check its `last_error`.
+
+## Kraken REST ticker fallback
+
+Kraken WS v2 (`VENUE_FEED=kraken`, the default) reconnects with backoff and
+gives up after `KRAKEN_MAX_RECONNECT_ATTEMPTS`. If that stream is hung from
+the operator's network — idle proxy, outbound WS blocked, `KrakenFeedExhausted`
+in the audit log — switch the **paper** process to the public Spot REST
+ticker instead of guessing ticks:
+
+```bash
+# .env
+TRADING_MODE=paper
+VENUE_FEED=kraken_rest
+KRAKEN_REST_POLL_SECONDS=1
+```
+
+`traderstack-paper` then polls `GET https://api.kraken.com/0/public/Ticker`
+(`a`/`b`/`c` → ask/bid/last) once per `stream_ticks` wait. No credentials,
+no private endpoints, no signing. `VENUE_FEED=kraken_rest` with
+`TRADING_MODE` other than `paper` is a startup error
+(`require_paper_kraken_rest`) and a `traderstack-check-config` warning.
+
+This feed has no order-book channel (`KRAKEN_BOOK_ENABLED` is ignored).
+Candle history is unchanged (public Spot OHLC). Independent reference
+prices (CoinGecko / CoinMarketCap) still run; CMC's public quotes path
+accepts both list- and dict-shaped `data`/`quote` so a missing paid key
+can still yield a USD price when the public payload is well-formed.
+
+Switch back to `VENUE_FEED=kraken` once WS is healthy — REST is a
+fallback, not the preferred execution-quality stream.
 
 ## Robinhood Chain configuration prerequisites
 

@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     meta_agent_output_cost_per_mtok: float = Field(default=5.0, ge=0)
     # --- end meta-agent (Epic 6) ---
     altfins_api_key: SecretStr | None = None
+    # --- crucix intel ---
+    # Local/operator Crucix alert service. Off unless CRUCIX_ENABLED=true or a
+    # URL / API key is set. Adverse flags only add rejections.
+    crucix_enabled: bool = False
+    crucix_base_url: str = ""
+    crucix_api_key: SecretStr | None = None
+    # --- end crucix intel ---
     # External intelligence handling in the live loop.
     intelligence_cache_seconds: float = Field(default=300.0, gt=0)
     intelligence_block_on_adverse_news: bool = True
@@ -97,6 +104,12 @@ class Settings(BaseSettings):
     # order-book depth risk check.
     kraken_book_enabled: bool = False
     kraken_book_depth: int = Field(default=10, gt=0)
+    # --- venue feed (kraken_rest) ---
+    # Poll interval for VENUE_FEED=kraken_rest (public Spot /0/public/Ticker).
+    # Keep well under MAX_MARKET_DATA_AGE_SECONDS so a poll is never stale
+    # solely because we slept too long.
+    kraken_rest_poll_seconds: float = Field(default=1.0, gt=0)
+    # --- end venue feed (kraken_rest) ---
 
     # --- paper-research edge data plane ---------------------------------------
     # Opt-in research feeds. Never an execution venue: they do not add Binance
@@ -126,7 +139,8 @@ class Settings(BaseSettings):
 
     trading_mode: Literal["paper", "shadow", "live"] = "paper"
     # Which venue supplies the primary execution-quality tick stream.
-    venue_feed: Literal["kraken", "robinhood_chain"] = "kraken"
+    # kraken_rest is a paper-only public REST fallback when WS hangs.
+    venue_feed: Literal["kraken", "kraken_rest", "robinhood_chain"] = "kraken"
     paper_starting_nav_usd: float = 10_000
     mvp_assets: str = "BTC,ETH,SOL"
     max_reference_divergence_bps: float = Field(default=50.0, gt=0)

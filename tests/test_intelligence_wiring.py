@@ -254,6 +254,9 @@ def test_build_intelligence_skips_blank_api_keys() -> None:
             cryptopanic_api_key="",
             perplexity_api_key="\t",
             altfins_api_key="",
+            crucix_enabled=False,
+            crucix_base_url="",
+            crucix_api_key="",
         )
     )
     assert orchestrator is None

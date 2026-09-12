@@ -348,12 +348,116 @@ class CoinGeckoPriceProvider:
                 await client.aclose()
 
 
+def _cmc_usd_price(quote: object) -> float | None:
+    """Extract a USD last price from CMC ``quote`` as a dict *or* a list.
+
+    v1/v2 keyed ``quote`` as ``{"USD": {"price": ...}}``. v3 (and the public
+    no-key path) returns ``quote`` as a list of ``{"symbol": "USD", "price": ...}``
+    objects. Either shape is reduced to a finite float or ``None``.
+    """
+    if isinstance(quote, dict):
+        usd = quote.get("USD") if "USD" in quote else quote.get("usd")
+        if isinstance(usd, dict):
+            price = usd.get("price")
+            if isinstance(price, (int, float)) and not isinstance(price, bool):
+                return float(price)
+        # A single quote object (already USD) may carry ``price`` at the top.
+        price = quote.get("price")
+        if isinstance(price, (int, float)) and not isinstance(price, bool):
+            symbol = quote.get("symbol") or quote.get("name")
+            if symbol is None or str(symbol).upper() == "USD":
+                return float(price)
+        return None
+    if isinstance(quote, list):
+        for item in quote:
+            if not isinstance(item, dict):
+                continue
+            symbol = item.get("symbol") or item.get("name")
+            if symbol is not None and str(symbol).upper() != "USD":
+                continue
+            price = item.get("price")
+            if isinstance(price, (int, float)) and not isinstance(price, bool):
+                return float(price)
+    return None
+
+
+def _cmc_asset_rows(data: object) -> list[tuple[str, dict[str, Any]]]:
+    """Flatten CMC ``data`` whether it is a symbol-keyed dict or a list.
+
+    A dict value may itself be a list (multiple listings for one symbol);
+    we take the first dict row that yields a USD price later.
+    """
+    rows: list[tuple[str, dict[str, Any]]] = []
+    if isinstance(data, list):
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            symbol = item.get("symbol")
+            if isinstance(symbol, str) and symbol.strip():
+                rows.append((symbol.upper(), item))
+        return rows
+    if not isinstance(data, dict):
+        return rows
+    for key, value in data.items():
+        listings: list[Any]
+        if isinstance(value, list):
+            listings = value
+        elif isinstance(value, dict):
+            listings = [value]
+        else:
+            continue
+        for item in listings:
+            if not isinstance(item, dict):
+                continue
+            symbol = item.get("symbol")
+            if not isinstance(symbol, str) or not symbol.strip():
+                symbol = str(key)
+            rows.append((str(symbol).upper(), item))
+    return rows
+
+
+def parse_coinmarketcap_quotes(
+    payload: object,
+    *,
+    observed_at: datetime | None = None,
+) -> list[ReferencePrice]:
+    """Parse a CMC quotes/latest body; skip unrecognised shapes instead of 500ing."""
+    if not isinstance(payload, dict):
+        return []
+    now = observed_at or datetime.now(UTC)
+    prices: list[ReferencePrice] = []
+    seen: set[str] = set()
+    for asset, row in _cmc_asset_rows(payload.get("data")):
+        if asset in seen:
+            continue
+        quote = row.get("quote")
+        if quote is None:
+            quote = row.get("quotes")
+        price = _cmc_usd_price(quote)
+        if price is None or price <= 0:
+            continue
+        seen.add(asset)
+        prices.append(
+            ReferencePrice(
+                source=MarketSource.COINMARKETCAP,
+                asset=asset,
+                observed_at=now,
+                price=price,
+            )
+        )
+    return prices
+
+
 class CoinMarketCapPriceProvider:
     def __init__(
-        self, api_key: str | None = None, base_url: str = "https://pro-api.coinmarketcap.com"
+        self,
+        api_key: str | None = None,
+        base_url: str = "https://pro-api.coinmarketcap.com",
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.client = client
 
     async def get_prices(self, assets: tuple[str, ...]) -> list[ReferencePrice]:
         path = (
@@ -362,31 +466,16 @@ class CoinMarketCapPriceProvider:
             else "/public-api/v3/cryptocurrency/quotes/latest"
         )
         headers = {"X-CMC_PRO_API_KEY": self.api_key} if self.api_key else {}
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                f"{self.base_url}{path}",
-                params={"symbol": ",".join(assets), "convert": "USD"},
-                headers=headers,
-            )
-            response.raise_for_status()
-            payload = response.json()
-        data = payload.get("data", {})
-        now = datetime.now(UTC)
-        prices: list[ReferencePrice] = []
-        if isinstance(data, dict):
-            for asset, row in data.items():
-                if not isinstance(row, dict):
-                    continue
-                quote = row.get("quote")
-                usd = quote.get("USD") if isinstance(quote, dict) else None
-                price = usd.get("price") if isinstance(usd, dict) else None
-                if isinstance(price, (int, float)):
-                    prices.append(
-                        ReferencePrice(
-                            source=MarketSource.COINMARKETCAP,
-                            asset=str(asset).upper(),
-                            observed_at=now,
-                            price=float(price),
-                        )
-                    )
-        return prices
+        wanted = {asset.upper() for asset in assets}
+        params = {"symbol": ",".join(assets), "convert": "USD"}
+        if self.client is not None:
+            response = await self.client.get(path, params=params, headers=headers)
+        else:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(
+                    f"{self.base_url}{path}", params=params, headers=headers
+                )
+        response.raise_for_status()
+        return [
+            price for price in parse_coinmarketcap_quotes(response.json()) if price.asset in wanted
+        ]

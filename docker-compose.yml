@@ -24,6 +24,10 @@ services:
   app:
     build: .
     env_file: [.env]
+    # So CRUCIX_BASE_URL=http://host.docker.internal:PORT reaches a host-side
+    # Crucix process from the container (Linux Docker). No effect on risk.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_started}
