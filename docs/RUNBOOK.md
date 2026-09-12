@@ -737,12 +737,14 @@ hedged cash-and-carry on BTC+ETH.
   basis is skipped unless a PIT mark−index / perp-mid−spot-mid series
   is supplied. `--live` probes Hyperliquid and BitMEX and records
   UNAVAILABLE (current mark/index/mid only; `fundingHistory.premium`
-  and BitMEX `.XBTUSDPI` are not basis). A paper perp/hedge stub
-  exists (`PAPER_PERP_HEDGE`, default false) but
-  `PAPER_CARRY_PATH_READY` stays false until PIT basis exists on both
-  venues and a cycle-wired perp mid is available. A Settings pin
-  requires dual-print + hard gates + PIT basis + a paper-executable
-  path.
+  and BitMEX `.XBTUSDPI` are not basis). A paper hedge+funding soak
+  path exists (`PAPER_PERP_HEDGE`, default false): the cycle fetches
+  an explicit Hyperliquid `midPx` / BitMEX `midPrice` and applies
+  same-venue public funding settlements. Snapshot mids are not
+  historical PIT basis and are not scored as one.
+  `PAPER_CARRY_PATH_READY` is true for that soak; `can_promote` stays
+  false while PIT basis is UNAVAILABLE. A Settings pin requires
+  dual-print + hard gates + PIT basis + a paper-executable path.
 - This command never flips `PAPER_PROMOTE_*` and does not add a new
   pin unless those four are all true (default false if a pin is ever
   added). Empty / cannot-promote is success.

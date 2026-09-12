@@ -322,6 +322,8 @@ def test_dual_print_modeled_carry_passer_still_cannot_promote() -> None:
     )
     assert report.print_kind == PRINT_DUAL
     assert "carry_hedged_sign" in report.dual_print_passer_ids
+    assert report.paper_path_ready is True
+    assert report.basis_status == "skipped"
     assert report.can_promote is False
     assert report.any_promoted is False
     assert report.recommended_promote_flag is None
@@ -463,7 +465,7 @@ def test_parser_defaults_keep_promote_paths_off() -> None:
     assert "funding-carry.md" in str(args.output_md)
     assert settings().trading_mode == "paper"
     assert FUNDING_CARRY_RULES.startswith("Pre-registered funding/carry")
-    assert PAPER_CARRY_PATH_READY is False
+    assert PAPER_CARRY_PATH_READY is True
 
 
 def test_daily_resample_skips_basis_and_cannot_promote() -> None:
@@ -480,7 +482,7 @@ def test_daily_resample_skips_basis_and_cannot_promote() -> None:
     )
     assert report.funding_resampled_to == "1d"
     assert report.basis_status == "skipped"
-    assert report.paper_path_ready is False
+    assert report.paper_path_ready is True
     assert report.can_promote is False
     assert report.hard_gates_available is False
     assert report.primary_carry_hard_gates is not None
@@ -490,8 +492,9 @@ def test_daily_resample_skips_basis_and_cannot_promote() -> None:
     assert "Basis (skip-not-invent)" in text
     assert "skipped" in text
     assert "Paper-executable path" in text
-    assert "PAPER_CARRY_PATH_READY" in text or "not promote-ready" in text
+    assert "PAPER_CARRY_PATH_READY" in text or "soak" in text.lower()
     assert "Do not add a Settings pin" in text
+    assert "UNAVAILABLE" in report.honesty or "Basis skipped" in report.honesty
 
 
 def test_short_second_venue_keeps_hard_gates_unavailable() -> None:
@@ -519,7 +522,7 @@ def test_short_second_venue_keeps_hard_gates_unavailable() -> None:
     assert report.hard_gates_available is False
     assert report.can_promote is False
     assert report.basis_status == "skipped"
-    assert report.paper_path_ready is False
+    assert report.paper_path_ready is True
     assert report.recommended_promote_flag is None
     assert report.second_carry_hard_gates is not None
     assert report.second_carry_hard_gates.available is False
@@ -528,7 +531,7 @@ def test_short_second_venue_keeps_hard_gates_unavailable() -> None:
     assert "No candidate is promoted" in text
 
 
-def test_basis_file_is_modeled_but_still_cannot_promote_without_paper_path() -> None:
+def test_basis_file_is_modeled_but_still_cannot_promote() -> None:
     start = datetime(2024, 1, 1, tzinfo=UTC)
     series = tuple((start + timedelta(days=index), 0.001) for index in range(80))
     # Falling basis while harvesting is a cash-and-carry gain.
@@ -572,8 +575,9 @@ def test_basis_file_is_modeled_but_still_cannot_promote_without_paper_path() -> 
     )
     assert report.basis_status == "ok"
     assert report.can_promote is False
-    assert report.paper_path_ready is False
+    assert report.paper_path_ready is True
     assert report.any_promoted is False
+    assert report.print_kind == PRINT_SINGLE
 
 
 @pytest.mark.asyncio

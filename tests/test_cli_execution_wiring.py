@@ -9,6 +9,7 @@ from traderstack.execution.ledger import ExecutionLedger
 from traderstack.execution.ledger_store import JsonExecutionLedgerStore
 from traderstack.execution.paper_fill import PaperFillSimulator
 from traderstack.execution.paper_perp import PaperPerpBook
+from traderstack.execution.paper_perp_feed import PaperPerpVenueFeed
 from traderstack.execution.reconcile import HummingbotExecutionReconciler
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.reconciliation import HummingbotPortfolioReconciler
@@ -96,8 +97,11 @@ def test_build_service_wires_paper_perp_stub_when_opted_in(tmp_path: Path) -> No
         ledger_store=JsonExecutionLedgerStore(tmp_path / "execution_ledger.json"),
     )
     assert isinstance(service.paper_perp_book, PaperPerpBook)
-    assert service.paper_perp_book.path_ready is False
+    assert isinstance(service.paper_perp_feed, PaperPerpVenueFeed)
+    assert service.paper_perp_book.path_ready is True
     assert settings.trading_mode == "paper"
+    assert settings.paper_perp_hedge is True
+    assert settings.paper_promote_searched_strategies is False
 
 
 def test_build_service_with_simulate_fills_off_wires_hummingbot_nav_reconcile(

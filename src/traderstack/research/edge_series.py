@@ -563,6 +563,15 @@ async def _hyperliquid_post_info(
     raise last_exc
 
 
+async def hyperliquid_post_info(
+    client: httpx.AsyncClient,
+    payload: dict[str, Any],
+) -> httpx.Response:
+    """Public wrapper for POST /info. Does not invent a body."""
+
+    return await _hyperliquid_post_info(client, payload)
+
+
 async def fetch_hyperliquid_funding(
     symbol: str,
     *,
@@ -714,6 +723,37 @@ _BITMEX_PREMIUM_INDEX: dict[str, str] = {
     "BTC/USD": ".XBTUSDPI",
     "ETH/USD": ".ETHUSDPI",
 }
+
+
+def hyperliquid_current_mid_usd(payload: object, coin: str) -> float | None:
+    """Current ``midPx`` snapshot. Not a PIT basis point; not for scoring."""
+
+    ctx = _hyperliquid_ctx_for(payload, coin)
+    if ctx is None:
+        return None
+    raw = ctx.get("midPx")
+    if raw is None:
+        return None
+    try:
+        mid = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return mid if mid > 0 else None
+
+
+def bitmex_current_mid_usd(payload: object) -> float | None:
+    """Current ``midPrice`` snapshot. Not a PIT basis point; not for scoring."""
+
+    if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
+        return None
+    raw = payload[0].get("midPrice")
+    if raw is None:
+        return None
+    try:
+        mid = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return mid if mid > 0 else None
 
 
 def _hyperliquid_ctx_for(payload: object, coin: str) -> dict[str, Any] | None:

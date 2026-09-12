@@ -405,8 +405,11 @@ is often HTTP 403. Hard gates (#96+A+B+C) stay UNAVAILABLE unless
 omitted). Hedged carry does not invent basis (Hyperliquid funding
 premium is not a PIT perp−spot mid; live probes found current
 mark/index only on Hyperliquid and BitMEX). A paper perp / hedge
-stub exists; `PAPER_CARRY_PATH_READY` stays false. `PAPER_PROMOTE_*`
-stays false. Empty / cannot-promote is success.
+path is cycle-wired for forward paper soaks (`PAPER_PERP_HEDGE`
+default false; explicit HL/BitMEX mid + same-venue funding). Snapshot
+mids are not historical PIT basis. `PAPER_CARRY_PATH_READY` is true
+for that soak; `can_promote` stays false. `PAPER_PROMOTE_*` stays
+false. Empty / cannot-promote is success.
 
 On the 2026-09-12 live run (catalog committed first):
 
@@ -472,8 +475,18 @@ Follow-up the same day (PIT basis probe + paper perp stub):
   pair it. `basis_status=skipped`. Carry is **not** re-scored on
   an invented series.
 - Paper perp/hedge stub in `execution/paper_perp.py`
-  (`PAPER_PERP_HEDGE` default false). Cycle skips without a PIT
-  perp mid. `PAPER_CARRY_PATH_READY` stays false. **No new pin.**
+  (`PAPER_PERP_HEDGE` default false). Cycle skipped without a PIT
+  perp mid in #113. Follow-up: cycle-wired venue mid + funding.
+- `can_promote=false`. `PAPER_PROMOTE_*` stays false.
+
+Follow-up the same day (paper hedge+funding soak path):
+
+- Cycle fetches Hyperliquid `midPx` and/or BitMEX `midPrice` when
+  `PAPER_PERP_HEDGE=true` and applies same-venue public funding
+  settlements. Kraken spot mid is never substituted.
+- Snapshot mids are **not** written into research scoring. Historical
+  PIT basis stays **UNAVAILABLE**. `PAPER_CARRY_PATH_READY` is true
+  for the soak path. **No new pin.**
 - `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
 See `funding-carry.md`, `funding-carry-daily.md`,

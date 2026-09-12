@@ -396,15 +396,61 @@ See `funding-carry-basis.md`.
 - does **not** book perp PnL into the spot portfolio.
 
 `PAPER_PERP_HEDGE` (default **false**) opts the stub into
-`traderstack-paper`. The cycle still passes `perp_mid_usd=None`, so
-production hedges skip. `PAPER_CARRY_PATH_READY` stays **false**.
-`can_promote` stays **false**. No new Settings pin.
+`traderstack-paper`. After #113 the cycle still passed
+`perp_mid_usd=None`, so production hedges skipped.
+`PAPER_CARRY_PATH_READY` stayed **false**. `can_promote` stayed
+**false**. No new Settings pin.
 
-### Still blocked
+### Still blocked (after #113)
 
 `can_promote` requires dual-print ∧ hard gates ∧ PIT basis ∧ paper
-path. After this session: dual-print **true**, hard gates **true**,
-basis **UNAVAILABLE**, paper path **stub / not ready**.
+path. After #113: dual-print **true**, hard gates **true**, basis
+**UNAVAILABLE**, paper path **stub / not ready**.
+
+## This session — paper hedge+funding soak path
+
+Highest-leverage next step after #113: close the paper-path honesty
+gap without inventing historical PIT basis.
+
+### What was wired
+
+When `PAPER_PERP_HEDGE=true` and `TRADING_MODE=paper`:
+
+1. The cycle fetches an **explicit current** perp mid from
+   Hyperliquid `metaAndAssetCtxs.midPx` and/or BitMEX
+   `/instrument.midPrice` for BTC/ETH.
+2. That mid is passed into `PaperPerpBook.maybe_hedge_spot_fill`.
+   The Kraken spot mid is **never** substituted. `markPx` /
+   last-trade / funding premium are not mids and are not fallbacks.
+3. Funding credit/debit is applied only from the **same venue's**
+   public funding tape (HL `fundingHistory` or BitMEX `/funding`
+   `fundingRate`), and only prints strictly after the hedge.
+   Missing tape → skip, not invent.
+
+`PAPER_PERP_HEDGE` still defaults **false**. No live. No
+`PAPER_PROMOTE_*` flip.
+
+### What was not wired
+
+Current snapshot mids are **not** a historical mark−index or
+perp-mid−spot-mid series. Writing them into
+`traderstack-funding-carry` would invent PIT basis the venues do
+not publish. Research `basis_status` stays **skipped**. Carry was
+**not** re-scored. The #112 daily numbers stay the basis-unaware
+model.
+
+### Readiness
+
+| flag | value | meaning |
+| --- | --- | --- |
+| `PAPER_CARRY_PATH_READY` | **true** | hedge+funding paper path is cycle-wired and exercised with real mid+funding inputs |
+| `can_promote` | **false** | dual-print ∧ hard gates are true; PIT basis is still UNAVAILABLE |
+| `PAPER_PERP_HEDGE` | **false** (default) | operator opt-in for forward paper soaks |
+| `PAPER_PROMOTE_*` | **false** | no pin |
+
+Promote remains blocked on basis.
+
+See `funding-carry-basis.md`.
 
 ## Next falsifiable experiments
 
@@ -428,11 +474,12 @@ BitMEX `.XBTUSDPI`.
    Next only if a public historical mark/index or perp-mid−spot-mid
    tape appears on **both** venues. Do not invent from last-trade
    or from funding.
-5. **Paper-executable path (still `TRADING_MODE=paper`).** Stub
-   exists; not cycle-wired with a perp mid. Next: a PIT perp mid
-   (not Kraken spot) plus funding settlements in the paper cycle,
-   still paper-only, kill switch respected. Do not add a Settings
-   pin until A+B both work and gates still clear.
+5. **Paper-executable path (still `TRADING_MODE=paper`).** This
+   session: cycle-wired with an explicit HL/BitMEX mid + same-venue
+   funding tape. `PAPER_CARRY_PATH_READY` is true for that soak.
+   Promote still blocked on historical PIT basis. Do not add a
+   Settings pin until basis exists on both venues and gates still
+   clear.
 6. **Not** another daily-EMA catalog expansion on the same Kraken 720
    + Binance.US older-720 pair.
 7. **Not** liquidation-conditioned promotion until a public historical
@@ -448,7 +495,7 @@ BitMEX `.XBTUSDPI`.
 | `PAPER_PROMOTE_EMA_9_21` | false | stay false |
 | `PAPER_PROMOTE_EMA_9_21_ADX15` | false | stay false |
 | `PAPER_GARCH_SIZE` | false | stay false |
-| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; PIT basis UNAVAILABLE and paper perp stub not promote-ready — do not add a pin |
-| `PAPER_PERP_HEDGE` | false | scaffold only; cycle skips without a PIT perp mid |
+| new funding/carry pin | *(not added)* | `carry_hedged_sign` is a modeled daily dual-print + hard-gate analog passer on Hyperliquid+BitMEX; paper soak path ready; PIT basis UNAVAILABLE — do not add a pin |
+| `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL/BitMEX mid + same-venue funding; not a promote path |
 
 `TRADING_MODE=paper`. No live.

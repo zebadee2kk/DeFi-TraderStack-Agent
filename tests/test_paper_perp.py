@@ -35,9 +35,9 @@ def _spot_fill(*, asset: str = "BTC", side: Side = Side.BUY, qty: float = 0.05) 
     )
 
 
-def test_path_ready_stays_false_and_does_not_flip_promote_defaults() -> None:
-    assert PAPER_PERP_PATH_READY is False
-    assert PAPER_CARRY_PATH_READY is False
+def test_path_ready_is_soak_only_and_does_not_flip_promote_defaults() -> None:
+    assert PAPER_PERP_PATH_READY is True
+    assert PAPER_CARRY_PATH_READY is True
     defaults = Settings(
         database_url="postgresql+asyncpg://x:x@localhost/x",
         redis_url="redis://localhost:6379/0",

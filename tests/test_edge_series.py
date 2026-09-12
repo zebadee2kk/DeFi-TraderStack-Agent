@@ -8,6 +8,7 @@ from traderstack.research.candidates import FeatureZVoter
 from traderstack.research.edge_series import (
     BITMEX_BASIS_UNAVAILABLE,
     HYPERLIQUID_BASIS_UNAVAILABLE,
+    bitmex_current_mid_usd,
     fetch_binance_funding,
     fetch_binance_liquidations,
     fetch_bitmex_basis,
@@ -16,6 +17,7 @@ from traderstack.research.edge_series import (
     fetch_hyperliquid_basis,
     fetch_hyperliquid_funding,
     fetch_okx_funding,
+    hyperliquid_current_mid_usd,
 )
 from traderstack.strategies import Regime
 
@@ -269,6 +271,10 @@ async def test_hyperliquid_basis_skips_current_only_and_refuses_premium() -> Non
     assert "premium" in result.reason.lower()
     assert HYPERLIQUID_BASIS_UNAVAILABLE.split(".")[0] in result.reason
     assert "Current markPx/oraclePx observed" in result.reason
+    assert result.points == ()
+    snapshot = hyperliquid_current_mid_usd(payload, "BTC")
+    assert snapshot == pytest.approx(77129.5)
+    # Snapshot mid is for the paper soak only — basis fetch stays skipped.
 
 
 @pytest.mark.asyncio
@@ -312,6 +318,9 @@ async def test_bitmex_basis_skips_and_refuses_premium_index() -> None:
     assert "funding-formula" in result.reason
     assert ".XBTUSDPI" in result.reason
     assert any(path.endswith("/instrument") for path in calls)
+    assert bitmex_current_mid_usd(
+        [{"symbol": "XBTUSD", "markPrice": 77156.96, "midPrice": 77137.4}]
+    ) == pytest.approx(77137.4)
 
 
 @pytest.mark.asyncio

@@ -46,11 +46,16 @@ Print policy (frozen):
   daily resample; they are recorded UNAVAILABLE, not faked.
 * A Settings pin additionally requires a paper-executable path (paper
   perp simulator and/or hedged spot+perp book) that is cycle-wired
-  with a real perp mid. A paper-only stub exists
-  (``execution/paper_perp.py``) but ``PAPER_CARRY_PATH_READY`` stays
-  false until PIT basis exists on both dual-print venues **and** the
-  stub is cycle-wired with a perp mid (Kraken spot mid is not a
-  substitute). Do not add a pin that implies otherwise.
+  with a real perp mid **and** PIT basis on both dual-print venues.
+  The paper hedge+funding soak path is cycle-wired
+  (``execution/paper_perp.py`` + ``execution/paper_perp_feed.py``):
+  ``PAPER_PERP_HEDGE=true`` fetches Hyperliquid ``midPx`` / BitMEX
+  ``midPrice`` and applies same-venue public funding settlements.
+  Kraken spot mid is not a substitute. Current snapshot mids are
+  **not** a historical PIT basis series and are not written into
+  research scoring. ``PAPER_CARRY_PATH_READY`` is true for that soak
+  path; ``can_promote`` stays false while PIT basis is UNAVAILABLE.
+  Do not add a pin that implies otherwise.
 * ``PAPER_PROMOTE_*`` stays default false. No live. Empty search is
   success. This module never writes a Settings pin.
 """
@@ -93,10 +98,10 @@ DEFAULT_INTERVAL = "4h"
 ALLOWED_INTERVALS = ("4h", "1d", "1h")
 CARRY_LEGS = 2
 Z_LOOKBACK = 20
-# Paper perp/hedge stub exists but is not promote-ready: no PIT basis
-# on both venues, and the cycle will not invent a perp mid from Kraken
-# spot. A pin that implied otherwise would be dishonest. Keep False.
-PAPER_CARRY_PATH_READY = False
+# Paper hedge+funding soak path is cycle-wired with explicit venue mid
+# + same-venue funding tape (tests/runtime exercise it). Not a promote
+# unlock: historical PIT basis is still UNAVAILABLE on both venues.
+PAPER_CARRY_PATH_READY = True
 MULTIWINDOW_COUNT = 3
 MULTIWINDOW_BARS = 240
 MULTIWINDOW_MIN_PASSES = 2
@@ -152,10 +157,12 @@ FUNDING_CARRY_RULES = (
     "resample). Daily evaluation sums settlements per UTC day and omits "
     "empty days — never zero-filled. Perp-spot basis is skipped unless a "
     "PIT mark−index / perp-mid−spot-mid series is supplied; funding "
-    "premium and last-trade are not basis. Hedged carry is not paper-spot "
-    "executable as a promote path (paper perp/hedge stub exists; "
-    "PAPER_CARRY_PATH_READY stays false until PIT basis on both venues "
-    "and a cycle-wired perp mid). Absent two venues "
+    "premium and last-trade are not basis. A paper hedge+funding soak "
+    "path is cycle-wired (PAPER_CARRY_PATH_READY=true when PAPER_PERP_HEDGE "
+    "fetches an explicit HL/BitMEX mid and applies same-venue funding; "
+    "Kraken spot mid is not used). Current snapshot mids are not a "
+    "historical PIT basis series and are not scored here. can_promote "
+    "stays false while PIT basis is UNAVAILABLE. Absent two venues "
     "this run is SINGLE-PRINT and cannot promote. A pin requires "
     "dual-print + hard gates + PIT basis + a paper-executable path. "
     "PAPER_PROMOTE_* stays default false. No live. Empty search is success."
@@ -174,17 +181,17 @@ BASIS_SKIP_NOTE = (
 )
 
 PAPER_EXECUTABLE_PATH_NOTE = (
-    "A paper-executable path for carry_hedged_sign is not promote-ready. "
-    "The paper runtime is Kraken spot via paper_simulate_fills. A "
-    "paper-only perp/hedge stub (execution/paper_perp.py) can apply "
-    "caller-supplied funding prints and hedge a spot fill only when an "
-    "explicit perp mid is provided — the Kraken spot mid is not a "
-    "substitute. TRADING_MODE=paper only; kill switch withholds new "
-    "hedges; live is refused. PAPER_CARRY_PATH_READY stays false until "
-    "(1) PIT mark−index or perp-mid−spot-mid exists on both dual-print "
-    "venues, (2) the stub is cycle-wired with that perp mid, and (3) "
-    "dual-print + #96+A+B+C still clear. None of those are true. "
-    "can_promote stays false. Do not add a Settings pin."
+    "A paper hedge+funding soak path exists when PAPER_PERP_HEDGE=true: "
+    "the cycle fetches an explicit current perp mid from Hyperliquid "
+    "midPx and/or BitMEX midPrice (never the Kraken spot mid) and "
+    "applies caller-supplied settlements from the same venue's public "
+    "funding tape (execution/paper_perp.py + paper_perp_feed.py). "
+    "TRADING_MODE=paper only; kill switch withholds new hedges and "
+    "funding; live is refused. PAPER_CARRY_PATH_READY is true for that "
+    "forward soak. Current snapshot mids are not a historical PIT "
+    "mark−index / perp-mid−spot-mid series and are not written into "
+    "research scoring. can_promote stays false while PIT basis is "
+    "UNAVAILABLE on both dual-print venues. Do not add a Settings pin."
 )
 
 FUNDING_CARRY_CATALOG_NOTE = (
@@ -1342,9 +1349,15 @@ def run_funding_carry(
         honesty += " Basis skipped (no PIT series)."
     if not paper_path_ready:
         honesty += (
-            " Paper-executable path is not promote-ready (paper perp/hedge "
-            "stub exists; PAPER_CARRY_PATH_READY stays false until PIT "
-            "basis on both venues and a cycle-wired perp mid). Do not add "
+            " Paper-executable path is not ready. Do not add a Settings pin."
+        )
+    else:
+        honesty += (
+            " Paper hedge+funding soak path is cycle-wired "
+            "(PAPER_CARRY_PATH_READY=true; explicit HL/BitMEX mid + "
+            "same-venue funding; Kraken spot mid is not used). Snapshot "
+            "mids are not historical PIT basis. can_promote still "
+            "requires PIT basis on both dual-print venues. Do not add "
             "a Settings pin."
         )
     if wf_adapted:
