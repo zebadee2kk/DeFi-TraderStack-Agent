@@ -113,7 +113,8 @@ class KrakenTickerProvider:
                 )
                 message = json.loads(raw)
                 tick = parse_kraken_ticker(message)
-                if tick is not None:
+                # SEC-2026-09-17: ignore ticks for pairs we did not subscribe.
+                if tick is not None and tick.symbol in symbols:
                     yield tick
 
 

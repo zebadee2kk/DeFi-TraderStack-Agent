@@ -389,7 +389,14 @@ class RobinhoodChainSwapFeed:
                 log = params.get("result")
                 if not isinstance(log, dict):
                     continue
-                event = parse_swap_log(log, self._pools_by_key, self.v4_pool_manager)
+                # SEC-2026-09-19: a single malformed log must not kill the feed.
+                # parse_swap_log still raises on truncated/hostile data so unit
+                # tests can assert the decoder refuses garbage; the stream
+                # isolates that to one message and keeps listening.
+                try:
+                    event = parse_swap_log(log, self._pools_by_key, self.v4_pool_manager)
+                except (KeyError, ValueError, TypeError, OnChainFeedError):
+                    continue
                 if event is not None and event.symbol.upper() in wanted:
                     yield event
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from traderstack.agents.review import MetaAgentReview, MetaAgentReviewer
 from traderstack.candles import Candle
 from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotPaperExecutor
+from traderstack.execution.shadow import ShadowIntent, ShadowRecorder
 from traderstack.execution.submitter import IdempotentSubmitter
 from traderstack.features import ResearchEdgeFeatures
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
@@ -28,6 +29,7 @@ from traderstack.metrics import (  # --- observability (Epic 9) ---
     record_event_sink_failure,
     record_paper_order_submitted,
     record_pipeline_result,
+    record_shadow_intent,
     timed_provider_call,
 )
 from traderstack.models import PortfolioSnapshot, Side
@@ -58,6 +60,11 @@ class RuntimeResult(BaseModel):
     # --- paper-research edge data plane ---
     # Snapshot read failures are informational; they never fail the cycle.
     edge_error: str | None = None
+    # --- shadow-live (Roadmap Phase 7) ------------------------------------------
+    # Stamped on every cycle so paper and shadow audit lines are distinguishable
+    # without inferring from the absence of a Hummingbot receipt.
+    trading_mode: str = "paper"
+    shadow_intent: ShadowIntent | None = None
 
 
 @dataclass
@@ -95,6 +102,11 @@ class PaperRuntime:
     # context only — never an execution venue, never a risk-limit input.
     liquidations: LiquidationSnapshotProvider | None = None
     book_ticker: BookTickerSnapshotProvider | None = None
+    # --- shadow-live (Roadmap Phase 7) ------------------------------------------
+    # `shadow` records would-have-been orders through `shadow_recorder` and
+    # never calls a venue. `paper` is the only mode that may submit.
+    trading_mode: str = "paper"
+    shadow_recorder: ShadowRecorder | None = None
 
     async def run_once(
         self,
@@ -232,7 +244,24 @@ class PaperRuntime:
             # --- execution hardening (Epic 8) ---
             execution_status: str | None = None
             execution_reason: str | None = None
-            if submit and pipeline_result.paper_order is not None:
+            shadow_intent: ShadowIntent | None = None
+            if self.trading_mode == "shadow" and pipeline_result.paper_order is not None:
+                # Shadow records the planned order and stops. submit=True is
+                # ignored: there is no venue path in this mode.
+                if self.shadow_recorder is None:
+                    raise RuntimeError("shadow mode requires a shadow recorder")
+                intent = pipeline_result.paper_order
+                shadow_intent = await self.shadow_recorder.record(
+                    intent,
+                    execution_price_usd=tick.ask if intent.side is Side.BUY else tick.bid,
+                    reference_price_usd=tick.last,
+                )
+                execution_status = shadow_intent.status
+                execution_reason = shadow_intent.reason
+                record_shadow_intent(symbol, intent.side.value, shadow_intent.status)
+            elif submit and pipeline_result.paper_order is not None:
+                if self.trading_mode != "paper":
+                    raise RuntimeError("venue submission is only allowed in paper mode")
                 if self.submitter is not None:
                     intent = pipeline_result.paper_order
                     outcome = await self.submitter.submit(
@@ -273,10 +302,19 @@ class PaperRuntime:
                 book_snapshot=book_snapshot,
                 book_error=book_error,
                 edge_error=edge_error,
+                trading_mode=self.trading_mode,
+                shadow_intent=shadow_intent,
             )
 
     async def _next_tick(self, symbol: str) -> MarketTick:
+        # SEC-2026-09-17: do not derive the traded asset from a venue-authored
+        # symbol. A tick for a different pair than we subscribed is rejected
+        # here rather than trusted and later failing closed by accident.
         async for tick in self.venue.stream_ticks((symbol,)):
+            if tick.symbol != symbol:
+                raise RuntimeError(
+                    f"venue tick symbol {tick.symbol!r} does not match requested {symbol!r}"
+                )
             return tick
         raise RuntimeError("venue stream ended before producing a tick")
 

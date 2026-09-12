@@ -137,11 +137,14 @@ network edges:
 
 `traderstack-soak` runs the same wiring for `--cycles N` or `--seconds T`, optionally
 following a JSON scenario that arms and disarms faults at chosen cycles
-(`ops/soak/scenarios/{baseline,provider_outage,kill_switch_drill}.json`), and emits a
-machine-readable acceptance report: cycles, outcomes by rejection reason, risk decisions,
-orders/receipts/ledger states, reconciliations, faults fired, provider breaker states,
-health, audit-chain verification and a Prometheus snapshot. Operator procedure and pass
-criteria: docs/RUNBOOK.md, "24/7 acceptance soak".
+(`ops/soak/scenarios/{ci,baseline,provider_outage,kill_switch_drill}.json`), and always
+writes a machine-readable acceptance report to `<workdir>/report.json`: schema version,
+cycles, outcomes by rejection reason, risk decisions, orders/receipts/ledger states,
+reconciliations, faults fired, provider breaker states, health, audit-chain verification,
+a Prometheus snapshot, and `full_24h_window_executed` (true only when a ≥86400s request
+actually ran that long). `--preset ci` is the short CI/smoke path; `--preset full` is
+the 24-hour window. Operator procedure and pass criteria: docs/RUNBOOK.md, "24/7
+acceptance soak". The 24-hour window itself has not been executed in this repository.
 
 ### Paper performance versus baselines
 
@@ -157,4 +160,7 @@ record — paper receipts carry no fees, so fees are zero unless `--fee-bps` exp
 estimates them, and the report says so — and orders that were submitted but never
 reconciled to a fill are excluded rather than assumed to have traded.
 
-**Not yet implemented:** Freqtrade research integration, on-chain/social/narrative feature pipelines, news/event classifier, regime classifier v1 (the existing `RegimeClassifier` is a simple MVP version, not the Epic 4 deliverable), survivorship-bias review, and shadow-live/tiny-capital-pilot stages (5–6).
+**Not yet implemented:** Freqtrade research integration, survivorship-bias review,
+and the tiny-capital-pilot stage (6). Shadow-live (stage 5) now has a runtime
+(`TRADING_MODE=shadow`) that records would-have-been orders; the statistical
+comparison campaign against paper/reality is still an operator activity.

@@ -3,7 +3,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from traderstack.eventing import FanoutResultSink, RedisRuntimePublisher
+from traderstack.eventing import (
+    RUNTIME_EVENT_SYMBOL_MAX_LENGTH,
+    FanoutResultSink,
+    RedisRuntimePublisher,
+    bounded_event_symbol,
+)
 from traderstack.market.models import MarketSource, MarketTick
 from traderstack.pipeline import PipelineResult
 from traderstack.runtime import RuntimeResult
@@ -68,3 +73,12 @@ async def test_fanout_calls_all_sinks_and_fails_if_any_sink_fails() -> None:
         await sink(runtime_result())
 
     assert calls == ["BTC/USD", "bad:BTC/USD"]
+
+
+def test_bounded_event_symbol_truncates_venue_authored_names() -> None:
+    short = "BTC/USD"
+    assert bounded_event_symbol(short) == short
+    hostile = "X" * (RUNTIME_EVENT_SYMBOL_MAX_LENGTH + 40)
+    bounded = bounded_event_symbol(hostile)
+    assert len(bounded) == RUNTIME_EVENT_SYMBOL_MAX_LENGTH
+    assert bounded == "X" * RUNTIME_EVENT_SYMBOL_MAX_LENGTH

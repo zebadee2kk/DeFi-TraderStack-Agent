@@ -55,9 +55,11 @@ check twice. They are not:
   spread reading as tier 4 of the documented control hierarchy
   (`docs/RISK-PRINCIPLES.md`) -- Zone C, version-controlled, never bypassable
   by an LLM, and stamped into `RiskEngine.policy_version` /
-  `RISK_LIMIT_FIELDS`. `max_spread_bps` is not a risk-policy field and does
-  not move the policy version (the same is true of `max_reference_divergence_bps`
-  and `max_market_data_age_seconds`, its siblings in the same market-data tier).
+  `RISK_LIMIT_FIELDS`. The pipeline siblings (`max_spread_bps`,
+  `max_reference_divergence_bps`, `max_market_data_age_seconds`) are not
+  evaluated *inside* `RiskEngine.evaluate`, but they are folded into
+  `policy_version` (SEC-2026-09-18) so a run with the market-data gate loosened
+  cannot share an audit version with a run that kept it tight.
 
 A third, unrelated spread threshold lives in
 `agents.specialists.SpecialistCommittee` (`max_spread_bps: float = 25.0`,
@@ -201,10 +203,16 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
         ix.  record_pipeline_result(...)          -- metrics recorded against the RESULT OF
              STEP viii (post meta-agent), so a vetoed cycle counts its veto reason, not the
              pre-veto risk decision alone.
-        x.   if submit and paper_order is not None: submit via IdempotentSubmitter (ledger
-             write PLANNED before the venue call; planner checks lot/notional/slippage;
-             timeout/5xx -> SUBMISSION_UNCERTAIN, no retry until reconciliation resolves it)
-        xi.  return RuntimeResult(tick, pipeline_result, meta_review, execution_receipt,
+        x.   execution boundary, mode-dependent:
+             - paper + submit and paper_order is not None: submit via IdempotentSubmitter
+               (ledger write PLANNED before the venue call; planner checks lot/notional/
+               slippage; timeout/5xx -> SUBMISSION_UNCERTAIN, no retry until reconciliation
+               resolves it). `TRADING_MODE=live` never reaches here (`require_runtime_trading_mode`).
+             - shadow and paper_order is not None: `ShadowRecorder` plans the same child
+               order and appends it to the shadow JSONL (`execution_status=shadow_recorded`
+               / `shadow_plan_rejected` / `shadow_duplicate`). Hummingbot is not constructed;
+               no fill is applied. `--submit` is ignored.
+        xi.  return RuntimeResult(..., trading_mode, shadow_intent, execution_receipt,
              execution_status, execution_reason, ...)
     2d. mark the portfolio at the tick's last price; compute + publish the NAV/cash gauges
     2e. register the execution receipt in the ledger (bare-executor path only -- the

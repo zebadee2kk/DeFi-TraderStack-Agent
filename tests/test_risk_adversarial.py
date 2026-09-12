@@ -314,28 +314,8 @@ def test_thesis_text_cannot_stop_a_held_sell_from_being_risk_reducing(thesis):
 
 
 def test_risk_limit_fields_are_unchanged_by_exit_semantics():
-    # New SELL semantics must not add a Settings field. A digest change would
-    # be a new limit, not a side-aware read of the existing book.
+    # New SELL semantics must not add a Settings field. A later workstream may
+    # grow RISK_LIMIT_FIELDS for policy-version coverage; that is not an exit
+    # classification knob.
     assert "sell_capped_to_position" not in RISK_LIMIT_FIELDS
     assert "risk_reducing" not in RISK_LIMIT_FIELDS
-    assert RISK_LIMIT_FIELDS == (
-        "mvp_assets",
-        "max_position_pct",
-        "max_daily_loss_pct",
-        "max_account_drawdown_pct",
-        "max_open_positions",
-        "min_cash_reserve_pct",
-        "max_gross_exposure_pct",
-        "max_portfolio_state_age_seconds",
-        "risk_max_spread_bps",
-        "volatility_sizing_enabled",
-        "target_volatility",
-        "strategy_max_consecutive_losses",
-        "strategy_drawdown_window",
-        "strategy_max_rolling_drawdown_pct",
-        "strategy_breaker_cooldown_seconds",
-        "kill_switch",
-        "kill_switch_file",
-        "kill_switch_redis_key",
-        "kill_switch_redis_enabled",
-    )

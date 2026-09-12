@@ -150,3 +150,16 @@ async def test_call_persists_decision_id_from_proposal() -> None:
     statement = engine._connection.executed_statements[0]
     compiled = statement.compile()
     assert compiled.params["decision_id"] == str(result.pipeline.proposal.decision_id)  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_call_bounds_an_overlong_venue_symbol() -> None:
+    result = runtime_result("X" * 80)
+    engine = FakeEngine([])
+    store = PostgresRuntimeEventStore("postgresql+asyncpg://unused", engine=engine)  # type: ignore[arg-type]
+
+    await store(result)
+
+    compiled = engine._connection.executed_statements[0].compile()
+    assert compiled.params["symbol"] == "X" * 32
+    assert result.tick.symbol == "X" * 80

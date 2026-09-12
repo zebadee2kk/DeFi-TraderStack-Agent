@@ -13,12 +13,15 @@ from pathlib import Path
 import pytest
 
 from traderstack.acceptance.soak import (
+    CI_SCENARIO_PATH,
+    FULL_WINDOW_SECONDS,
     REPORTED_METRICS,
     FaultSchedule,
     SoakReport,
     SoakRunner,
     SoakScenario,
     build_parser,
+    default_report_path,
     main,
     metrics_snapshot,
     scenario_from_args,
@@ -55,6 +58,10 @@ async def test_a_clean_run_passes_and_reports_everything(tmp_path: Path) -> None
     assert report.runtime_events == 6
     assert report.health["healthy"] is True
     assert report.policy_version.startswith("mvp-v1+")
+    assert report.schema_version == "1"
+    assert report.trading_mode == "paper"
+    assert report.full_24h_window_executed is False
+    assert report.window == "cycles"
     assert report.metrics, "the report carries a Prometheus snapshot"
     assert (tmp_path / "audit" / "runtime.jsonl").exists()
     assert (tmp_path / "state" / "execution_ledger.json").exists()
@@ -130,7 +137,7 @@ async def test_a_sink_outage_is_visible_in_the_report(tmp_path: Path) -> None:
     assert report.passed is True
 
 
-@pytest.mark.parametrize("name", ["baseline", "provider_outage", "kill_switch_drill"])
+@pytest.mark.parametrize("name", ["baseline", "provider_outage", "kill_switch_drill", "ci"])
 async def test_the_shipped_scenarios_load_and_run(tmp_path: Path, name: str) -> None:
     scenario = SoakScenario.load(SCENARIO_DIR / f"{name}.json")
     assert scenario.name == name
@@ -183,7 +190,33 @@ def test_main_writes_a_json_report_and_exits_zero(tmp_path: Path, capsys) -> Non
     assert payload["scenario"] == "cli"
     assert payload["cycles"] == 3
     assert payload["passed"] is True
+    assert payload["schema_version"] == "1"
+    assert payload["full_24h_window_executed"] is False
     assert '"scenario": "cli"' in capsys.readouterr().out
+
+
+def test_main_always_archives_a_report_under_workdir(tmp_path: Path) -> None:
+    scenario_path = tmp_path / "scenario.json"
+    scenario_path.write_text(
+        json.dumps(
+            {
+                "name": "archive",
+                "cycles": 2,
+                "symbols": ["BTC/USD"],
+                "settings": {"kill_switch_file": str(tmp_path / "KILL")},
+            }
+        ),
+        encoding="utf-8",
+    )
+    workdir = tmp_path / "run"
+
+    code = main(["--scenario", str(scenario_path), "--workdir", str(workdir)])
+
+    assert code == 0
+    archived = json.loads((workdir / "report.json").read_text(encoding="utf-8"))
+    assert archived["scenario"] == "archive"
+    assert archived["passed"] is True
+    assert archived["full_24h_window_executed"] is False
 
 
 def test_cli_flags_override_the_scenario_file() -> None:
@@ -202,6 +235,30 @@ def test_seconds_overrides_the_cycle_bound() -> None:
 
     assert scenario.seconds == 86_400
     assert scenario.cycles is None
+
+
+def test_preset_ci_loads_the_shipped_short_scenario() -> None:
+    args = build_parser().parse_args(["--preset", "ci"])
+    scenario = scenario_from_args(args)
+
+    assert CI_SCENARIO_PATH.is_file()
+    assert scenario.name == "ci"
+    assert scenario.cycles == 8
+    assert scenario.seconds is None
+
+
+def test_preset_full_selects_the_24h_window() -> None:
+    args = build_parser().parse_args(["--preset", "full"])
+    scenario = scenario_from_args(args)
+
+    assert scenario.seconds == FULL_WINDOW_SECONDS
+    assert scenario.cycles is None
+
+
+def test_default_report_path_is_under_workdir() -> None:
+    workdir = Path("var/soak-ci")
+    assert default_report_path(workdir, None) == workdir / "report.json"
+    assert default_report_path(workdir, Path("explicit.json")) == Path("explicit.json")
 
 
 def test_the_metrics_snapshot_only_reports_known_families() -> None:

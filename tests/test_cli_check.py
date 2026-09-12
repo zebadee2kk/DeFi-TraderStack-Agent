@@ -19,10 +19,20 @@ def test_default_paper_settings_are_safe() -> None:
     assert report.warnings == []
 
 
-def test_non_paper_trading_mode_is_unsafe() -> None:
+def test_live_trading_mode_is_unsafe() -> None:
     report = build_report(settings(trading_mode="live"))
     assert not report.safe
     assert any("TRADING_MODE" in w for w in report.warnings)
+
+
+def test_shadow_trading_mode_is_reported_as_record_only() -> None:
+    # Isolate the shadow-live axis: default PAPER_RESEARCH_MODE=true is
+    # paper-only and would otherwise warn that the flag is ignored.
+    report = build_report(settings(trading_mode="shadow", paper_research_mode=False))
+    assert report.safe
+    effect = next(item for item in report.items if "shadow-live" in item.label)
+    assert effect.value == "record only"
+    assert "no Hummingbot submit" in effect.detail
 
 
 def test_kill_switch_disengaged_outside_development_is_unsafe() -> None:
