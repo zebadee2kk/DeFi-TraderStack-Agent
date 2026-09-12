@@ -141,6 +141,17 @@ def test_intraday_dual_print_is_report_only() -> None:
     assert "PAPER_PROMOTE_*" in item.detail
 
 
+def test_relative_value_is_report_only() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "BTC−ETH relative-value residual search")
+    assert item.value == "report-only"
+    assert "traderstack-relative-value" in item.detail
+    assert "PAPER_PROMOTE_*" in item.detail
+    assert "Kraken" in item.detail
+    assert "Binance.US" in item.detail
+    assert "paper-executable" in item.detail
+
+
 def test_funding_carry_is_report_only() -> None:
     report = build_report(settings())
     item = next(i for i in report.items if i.label == "Funding / carry search")

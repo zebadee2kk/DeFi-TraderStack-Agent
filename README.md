@@ -184,6 +184,7 @@ simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
 `traderstack-liq-regime-search`,
 `traderstack-polymarket-weather-eval`,
 `traderstack-funding-carry`,
+`traderstack-relative-value`,
 `traderstack-paper-report`) so any claimed AI
 alpha is measured against appropriate baselines, not narrated after the fact.
 `traderstack-strategy-search` is the paper-research promotion loop: it will
@@ -258,6 +259,12 @@ success. Default `PAPER_PROMOTE_*` stays false. Reports:
 `docs/artifacts/strategy-search/funding-carry-basis.md`,
 `docs/artifacts/strategy-search/pit-basis-archives.md`,
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
+`traderstack-relative-value` scores a frozen fade/follow |z|
+catalog on daily BTC minus ETH excess return. Same #96+A+B+C
+dual-print bar (Kraken 720 + Binance.US older-720). Paper-executable
+on Kraken spot. Empty dual-print set is success. Default
+`PAPER_PROMOTE_*` stays false. Report:
+`docs/artifacts/strategy-search/btc-eth-relative-value.md`.
 When a daily paper pin is on, `PAPER_PROMOTE_UNIVERSE` (default)
 `BTC/USD,ETH/USD`) is the cycle list — SOL stays in `MVP_ASSETS` but
 is not traded under that envelope.
