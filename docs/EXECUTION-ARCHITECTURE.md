@@ -191,23 +191,38 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
              read failure never fails the cycle.
         vii. VerticalSlicePipeline.process(...):
              - market-data validation (stale tick, spread, reference divergence)
-             - intelligence merge + adverse-news gate (deterministic, before any proposal)
+             - intelligence merge (feature vector only; news/intel gates do not
+               run yet)
+             - position-management exits (`exits.py`, #58) for any held
+               position: stop-loss / trailing / take-profit / time-stop
+               against average cost, high-water and `opened_at`. Evaluated
+               HERE so an adverse-news or missing-candle reject cannot
+               freeze a stop. Live mode skips this step. A fired rule
+               becomes a reducing SELL (`strategy_id=exit-<rule>`) and
+               skips the discretionary path below.
+             - intelligence / adverse-news gate (entries only)
              - pre-trade backtest gate (strategy re-confirmation, backtest, walk-forward)
-             - TradeProposal construction
+             - optional thesis-invalidation exit (if `EXIT_ON_THESIS_INVALIDATION`
+               and the ensemble confirms the opposite side, or TRENDING_DOWN
+               after a momentum entry)
+             - TradeProposal construction (discretionary, if no exit fired)
              - RiskEngine.evaluate(...)          -- Zone C. Kill switch is check #1 here,
                                                      checked on *every* evaluated proposal,
-                                                     submission or not. This is the layer that
-                                                     can never be relaxed by an LLM. A SELL
-                                                     is risk-reducing only when the snapshot
+                                                     submission or not — including exits.
+                                                     This is the layer that can never be
+                                                     relaxed by an LLM. A SELL is
+                                                     risk-reducing only when the snapshot
                                                      already shows positive exposure for that
                                                      asset; additive limits then do not block
                                                      a correctly sized exit (see below).
              - PaperOrderIntent, if ALLOW/REDUCE with approved_notional_usd > 0
         viii. MetaAgentReviewer.run(symbol, pipeline_result)   -- Epic 6. Runs strictly AFTER
              risk sizing is fixed, strictly BEFORE submission. It can only *withhold* an
-             already-approved order (null paper_order, append a rejection reason -- veto mode)
-             or nudge confidence within a bounded delta (advisory mode changes nothing at all).
-             It never re-sizes, re-sides or authorises anything risk did not already approve.
+             already-approved *entry* (null paper_order, append a rejection reason -- veto
+             mode) or nudge confidence within a bounded delta (advisory mode changes
+             nothing at all). It never re-sizes, re-sides or authorises anything risk did
+             not already approve. Deterministic `exit-*` proposals are not reviewed and
+             cannot be vetoed (withholding an exit would authorise residual risk).
         ix.  record_pipeline_result(...)          -- metrics recorded against the RESULT OF
              STEP viii (post meta-agent), so a vetoed cycle counts its veto reason, not the
              pre-veto risk decision alone.
@@ -267,7 +282,9 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
    post-submission cleanup step.
 2. The meta-agent (step viii) runs strictly after risk sizing is fixed and
    strictly before submission (step x), so it can only ever remove risk the
-   deterministic engine already approved, never add or resize it.
+   deterministic engine already approved, never add or resize it. It does
+   not review or veto `exit-*` proposals (withholding an exit would
+   authorise residual risk).
 3. Every metric and audit record that reflects "what happened this cycle"
    (`record_pipeline_result`, the risk audit trail) is built from the
    **post-review** result, not the pre-review one -- a veto is never silently
@@ -282,9 +299,12 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
    daily-loss / drawdown as informational reasons; they are still capped
    to held exposure (`sell_capped_to_position` + `REDUCE`) and still
    rejected by the kill switch, stale portfolio state, the strategy
-   breaker, the asset allowlist, and `spread_too_wide`. A SELL with no
-   observed position stays risk-adding. `RISK_LIMIT_FIELDS` is unchanged
-   (semantics only; no new limit, no `risk_policy_label` bump).
+   breaker (discretionary `strategy_id`s only), the asset allowlist, and
+   `spread_too_wide`. A SELL with no observed position stays risk-adding.
+   Deterministic `exit-*` proposals skip the entry-strategy breaker.
+   Exit settings (`EXIT_STOP_LOSS_PCT`, `EXIT_TAKE_PROFIT_PCT`,
+   `EXIT_TRAILING_STOP_PCT`, `EXIT_TIME_STOP_BARS`,
+   `EXIT_ON_THESIS_INVALIDATION`) are folded into `RISK_LIMIT_FIELDS`.
 
 ## Responsibilities
 

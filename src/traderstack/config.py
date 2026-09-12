@@ -200,6 +200,20 @@ class Settings(BaseSettings):
     # Append-only, hash-chained risk-decision audit trail.
     risk_audit_path: str = "var/audit/risk_decisions.jsonl"
 
+    # --- position management (#58) ---
+    # Paper-first conservative defaults. Live never evaluates these
+    # (see position_exits_active). 0 / false disables that rule.
+    # Shadow evaluates the same rules and records would-have-been exits.
+    exit_stop_loss_pct: float = Field(default=0.02, ge=0, le=1)
+    exit_take_profit_pct: float = Field(default=0.04, ge=0, le=1)
+    # Opt-in: 0 keeps the trailing stop off until an operator documents it.
+    exit_trailing_stop_pct: float = Field(default=0.0, ge=0, le=1)
+    # Bars held vs PRETRADE_CANDLE_INTERVAL (default 1h → 24 hours).
+    exit_time_stop_bars: int = Field(default=24, ge=0)
+    # Opt-in: ensemble confirms the opposite side, or TRENDING_DOWN after a
+    # momentum entry. Off by default so paper soak behaviour stays explicit.
+    exit_on_thesis_invalidation: bool = False
+
     # Pre-trade self-check: every proposal is re-validated by backtesting the
     # strategy ensemble over recent candle history before it reaches the risk
     # engine. Missing, stale or insufficient history rejects the trade.
@@ -354,6 +368,25 @@ class Settings(BaseSettings):
     def paper_research_active(self) -> bool:
         """Paper-research looseness applies only on the paper path."""
         return self.trading_mode == "paper" and self.paper_research_mode
+
+    # --- position management (#58) ---
+    @property
+    def position_exits_enabled_by_settings(self) -> bool:
+        """True when at least one exit rule is configured (regardless of mode)."""
+
+        return (
+            self.exit_stop_loss_pct > 0
+            or self.exit_take_profit_pct > 0
+            or self.exit_trailing_stop_pct > 0
+            or self.exit_time_stop_bars > 0
+            or self.exit_on_thesis_invalidation
+        )
+
+    @property
+    def position_exits_active(self) -> bool:
+        """Exits run in paper and shadow only. Live stays off until documented."""
+
+        return self.trading_mode != "live" and self.position_exits_enabled_by_settings
 
     # --- paper reference resilience / paper pretrade thresholds ---
     @property

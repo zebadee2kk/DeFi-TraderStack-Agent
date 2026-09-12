@@ -4,6 +4,12 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
+from traderstack.exits import (
+    ExitSignal,
+    bar_seconds_for,
+    evaluate_position_exits,
+    exit_strategy_id,
+)
 from traderstack.features import AssetFeatureVector, MarketFeatures, ResearchEdgeFeatures
 from traderstack.intelligence import merge_external_intelligence
 from traderstack.intelligence_orchestrator import ExternalIntelligence
@@ -36,6 +42,9 @@ class PipelineResult(BaseModel):
     # (not only primary-vs-reference), so it lands in the audit trail regardless
     # of whether the cycle was otherwise accepted.
     divergences: list[PriceDivergence] = Field(default_factory=list)
+    # --- position management (#58) ---
+    # Set when this cycle's proposal is a deterministic exit (stop/TP/time/...).
+    exit_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,9 +76,11 @@ class VerticalSlicePipeline:
         # authorize a trade.
         edge: ResearchEdgeFeatures | None = None,
         edge_source_ids: tuple[str, ...] = (),
+        *,
+        now: datetime | None = None,
     ) -> PipelineResult:
         asset = tick.symbol.split("/", 1)[0].upper()
-        now = datetime.now(UTC)
+        now = now or datetime.now(UTC)
         reasons: list[str] = []
 
         age_seconds = max(0.0, (now - tick.observed_at).total_seconds())
@@ -135,6 +146,23 @@ class VerticalSlicePipeline:
                 }
             )
 
+        # --- position management (#58) ---
+        # Price/time exits run after market-data validation and BEFORE the
+        # intelligence / pre-trade gates so an adverse-news or missing-candle
+        # reject cannot freeze a stop-loss. Kill switch still withholds.
+        price_exit = self._exit_result(
+            asset=asset,
+            tick=tick,
+            portfolio=portfolio,
+            feature_vector=feature_vector,
+            divergences=divergences,
+            age_seconds=age_seconds,
+            candles=candles,
+            now=now,
+        )
+        if price_exit is not None:
+            return price_exit
+
         if self.require_external_intelligence and (intelligence is None or intelligence.is_empty):
             return PipelineResult(
                 accepted_market_data=True,
@@ -164,6 +192,19 @@ class VerticalSlicePipeline:
                     divergences=divergences,
                 )
             pretrade_check = self.pretrade_gate.evaluate(candles, now=now)
+            thesis_exit = self._exit_result(
+                asset=asset,
+                tick=tick,
+                portfolio=portfolio,
+                feature_vector=feature_vector,
+                divergences=divergences,
+                age_seconds=age_seconds,
+                candles=candles,
+                now=now,
+                pretrade_check=pretrade_check,
+            )
+            if thesis_exit is not None:
+                return thesis_exit
             if not pretrade_check.passed or pretrade_check.confirmed_side is None:
                 return PipelineResult(
                     accepted_market_data=True,
@@ -211,4 +252,93 @@ class VerticalSlicePipeline:
             risk_result=risk_result,
             paper_order=paper_order,
             divergences=divergences,
+        )
+
+    # --- position management (#58) ---
+    def _exit_result(
+        self,
+        *,
+        asset: str,
+        tick: MarketTick,
+        portfolio: PortfolioSnapshot,
+        feature_vector: AssetFeatureVector,
+        divergences: list[PriceDivergence],
+        age_seconds: float,
+        candles: tuple[Candle, ...] | None,
+        now: datetime,
+        pretrade_check: PreTradeCheck | None = None,
+    ) -> PipelineResult | None:
+        settings = self.risk_engine.settings
+        held = portfolio.held_positions.get(asset)
+        if held is None or held.quantity <= 0:
+            return None
+        interval = candles[-1].interval if candles else None
+        signal = evaluate_position_exits(
+            settings=settings,
+            asset=asset,
+            position=held,
+            mark_price_usd=tick.last,
+            now=now,
+            bar_seconds=bar_seconds_for(settings, interval),
+            confirmed_side=pretrade_check.confirmed_side if pretrade_check else None,
+            regime=pretrade_check.regime if pretrade_check else None,
+        )
+        if signal is None:
+            return None
+        return self._build_exit_result(
+            signal=signal,
+            portfolio=portfolio,
+            feature_vector=feature_vector,
+            divergences=divergences,
+            age_seconds=age_seconds,
+            pretrade_check=pretrade_check,
+            now=now,
+        )
+
+    def _build_exit_result(
+        self,
+        *,
+        signal: ExitSignal,
+        portfolio: PortfolioSnapshot,
+        feature_vector: AssetFeatureVector,
+        divergences: list[PriceDivergence],
+        age_seconds: float,
+        pretrade_check: PreTradeCheck | None,
+        now: datetime,
+    ) -> PipelineResult:
+        proposal = TradeProposal(
+            strategy_id=exit_strategy_id(signal.reason),
+            asset=signal.asset,
+            side=signal.side,
+            confidence=1.0,
+            requested_notional_usd=signal.requested_notional_usd,
+            thesis=(
+                f"Deterministic {signal.reason.value}: mark {signal.mark_price_usd:.6g} "
+                f"vs entry {signal.entry_price_usd:.6g}."
+            ),
+            signal_ids=[signal.reason.value],
+            source_freshness_seconds=age_seconds,
+            created_at=now,
+        )
+        risk_result = self.risk_engine.evaluate(proposal, portfolio, feature_vector, now=now)
+        paper_order = None
+        if (
+            risk_result.decision in {RiskDecision.ALLOW, RiskDecision.REDUCE}
+            and risk_result.approved_notional_usd > 0
+        ):
+            paper_order = PaperOrderIntent(
+                decision_id=str(proposal.decision_id),
+                asset=signal.asset,
+                side=signal.side,
+                notional_usd=risk_result.approved_notional_usd,
+            )
+        return PipelineResult(
+            accepted_market_data=True,
+            feature_vector=feature_vector,
+            pretrade_check=pretrade_check,
+            proposal=proposal,
+            risk_result=risk_result,
+            paper_order=paper_order,
+            divergences=divergences,
+            exit_reason=signal.reason.value,
         )

@@ -42,6 +42,7 @@ from traderstack.agents.meta import (
 )
 from traderstack.agents.prompts import RegisteredPrompt, meta_agent_prompt
 from traderstack.agents.specialists import SpecialistCommittee
+from traderstack.exits import is_exit_strategy_id
 from traderstack.pipeline import PipelineResult
 from traderstack.strategies import Regime, StrategySignal
 
@@ -299,6 +300,11 @@ class MetaAgentReviewer:
         if self.mode is MetaAgentMode.OFF or self.client is None:
             return self._record()
 
+        # --- position management (#58) ---
+        # Withholding a de-risking exit would authorise residual risk. Skip.
+        if result.proposal is not None and is_exit_strategy_id(result.proposal.strategy_id):
+            return self._record()
+
         packet = build_evidence_packet(symbol, result, self.committee)
         if packet is None:
             # Nothing reached the reviewer: the deterministic layer already
@@ -385,6 +391,9 @@ class MetaAgentReviewer:
     ) -> tuple[PipelineResult, MetaAgentReview]:
         """Apply the review's bounded effect. Advisory mode changes nothing."""
         if self.mode is not MetaAgentMode.VETO or result.proposal is None:
+            return result, review
+        # --- position management (#58) ---
+        if is_exit_strategy_id(result.proposal.strategy_id):
             return result, review
 
         if not review.usable:

@@ -30,6 +30,21 @@ class TradeProposal(BaseModel):
     signal_version: str | None = None
 
 
+class HeldPosition(BaseModel):
+    """One open position as the exit rules and snapshot consumers see it.
+
+    Additive on ``PortfolioSnapshot`` so older constructors stay valid.
+    """
+
+    quantity: float = Field(ge=0)
+    average_cost_usd: float = Field(ge=0)
+    exposure_usd: float = Field(ge=0)
+    # --- position management (#58) ---
+    opened_at: datetime | None = None
+    high_water_price_usd: float = Field(default=0.0, ge=0)
+    entry_strategy_id: str | None = None
+
+
 class PortfolioSnapshot(BaseModel):
     nav_usd: float = Field(gt=0)
     cash_usd: float = Field(ge=0)
@@ -40,6 +55,10 @@ class PortfolioSnapshot(BaseModel):
     # When this view of the book was taken. The risk engine authorises no new
     # risk against a snapshot older than MAX_PORTFOLIO_STATE_AGE_SECONDS.
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # --- position management (#58) ---
+    # Entry price / open time / high-water for stop, TP and time-stop exits.
+    # Empty on snapshots constructed before this field existed.
+    held_positions: dict[str, HeldPosition] = Field(default_factory=dict)
 
 
 class RiskResult(BaseModel):

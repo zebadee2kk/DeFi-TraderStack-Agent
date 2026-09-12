@@ -439,6 +439,42 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
 
+    # --- position management (#58) ---
+    if settings.position_exits_active:
+        items.append(
+            CheckItem(
+                "Position exits",
+                "active",
+                f"stop {settings.exit_stop_loss_pct:.2%} / "
+                f"TP {settings.exit_take_profit_pct:.2%} / "
+                f"trail {settings.exit_trailing_stop_pct:.2%} / "
+                f"time {settings.exit_time_stop_bars} bars / "
+                f"thesis={'on' if settings.exit_on_thesis_invalidation else 'off'}",
+            )
+        )
+    elif settings.trading_mode == "live" and settings.position_exits_enabled_by_settings:
+        items.append(
+            CheckItem(
+                "Position exits",
+                "ignored",
+                f"TRADING_MODE=live; EXIT_* rules stay off until documented "
+                f"(stop {settings.exit_stop_loss_pct:.2%})",
+            )
+        )
+        warnings.append(
+            "EXIT_* settings are configured but TRADING_MODE=live: position exits "
+            "are not evaluated on the live path (see docs/RUNBOOK.md, "
+            "'Deterministic position exits')."
+        )
+    else:
+        items.append(
+            CheckItem(
+                "Position exits",
+                "disabled",
+                "no stop/TP/time/thesis rule is configured",
+            )
+        )
+
     # --- Risk policy limits (values only, no secrets) -----------------------------------
     items.append(CheckItem("Assets allowlisted", ", ".join(settings.assets) or "(none)"))
     items.append(CheckItem("Max position % of NAV", f"{settings.max_position_pct:.2%}"))

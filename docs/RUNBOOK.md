@@ -19,7 +19,7 @@ without activating the venv.
 | Script | What it does |
 |---|---|
 | `traderstack-paper` | Runs the continuous service (`ContinuousPaperService`). In `TRADING_MODE=paper`, `PAPER_SIMULATE_FILLS=true` (default) books each risk-allowed `paper_order` into the local portfolio at mid ± `PAPER_SLIPPAGE_BPS` with `PAPER_FEE_BPS` — no Hummingbot and no `--submit` required. `--submit` is the optional Hummingbot paper-venue path (see below). In `TRADING_MODE=shadow`, `--submit` is ignored and would-have-been orders are written to `--shadow-ledger-path`. See "Zero to paper trading" and "Shadow-live" below. |
-| `traderstack-check-config` | Loads `Settings` exactly as the runtime does and prints what's enabled — venue feed, meta-agent mode, every provider, execution/reconciliation settings, provider quotas, kill-switch channels, risk limits — warning (and exiting non-zero) on unsafe combinations. Never prints secret values. Run this before every start and after every `.env` change. |
+| `traderstack-check-config` | Loads `Settings` exactly as the runtime does and prints what's enabled — venue feed, meta-agent mode, every provider, execution/reconciliation settings, provider quotas, kill-switch channels, risk limits, position-exit rules — warning (and exiting non-zero) on unsafe combinations. Never prints secret values. Run this before every start and after every `.env` change. |
 | `traderstack-kill` | Engages the kill switch by writing the sentinel file (`--file`, default `$KILL_SWITCH_FILE` or `var/state/KILL`). Needs no access to the running process. See "Engaging / releasing the kill switch". |
 | `traderstack-resume` | Removes the sentinel file. Does **not** clear the `KILL_SWITCH` setting, the Redis key, or a latched `SIGUSR1` — those are separate channels and print as a reminder. |
 | `traderstack-trace` | Read-only: prints the full ordered runtime-event trace for one `decision_id` from Postgres (requires `--persistent-events` to have been running). `traderstack-trace <decision_id> [--limit N]`. |
@@ -392,7 +392,9 @@ It rebuilds the paper equity curve from the audit trail's ticks and the ledger's
 matches buys and sells FIFO into round trips, scores them with the same metrics the
 research harness uses, and prints the excess over buy-and-hold, time-series momentum,
 moving-average trend, mean reversion and the volatility-targeted benchmark, followed by
-the attribution table. `--json` emits the same thing machine-readably.
+the attribution table (including **By exit reason** — `exit_stop_loss`,
+`exit_take_profit`, `exit_time_stop`, … versus `discretionary`). `--json` emits
+the same thing machine-readably.
 
 Two things it will not do, by design:
 
@@ -741,6 +743,26 @@ by the LLM):
 | `position_size_reduced` | *Not a rejection* — the decision is `reduce`, not `reject`. The requested notional was cut down to fit remaining `MAX_POSITION_PCT`/exposure/cash headroom, and the (smaller) order still proceeds. | Informational only. |
 | `sell_capped_to_position` | *Not a rejection* — accompanies `REDUCE` on a risk-reducing SELL. Requested notional was larger than the exposure the engine observed for that asset, so approved size was clamped to the held position. Never scaled up. | Informational only. Persistent caps mean the strategy asked to sell more than the book holds. |
 | `volatility_scaled` | *Not a rejection* — accompanies `ALLOW` or `REDUCE` on risk-adding proposals. `VOLATILITY_SIZING_ENABLED=true` scaled the notional down by `TARGET_VOLATILITY` / observed volatility (never scaled up). Risk-reducing exits skip this. | Informational only. |
+
+**Deterministic position exits** (`exits.py`, paper and shadow only; live
+ignores `EXIT_*` until documented). These are *not* rejection reasons —
+they are why a reducing SELL was proposed. They appear on
+`pipeline.exit_reason`, `proposal.strategy_id` (`exit-stop_loss`, …) and
+`proposal.signal_ids`. The proposal still goes through `RiskEngine.evaluate`
+(kill switch withholds). The meta-agent cannot veto them.
+
+| Reason | Setting | Meaning |
+|---|---|---|
+| `exit_stop_loss` | `EXIT_STOP_LOSS_PCT` (paper default 2%) | Mark ≤ average cost × (1 − pct). |
+| `exit_trailing_stop` | `EXIT_TRAILING_STOP_PCT` (default 0, off) | Mark ≤ high-water × (1 − pct) after the position has made progress. |
+| `exit_take_profit` | `EXIT_TAKE_PROFIT_PCT` (paper default 4%) | Mark ≥ average cost × (1 + pct). |
+| `exit_time_stop` | `EXIT_TIME_STOP_BARS` (paper default 24) | Held at least N bars (`PRETRADE_CANDLE_INTERVAL`; 24 × 1h = 1 day). Legacy checkpoints without `opened_at` do not fire this rule. |
+| `exit_thesis_invalidated` | `EXIT_ON_THESIS_INVALIDATION` (default false) | Ensemble confirms the opposite side of the held long, or regime is `trending_down` after a momentum entry. |
+
+Set a rule to `0` / `false` to disable it. `traderstack-check-config` prints
+the block. `traderstack-paper-report` attributes closed round-trips by exit
+reason. A halt still rejects the exit (`kill_switch_enabled`) — the switch
+is an unconditional stop, including flatten.
 
 A cycle with `pipeline.risk_result.decision == "reject"` and one of the risk-engine
 reasons above still counted as `accepted_market_data: true` — market data,

@@ -35,6 +35,8 @@ class AttributionReport(BaseModel):
     by_asset: list[AttributionBucket] = Field(default_factory=list)
     by_regime: list[AttributionBucket] = Field(default_factory=list)
     by_side: list[AttributionBucket] = Field(default_factory=list)
+    # --- position management (#58) ---
+    by_exit_reason: list[AttributionBucket] = Field(default_factory=list)
     gross_vs_costs: AttributionBucket
 
 
@@ -91,6 +93,8 @@ def build_attribution_report(
     by_asset = _group_by(trade_list, lambda _t: asset)
     by_regime = _group_by(trade_list, lambda t: t.regime.value)
     by_side = _group_by(trade_list, lambda t: t.side.value)
+    # --- position management (#58) ---
+    by_exit_reason = _group_by(trade_list, _exit_reason_key)
 
     return AttributionReport(
         asset=asset,
@@ -99,8 +103,18 @@ def build_attribution_report(
         by_asset=by_asset,
         by_regime=by_regime,
         by_side=by_side,
+        by_exit_reason=by_exit_reason,
         gross_vs_costs=_bucket("all_trades", trade_list),
     )
+
+
+def _exit_reason_key(trade: BacktestTrade) -> str:
+    for strategy_id in trade.strategy_ids:
+        if strategy_id.startswith("exit_"):
+            return strategy_id
+        if strategy_id.startswith("exit-"):
+            return "exit_" + strategy_id.removeprefix("exit-")
+    return "discretionary"
 
 
 def render_attribution_table(report: AttributionReport) -> str:
@@ -130,6 +144,7 @@ def render_attribution_table(report: AttributionReport) -> str:
     render_section("By asset", report.by_asset)
     render_section("By regime", report.by_regime)
     render_section("By side", report.by_side)
+    render_section("By exit reason", report.by_exit_reason)
 
     gross = report.gross_vs_costs
     lines.append("\nGross vs. costs")

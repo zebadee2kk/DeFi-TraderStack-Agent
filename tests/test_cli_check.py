@@ -286,6 +286,37 @@ def test_paper_slippage_above_execution_cap_warns() -> None:
     )
 
 
+def test_position_exits_are_reported_on_default_paper_settings() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Position exits")
+    assert item.value == "active"
+    assert "stop 2.00%" in item.detail
+    assert "time 24 bars" in item.detail
+    assert report.safe
+
+
+def test_position_exits_ignored_on_live_warn() -> None:
+    report = build_report(settings(trading_mode="live", paper_research_mode=False))
+    item = next(i for i in report.items if i.label == "Position exits")
+    assert item.value == "ignored"
+    assert any("EXIT_*" in warning for warning in report.warnings)
+
+
+def test_position_exits_disabled_when_all_rules_are_zero() -> None:
+    report = build_report(
+        settings(
+            exit_stop_loss_pct=0.0,
+            exit_take_profit_pct=0.0,
+            exit_trailing_stop_pct=0.0,
+            exit_time_stop_bars=0,
+            exit_on_thesis_invalidation=False,
+        )
+    )
+    item = next(i for i in report.items if i.label == "Position exits")
+    assert item.value == "disabled"
+    assert report.safe
+
+
 def test_paper_fee_bps_zero_warns() -> None:
     report = build_report(settings(paper_fee_bps=0))
     assert not report.safe
