@@ -282,6 +282,13 @@ class Settings(BaseSettings):
     # PRETRADE_SLIPPAGE_BPS. Must stay at or below EXECUTION_MAX_SLIPPAGE_BPS
     # or the planner rejects the fill.
     paper_slippage_bps: float = Field(default=5.0, ge=0)
+    # --- paper perp / hedge stub ---
+    # TRADING_MODE=paper only. Opt-in scaffold: after a spot paper fill,
+    # attempt a hedge on the in-process perp book. The book refuses to
+    # invent a perp mid from the Kraken spot fill, so the cycle path
+    # skips until a PIT perp mid exists. Does not flip PAPER_CARRY_PATH_READY
+    # or any PAPER_PROMOTE_*. Live/shadow ignore this flag.
+    paper_perp_hedge: bool = False
 
     # --- paper research mode ---
     # Documented paper default. When TRADING_MODE=paper, the pre-trade ensemble

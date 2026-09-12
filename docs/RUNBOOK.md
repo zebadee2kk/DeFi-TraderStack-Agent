@@ -735,10 +735,14 @@ hedged cash-and-carry on BTC+ETH.
   omitted, never zero-filled).
 - Hedged carry PnL is received |funding| minus two-leg fees. Perp-spot
   basis is skipped unless a PIT mark−index / perp-mid−spot-mid series
-  is supplied. Hyperliquid `fundingHistory.premium` is not basis.
-  That family is not paper-spot executable (no paper perp simulator
-  or hedge book). A Settings pin requires dual-print + hard gates +
-  PIT basis + a paper-executable path.
+  is supplied. `--live` probes Hyperliquid and BitMEX and records
+  UNAVAILABLE (current mark/index/mid only; `fundingHistory.premium`
+  and BitMEX `.XBTUSDPI` are not basis). A paper perp/hedge stub
+  exists (`PAPER_PERP_HEDGE`, default false) but
+  `PAPER_CARRY_PATH_READY` stays false until PIT basis exists on both
+  venues and a cycle-wired perp mid is available. A Settings pin
+  requires dual-print + hard gates + PIT basis + a paper-executable
+  path.
 - This command never flips `PAPER_PROMOTE_*` and does not add a new
   pin unless those four are all true (default false if a pin is ever
   added). Empty / cannot-promote is success.
@@ -754,7 +758,9 @@ hedged cash-and-carry on BTC+ETH.
 
 See `docs/artifacts/strategy-search/funding-carry.md` (4h dual-print),
 `docs/artifacts/strategy-search/funding-carry-daily.md` (daily
-resample / hard-gate print), and the 2026-09-12 status memo
+resample / hard-gate print),
+`docs/artifacts/strategy-search/funding-carry-basis.md` (PIT basis
+probe: UNAVAILABLE), and the 2026-09-12 status memo
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
 
 After a paper run (or a soak), reconstruct what it actually achieved and compare it with

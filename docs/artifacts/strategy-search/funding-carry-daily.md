@@ -1,5 +1,11 @@
 # Funding / carry strategy search
 
+Follow-up (same day, after #112): PIT basis probe is **UNAVAILABLE**
+on Hyperliquid and BitMEX (current mark/index/mid only; premium not
+used). Carry below is still the basis-unaware model — it was not
+re-scored on an invented series. Paper perp/hedge stub exists;
+`paper_path_ready` stays false. See `funding-carry-basis.md`.
+
 Generated: 2026-09-12T18:17:38.382427+00:00
 Print kind: **dual_print**. interval=`1d`; primary_venue=`hyperliquid`; second_venue=`bitmex`; hard_gates_available=`true`; can_promote=`false`; basis_status=`skipped`; paper_path_ready=`false`; `keep_flag_false=true`.
 Core K=13; scored ids=13; ranking_key=`informational_wf_excess_single_print_cannot_promote` (informational).

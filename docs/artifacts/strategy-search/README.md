@@ -403,9 +403,10 @@ is often HTTP 403. Hard gates (#96+A+B+C) stay UNAVAILABLE unless
 720 aligned daily bars exist on **each** participating venue.
 `--interval 1d` resamples funding to UTC daily sums (empty days
 omitted). Hedged carry does not invent basis (Hyperliquid funding
-premium is not a PIT perp−spot mid). There is no paper perp / hedge
-path. `PAPER_PROMOTE_*` stays false. Empty / cannot-promote is
-success.
+premium is not a PIT perp−spot mid; live probes found current
+mark/index only on Hyperliquid and BitMEX). A paper perp / hedge
+stub exists; `PAPER_CARRY_PATH_READY` stays false. `PAPER_PROMOTE_*`
+stays false. Empty / cannot-promote is success.
 
 On the 2026-09-12 live run (catalog committed first):
 
@@ -462,6 +463,20 @@ Follow-up the same day (BitMEX wired as a second ≥720 daily tape):
   executable; basis skipped. **No new pin.**
 - `can_promote=false`. `PAPER_PROMOTE_*` stays false.
 
-See `funding-carry.md`, `funding-carry-daily.md`, and the 2026-09-12
-status memo `edge-status-2026-09-12.md`.
+Follow-up the same day (PIT basis probe + paper perp stub):
+
+- Hyperliquid and BitMEX public REST: **current** mark/index/mid
+  only. `fundingHistory.premium` and BitMEX `.XBTUSDPI` are
+  funding-formula inputs — not wired. `quote/bucketed` + `.BXBT`
+  is perp-mid−index, not the requested construction, and HL cannot
+  pair it. `basis_status=skipped`. Carry is **not** re-scored on
+  an invented series.
+- Paper perp/hedge stub in `execution/paper_perp.py`
+  (`PAPER_PERP_HEDGE` default false). Cycle skips without a PIT
+  perp mid. `PAPER_CARRY_PATH_READY` stays false. **No new pin.**
+- `can_promote=false`. `PAPER_PROMOTE_*` stays false.
+
+See `funding-carry.md`, `funding-carry-daily.md`,
+`funding-carry-basis.md`, and the 2026-09-12 status memo
+`edge-status-2026-09-12.md`.
 

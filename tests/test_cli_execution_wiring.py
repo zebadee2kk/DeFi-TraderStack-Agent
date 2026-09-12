@@ -8,6 +8,7 @@ from traderstack.config import Settings
 from traderstack.execution.ledger import ExecutionLedger
 from traderstack.execution.ledger_store import JsonExecutionLedgerStore
 from traderstack.execution.paper_fill import PaperFillSimulator
+from traderstack.execution.paper_perp import PaperPerpBook
 from traderstack.execution.reconcile import HummingbotExecutionReconciler
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.reconciliation import HummingbotPortfolioReconciler
@@ -60,6 +61,7 @@ def test_build_service_wires_the_execution_stack(tmp_path: Path) -> None:
     # would drift and freeze new risk.
     assert service.portfolio_reconciler is None
     assert isinstance(service.paper_fill_simulator, PaperFillSimulator)
+    assert service.paper_perp_book is None
     assert service.paper_fill_simulator.paper_fee_bps == pytest.approx(settings.paper_fee_bps)
     assert service.paper_fill_simulator.paper_slippage_bps == pytest.approx(
         settings.paper_slippage_bps
@@ -79,6 +81,23 @@ def test_build_service_wires_the_execution_stack(tmp_path: Path) -> None:
     assert submitter.planner.min_notional_usd == pytest.approx(25.0)
     assert submitter.planner.max_slippage_bps == pytest.approx(20.0)
     assert service.execution_reconciler.paper_fee_bps == pytest.approx(settings.paper_fee_bps)
+
+
+def test_build_service_wires_paper_perp_stub_when_opted_in(tmp_path: Path) -> None:
+    settings = settings_for_paper_submission().model_copy(update={"paper_perp_hedge": True})
+    service = build_service(
+        settings,
+        submit=False,
+        cycle_seconds=1.0,
+        portfolio=InMemoryPortfolioBook(starting_nav_usd=10_000),
+        on_result=_noop,
+        checkpoint_store=JsonPortfolioCheckpointStore(tmp_path / "portfolio.json"),
+        execution_ledger=ExecutionLedger(),
+        ledger_store=JsonExecutionLedgerStore(tmp_path / "execution_ledger.json"),
+    )
+    assert isinstance(service.paper_perp_book, PaperPerpBook)
+    assert service.paper_perp_book.path_ready is False
+    assert settings.trading_mode == "paper"
 
 
 def test_build_service_with_simulate_fills_off_wires_hummingbot_nav_reconcile(

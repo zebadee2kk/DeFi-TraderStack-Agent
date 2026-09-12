@@ -423,8 +423,10 @@ def build_report(settings: Settings) -> ConfigReport:
             "traderstack-funding-carry; OKX + Hyperliquid + BitMEX "
             "funding-z + hedged carry on BTC+ETH (Binance/Bybit probed, "
             "skip-not-invent); "
-            "1d resamples funding to UTC daily sums; basis skipped unless "
-            "PIT; no paper perp path; single-print cannot promote; no new "
+            "1d resamples funding to UTC daily sums; PIT basis probed on "
+            "Hyperliquid+BitMEX and recorded UNAVAILABLE (skip-not-invent); "
+            "paper perp/hedge stub exists but PAPER_CARRY_PATH_READY stays "
+            "false; single-print cannot promote; no new "
             "PAPER_PROMOTE_* unless dual-print + hard gates + PIT basis + "
             "paper path all clear (default false)",
         )
@@ -842,6 +844,38 @@ def build_report(settings: Settings) -> ConfigReport:
             "PAPER_SLIPPAGE_BPS exceeds EXECUTION_MAX_SLIPPAGE_BPS: the planner will "
             "reject every paper fill (fail closed). Lower PAPER_SLIPPAGE_BPS or raise "
             "the execution slippage cap."
+        )
+
+    # --- paper perp / hedge stub ---
+    items.append(
+        CheckItem(
+            "Paper perp / hedge stub",
+            (
+                "active (cannot promote)"
+                if settings.trading_mode == "paper" and settings.paper_perp_hedge
+                else "off"
+            ),
+            (
+                "TRADING_MODE=paper only; kill switch withholds new hedges; "
+                "refuses to invent a perp mid from Kraken spot; "
+                "PAPER_CARRY_PATH_READY stays false until PIT basis on both "
+                "venues and a cycle-wired perp mid; no PAPER_PROMOTE_* flip"
+                if settings.trading_mode == "paper"
+                else f"ignored unless TRADING_MODE=paper (got {settings.trading_mode!r})"
+            ),
+        )
+    )
+    if settings.paper_perp_hedge and settings.trading_mode != "paper":
+        warnings.append(
+            "PAPER_PERP_HEDGE is paper-only; "
+            f"TRADING_MODE={settings.trading_mode} ignores the stub and "
+            "cannot enable live."
+        )
+    if settings.paper_perp_hedge and settings.trading_mode == "paper":
+        warnings.append(
+            "PAPER_PERP_HEDGE=true is a scaffold, not a promote path. "
+            "PIT basis is UNAVAILABLE on Hyperliquid+BitMEX; the book will "
+            "not invent a perp mid. Leave every PAPER_PROMOTE_* false."
         )
 
     # --- polymarket weather research (paper-only, opt-in) ------------------------------

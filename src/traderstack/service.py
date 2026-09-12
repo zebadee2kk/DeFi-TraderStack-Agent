@@ -9,6 +9,7 @@ import structlog
 from traderstack.config import Settings
 from traderstack.execution.ledger import ExecutionLedger, ExecutionOrder
 from traderstack.execution.paper_fill import PaperFillSimulator, PaperFillStatus
+from traderstack.execution.paper_perp import PaperPerpBook
 from traderstack.execution.reconcile import ExecutionReconciliationResult
 from traderstack.health import RuntimeHealth
 
@@ -75,6 +76,11 @@ class ContinuousPaperService:
     # Books ALLOW'd paper_order intents into the local book without Hummingbot.
     # Compose `app.command` has no --submit; this is the paper PnL path.
     paper_fill_simulator: PaperFillSimulator | None = None
+    # --- paper perp / hedge stub ---
+    # Opt-in. After a spot paper fill, attempt a hedge. The book skips
+    # unless an explicit perp mid is supplied — Kraken spot mid is not
+    # invented. Does not make PAPER_CARRY_PATH_READY true.
+    paper_perp_book: PaperPerpBook | None = None
     # --- paper-research edge data plane ---
     # Background WS collectors (Binance liquidations / optional bookTicker).
     # Failure here is informational: missing features, not a halt.
@@ -339,6 +345,16 @@ class ContinuousPaperService:
             outcome.status.value,
             fee_usd=outcome.fee_usd,
         )
+        # --- paper perp / hedge stub ---
+        # Do not pass result.tick.mid: that is the Kraken spot mid, not a
+        # PIT perp mid. The book skips when perp_mid_usd is None.
+        if outcome.applied and outcome.fill is not None and self.paper_perp_book is not None:
+            self.paper_perp_book.maybe_hedge_spot_fill(
+                outcome.fill,
+                perp_mid_usd=None,
+                decision_id=intent.decision_id,
+                ledger=self.execution_ledger,
+            )
         return result.model_copy(
             update={
                 "execution_status": outcome.status.value,

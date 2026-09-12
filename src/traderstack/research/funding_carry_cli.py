@@ -7,9 +7,10 @@ BitMEX independently (skip-not-invent; do not blend). ``--interval 1d``
 resamples funding to UTC daily sums (empty days omitted) so the
 #96+A+B+C bar can be evaluated or recorded UNAVAILABLE. Dual-print
 only if two independent funding venues cover BTC and ETH. Basis is
-skipped unless a PIT series is supplied. Otherwise SINGLE-PRINT and
-cannot promote. Never flips ``PAPER_PROMOTE_*``. Empty search is
-success. No live.
+skipped unless a PIT mark−index / perp-mid−spot-mid series is
+supplied; live probes Hyperliquid and BitMEX and records UNAVAILABLE
+rather than inventing one. Otherwise SINGLE-PRINT and cannot promote.
+Never flips ``PAPER_PROMOTE_*``. Empty search is success. No live.
 """
 
 from __future__ import annotations
@@ -39,8 +40,10 @@ from traderstack.research.edge_series import (
     HYPERLIQUID_SYMBOL_PAUSE_SECONDS,
     OKX_BASE,
     fetch_binance_funding,
+    fetch_bitmex_basis,
     fetch_bitmex_funding,
     fetch_bybit_funding,
+    fetch_hyperliquid_basis,
     fetch_hyperliquid_funding,
     fetch_okx_funding,
 )
@@ -73,7 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
             "funding to UTC daily sums (empty days omitted) so #96+A+B+C "
             "can be evaluated or recorded UNAVAILABLE honestly. Dual-print "
             "only if two independent funding venues cover BTC and ETH. "
-            "Basis is skipped unless a PIT series is supplied. Otherwise "
+            "Basis is skipped unless a PIT mark−index / perp-mid−spot-mid "
+            "series is supplied; --live probes Hyperliquid and BitMEX and "
+            "records UNAVAILABLE rather than inventing one. Otherwise "
             "SINGLE-PRINT and cannot promote. Does not flip "
             "PAPER_PROMOTE_*. Empty search is success."
         )
@@ -274,6 +279,26 @@ async def fetch_funding_venues(
     return venue_maps, notes
 
 
+async def fetch_basis_venues(
+    symbols: tuple[str, ...],
+    *,
+    timeout: float = 20.0,
+) -> list[dict[str, str]]:
+    """Probe Hyperliquid and BitMEX for a PIT basis tape. Do not invent."""
+    notes: list[dict[str, str]] = []
+    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=max(timeout, 30.0)) as client:
+        for index, symbol in enumerate(symbols):
+            if index:
+                await asyncio.sleep(HYPERLIQUID_SYMBOL_PAUSE_SECONDS)
+            result = await fetch_hyperliquid_basis(symbol, client=client)
+            notes.append(result.as_note())
+    async with httpx.AsyncClient(base_url=BITMEX_BASE, timeout=max(timeout, 30.0)) as client:
+        for symbol in symbols:
+            result = await fetch_bitmex_basis(symbol, client=client)
+            notes.append(result.as_note())
+    return notes
+
+
 def _pick_venues(
     venue_maps: dict[str, dict[str, tuple]],
 ) -> tuple[dict[str, tuple] | None, str | None, dict[str, tuple] | None, str | None]:
@@ -342,6 +367,8 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
         primary_map, primary_venue, second_map, second_venue = _pick_venues(venue_maps)
         funding_by_symbol = primary_map
         second_funding_by_symbol = second_map
+        if basis is None:
+            edge_notes.extend(asyncio.run(fetch_basis_venues(symbols)))
         if funding_by_symbol is None and funding is None:
             history_notes.append(
                 {

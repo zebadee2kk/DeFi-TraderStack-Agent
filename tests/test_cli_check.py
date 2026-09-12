@@ -152,6 +152,22 @@ def test_funding_carry_is_report_only() -> None:
     assert "BitMEX" in item.detail
     assert "1d resamples" in item.detail
     assert "paper path" in item.detail
+    assert "UNAVAILABLE" in item.detail or "PIT basis" in item.detail
+
+
+def test_paper_perp_hedge_stub_is_off_by_default() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Paper perp / hedge stub")
+    assert item.value == "off"
+    assert "cannot promote" in item.detail.lower() or "PAPER_CARRY_PATH_READY" in item.detail
+    assert settings().paper_perp_hedge is False
+    assert settings().paper_promote_ema_9_21 is False
+
+
+def test_paper_perp_hedge_in_non_paper_mode_warns() -> None:
+    report = build_report(settings(trading_mode="live", paper_perp_hedge=True))
+    assert any("PAPER_PERP_HEDGE" in warning for warning in report.warnings)
+    assert any("cannot enable live" in warning for warning in report.warnings)
 
 
 def test_promote_without_report_is_unsafe() -> None:
