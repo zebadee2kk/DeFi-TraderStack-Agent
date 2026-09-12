@@ -61,6 +61,10 @@ traderstack-harder-gates = "traderstack.research.harder_gates_cli:main"
 # Honesty pack for one combined-passer (default ema_9_21_adx15).
 # Offline/batch; never flips PAPER_PROMOTE_* flags.
 traderstack-honesty-pack = "traderstack.research.honesty_pack_cli:main"
+# Second independent print for ema_9_21_adx15: Kraken holdout-blind
+# prefix + Binance Spot daily older 720. Report-only; never flips
+# PAPER_PROMOTE_*. An honest FAIL is success.
+traderstack-second-print = "traderstack.research.second_print_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.

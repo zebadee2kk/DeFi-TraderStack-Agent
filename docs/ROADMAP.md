@@ -63,7 +63,10 @@ holdout excess among combined-passers (#96 + A + B + C). Combined
 promotion stays off unless that passer set is non-empty, and any
 documented pin defaults false.
 `traderstack-honesty-pack` reprints a named combined-passer (Yahoo A/B,
-WF maxDD vs 0.30, multi-window) without flipping the pin. **Freqtrade
+WF maxDD vs 0.30, multi-window) without flipping the pin.
+`traderstack-second-print` scores a pre-registered older Binance Spot
+daily 720 (report-only) after documenting that Kraken public OHLC
+cannot unlock a second 720. **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy
 ecosystem becomes worth the integration cost.
