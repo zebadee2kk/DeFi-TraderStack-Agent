@@ -149,6 +149,49 @@ def build_report(settings: Settings) -> ConfigReport:
             "as an execution venue."
         )
 
+    # --- strategy search / paper voters ----------------------------------------------
+    from traderstack.research.promotion import describe_promotion, load_search_report
+
+    promote_value, promote_detail = describe_promotion(settings)
+    items.append(
+        CheckItem(
+            "Promote searched strategies as paper voters",
+            promote_value,
+            promote_detail,
+        )
+    )
+    items.append(
+        CheckItem(
+            "  search report path",
+            settings.paper_search_report_path,
+        )
+    )
+    if settings.paper_promote_searched_strategies:
+        from pathlib import Path
+
+        report_path = Path(settings.paper_search_report_path)
+        if not report_path.is_file():
+            warnings.append(
+                "PAPER_PROMOTE_SEARCHED_STRATEGIES=true but the search report "
+                f"({settings.paper_search_report_path}) is missing. Leave the flag "
+                "false until traderstack-strategy-search writes a gate-clearing winner."
+            )
+        else:
+            try:
+                search_report = load_search_report(report_path)
+            except (OSError, ValueError) as exc:
+                warnings.append(
+                    "PAPER_PROMOTE_SEARCHED_STRATEGIES=true but the search report "
+                    f"could not be read ({exc}). Leave the flag false."
+                )
+            else:
+                if not search_report.any_promoted:
+                    warnings.append(
+                        "PAPER_PROMOTE_SEARCHED_STRATEGIES=true but the search report "
+                        "has no promoted candidate. Leave the flag false — this is not "
+                        "an edge."
+                    )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(

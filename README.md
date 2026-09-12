@@ -172,8 +172,12 @@ Historical backtest → leakage/look-ahead checks → walk-forward validation �
 holdout evaluation → paper trading → shadow-live trading → tiny-capital live
 pilot → controlled scale-up. Benchmarks include BTC/ETH buy-and-hold and
 simple non-AI momentum/trend/mean-reversion strategies (`traderstack-research`,
-`traderstack-paper-report`) so any claimed AI alpha is measured against
-appropriate baselines, not narrated after the fact.
+`traderstack-strategy-search`, `traderstack-paper-report`) so any claimed AI
+alpha is measured against appropriate baselines, not narrated after the fact.
+`traderstack-strategy-search` is the paper-research promotion loop: it will not
+register a voter unless fee-aware walk-forward excess return is strictly
+positive. The default `PAPER_PROMOTE_SEARCHED_STRATEGIES=false` stays off
+until a report shows a winner.
 
 ## Roadmap
 

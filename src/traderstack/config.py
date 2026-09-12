@@ -270,6 +270,19 @@ class Settings(BaseSettings):
     paper_pretrade_min_trades: int = Field(default=1, ge=0)
     paper_pretrade_min_walkforward_excess_return: float = -0.10
 
+    # --- strategy search / paper voters ---
+    # Offline search (`traderstack-strategy-search`) scores standalone
+    # candidates on fee-aware walk-forward + holdout. Searched strategies
+    # become paper voters only when this flag is true *and* the report still
+    # clears the numeric gate. Default false: no searched strategy is
+    # registered until a report shows a real winner. These fields are not
+    # RiskEngine policy -- flipping them must not move policy_version.
+    paper_promote_searched_strategies: bool = False
+    paper_search_report_path: str = "var/ops/strategy_search_report.json"
+    paper_search_min_trades: int = Field(default=3, ge=0)
+    paper_search_min_wf_excess_return: float = 0.0
+    paper_search_require_holdout: bool = True
+
     # --- execution hardening (Epic 8) ---
     # Venue state is authoritative for execution. The service re-reads venue
     # orders/fills and NAV on this interval; a failed pass or NAV drift beyond

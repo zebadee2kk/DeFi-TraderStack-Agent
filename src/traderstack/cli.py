@@ -184,12 +184,22 @@ def paper_research_ensemble(settings: Settings) -> StrategyEnsemble:
 
 
 def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
+    # --- strategy search / paper voters ---
+    from traderstack.research.promotion import build_paper_ensemble
+    from traderstack.research.search import research_fee_bps
+
+    # Promotion off (default): keep the paper-research ensemble from main.
+    # Promotion on: only gate-clearing searched voters; never a silent
+    # fallback to the unpromoted MA baseline under the promotion flag.
+    if settings.paper_promote_searched_strategies:
+        ensemble = build_paper_ensemble(settings)
+    else:
+        ensemble = paper_research_ensemble(settings)
     backtester = BaselineBacktester(
+        ensemble=ensemble,
         starting_equity=settings.paper_starting_nav_usd,
-        fee_bps=settings.pretrade_fee_bps,
+        fee_bps=research_fee_bps(settings.pretrade_fee_bps, settings.paper_fee_bps),
         slippage_bps=settings.pretrade_slippage_bps,
-        # --- paper research mode ---
-        ensemble=paper_research_ensemble(settings),
     )
     return PreTradeBacktestGate(
         backtester=backtester,

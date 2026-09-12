@@ -227,16 +227,31 @@ class StrategyEnsemble:
     # Majority size. Default 2 is the live/shadow / specialist-committee rule.
     # Paper research mode may drop this to 1 when optional intel is unset.
     min_agreeing: int = 2
+    # --- strategy search / paper voters ---
+    # Extra standalone voters (promoted search winners). Default empty so the
+    # paper-research ensemble is unchanged. `suppress_defaults` is the
+    # promotion switch: when True, only `extra_voters` participate.
+    extra_voters: tuple[object, ...] = ()
+    suppress_defaults: bool = False
 
     def evaluate(self, candles: tuple[Candle, ...]) -> tuple[Regime, tuple[StrategySignal, ...]]:
         regime = self.classifier.classify(candles)
-        signals: list[StrategySignal] = [
-            self.momentum_strategy.evaluate(candles, regime),
-            self.trend_strategy.evaluate(candles, regime),
-            self.mean_reversion_strategy.evaluate(candles, regime),
-        ]
-        if self.paper_research_strategy is not None:
-            signals.append(self.paper_research_strategy.evaluate(candles, regime))
+        signals: list[StrategySignal] = []
+        if not self.suppress_defaults:
+            signals.extend(
+                (
+                    self.momentum_strategy.evaluate(candles, regime),
+                    self.trend_strategy.evaluate(candles, regime),
+                    self.mean_reversion_strategy.evaluate(candles, regime),
+                )
+            )
+            if self.paper_research_strategy is not None:
+                signals.append(self.paper_research_strategy.evaluate(candles, regime))
+        for voter in self.extra_voters:
+            evaluate = getattr(voter, "evaluate", None)
+            if evaluate is None:
+                raise TypeError("extra voter is missing evaluate()")
+            signals.append(evaluate(candles, regime))
         return regime, tuple(signals)
 
     def paper_research_position(
@@ -302,6 +317,8 @@ def combine_signals(
     A split vote (equal buy and sell counts) is no consensus — fail closed
     rather than silently preferring BUY. ``min_agreeing`` defaults to 2; paper
     research mode may pass 1 when optional intel voters cannot participate.
+    Promoted search winners may also pass 1, and only after the promotion
+    gate has already required fee-aware walk-forward edge.
     """
     if min_agreeing < 1:
         raise ValueError("min_agreeing must be >= 1")

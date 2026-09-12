@@ -24,7 +24,8 @@ without activating the venv.
 | `traderstack-resume` | Removes the sentinel file. Does **not** clear the `KILL_SWITCH` setting, the Redis key, or a latched `SIGUSR1` — those are separate channels and print as a reminder. |
 | `traderstack-trace` | Read-only: prints the full ordered runtime-event trace for one `decision_id` from Postgres (requires `--persistent-events` to have been running). `traderstack-trace <decision_id> [--limit N]`. |
 | `traderstack-research` | Runs the research harness end-to-end over a candle history (JSON file via `--candles`, or live from Kraken via `--symbol`): backtest with realistic costs, walk-forward, required baselines, and a performance attribution report. `--json` for machine-readable output. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles` and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-strategy-search` | Offline catalog search: scores pre-registered MA-cross / momentum / mean-reversion variants (optional liquidation-z / cross-venue series) on Kraken Spot OHLC with `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` costs, walk-forward + holdout, and a pre-registered top-1 / Bonferroni-honest ranking. Writes `var/ops/strategy_search_report.{json,md}`. Never flips `PAPER_PROMOTE_SEARCHED_STRATEGIES`. |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
@@ -195,6 +196,10 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
   trades more" — these are the deterministic controls the LLM cannot bypass by
   design. Loosen them only with the same deliberation you'd give a risk-policy
   change, and confirm the result with `traderstack-check-config`.
+- Leave `PAPER_PROMOTE_SEARCHED_STRATEGIES=false` unless a
+  `traderstack-strategy-search` report shows a gate-clearing winner (WF excess > 0
+  after fees, min trades, holdout confirmation). The flag does not relax
+  `RiskEngine`; flipping it on with no winner fails closed.
 - `ROBINHOOD_CHAIN_*` values (RPC URL, chain id, router/token allowlists) must come
   from Robinhood's own official chain docs, never guessed — see the warnings
   already in `.env.example` and `docs/DATA-SOURCES.md`.
@@ -413,6 +418,47 @@ Two things it will not do, by design:
 Candles come from a JSON file (`--candles`, produced by `traderstack-download-candles`)
 or, with `--candle-store`, from the Postgres candle store populated by
 `--persistent-events`.
+
+## Strategy search and paper-voter promotion
+
+The paper loop's default 2-of-3 ensemble (momentum + MA trend + mean reversion) is
+**not** evidence of edge. `traderstack-strategy-search` scores those families — plus
+always-on MA, a few window variants, and optional liquidation-z / cross-venue series —
+as *standalone* voters under `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` +
+`PRETRADE_SLIPPAGE_BPS`, with a walk-forward research window and a held-out tail.
+
+```bash
+# Offline / fixture (no network)
+.venv/bin/traderstack-strategy-search \
+  --candles tests/fixtures/strategy_search/btc_1h.json \
+  --candles tests/fixtures/strategy_search/eth_1h.json \
+  --candles tests/fixtures/strategy_search/sol_1h.json \
+  --output-json var/ops/strategy_search_report.json \
+  --output-md var/ops/strategy_search_report.md
+
+# Live Kraken Spot OHLC (same provider as paper; last ~720 committed bars)
+.venv/bin/traderstack-strategy-search \
+  --symbol BTC/USD --symbol ETH/USD --symbol SOL/USD \
+  --resolution 1h --count 720
+```
+
+Multiple-testing policy is **pre-registered top-1** (one promotion decision over the
+catalog, not K independent "we found a winner" claims). A Bonferroni note is written
+into the report; we do not invent per-fold p-values. Promotion additionally requires
+walk-forward mean excess return **> 0 after fees**, `PAPER_SEARCH_MIN_TRADES`, and
+(default) the same sign on holdout.
+
+`PAPER_PROMOTE_SEARCHED_STRATEGIES` stays **false** until a report shows a winner.
+Turning it on without a gate-clearing report fails closed at
+`traderstack-check-config` and at `build_pretrade_gate` — the process does not
+quietly fall back to the unpromoted MA ensemble under the promotion flag.
+
+Binance USDT-M liquidations and second-venue bookTicker exist as paper-research
+feeds on main (`BINANCE_LIQ_ENABLED` / `BOOK_TICKER_ENABLED`). They are not an
+execution venue and they are **not** auto-scored by this search. Pass
+`--liquidation-z` / `--cross-venue-z` JSON series to score those families;
+otherwise the report lists them as skipped, not as zeros. Do not invent a
+winner from an unused feed.
 
 ## Key rotation
 
