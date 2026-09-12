@@ -82,9 +82,11 @@ At minimum:
   settlements can fill that bar; OKX public history is still ~90d
   after a UTC-day resample.   PIT basis is UNAVAILABLE on Hyperliquid
   and BitMEX (current mark/index only; premium is not basis). Public
-  archives were probed and stay UNAVAILABLE (HL `asset_ctxs` is
-  requester-pays 403; BitMEX dumps have no mark tape; Tardis is not
-  freely usable) — see
+  archives were probed and stay UNAVAILABLE for dual-print
+  (official HL `asset_ctxs` is requester-pays 403; a public HF
+  mirror `asiletto81/hyperliquid` now supplies ≥720d HL
+  `mark_px`/`oracle_px`; BitMEX dumps still have no mark tape;
+  Tardis first-of-month samples are not a daily tape) — see
   `docs/artifacts/strategy-search/pit-basis-archives.md`. A
   paper hedge+funding soak path is cycle-wired
   (`PAPER_CARRY_PATH_READY=true` when `PAPER_PERP_HEDGE` fetches an

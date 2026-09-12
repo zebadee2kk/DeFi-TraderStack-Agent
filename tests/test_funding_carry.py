@@ -642,6 +642,10 @@ def test_pit_basis_archives_memo_stays_unavailable() -> None:
     assert "ema_9_21" in text
     # Honesty: no Settings pin and no invented archive fetch.
     assert "No `PAPER_PROMOTE_*` flip" in text or "PAPER_PROMOTE_*=false" in text
+    assert "asiletto81/hyperliquid" in text
+    assert "883" in text
+    assert "BitMEX" in text
+    assert "not wired" in text.lower() or "No fetcher" in text or "No skip-not-invent" in text
     assert Settings.model_fields["paper_promote_searched_strategies"].default is False
     assert Settings.model_fields["paper_promote_ema_9_21"].default is False
     assert Settings.model_fields["paper_promote_ema_9_21_adx15"].default is False
