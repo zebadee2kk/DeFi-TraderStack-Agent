@@ -1066,6 +1066,21 @@ def build_report(settings: Settings) -> ConfigReport:
             "the weather CLI fails closed (no cities to research)."
         )
 
+    # --- multi-year candle fetchers (#133; report-only, offline/batch) ---
+    archive_dir = settings.research_kraken_archive_dir.strip()
+    items.append(
+        CheckItem(
+            "Multi-year candle fetchers",
+            f"archive dir set ({archive_dir})"
+            if archive_dir
+            else "archive dir unset (kraken_archive venue skipped)",
+            "traderstack-download-candles --venue coinbase|binance_vision|kraken_archive; "
+            "fetched series are research inputs only (no RiskEngine / pre-trade change, "
+            "no PAPER_PROMOTE_* pin); a missing or unverifiable series is a skip, never "
+            "a zero; cross-venue divergence is flagged in the sidecar, never blended",
+        )
+    )
+
     return ConfigReport(items=items, warnings=warnings)
 
 

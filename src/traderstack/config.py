@@ -462,6 +462,14 @@ class Settings(BaseSettings):
     polymarket_weather_max_mid: float = Field(default=0.98, gt=0, le=1)
     polymarket_weather_fee_haircut: float = Field(default=0.02, ge=0, lt=1)
 
+    # --- multi-year candle fetchers (#133) ---
+    # Directory of the manually downloaded, unzipped Kraken OHLCVT CSV archive
+    # (support article 360047124832). Read only by
+    # `traderstack-download-candles --venue kraken_archive` (offline research
+    # input); never by the paper loop, RiskEngine or any promote pin. Empty
+    # means that venue is skipped with a reason.
+    research_kraken_archive_dir: str = ""
+
     @property
     def assets(self) -> tuple[str, ...]:
         return tuple(x.strip().upper() for x in self.mvp_assets.split(",") if x.strip())

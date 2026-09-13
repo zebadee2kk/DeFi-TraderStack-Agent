@@ -640,3 +640,20 @@ def test_main_exits_zero_on_safe_defaults(monkeypatch, capsys) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main()
     assert exc_info.value.code == 0
+
+
+# --- multi-year candle fetchers (#133) ---
+def test_multi_year_candle_fetchers_item_is_report_only() -> None:
+    for overrides in ({}, {"research_kraken_archive_dir": "/data/kraken-ohlcvt"}):
+        report = build_report(settings(**overrides))
+        item = next(i for i in report.items if i.label == "Multi-year candle fetchers")
+        assert "traderstack-download-candles" in item.detail
+        assert "coinbase|binance_vision|kraken_archive" in item.detail
+        assert "PAPER_PROMOTE_*" in item.detail
+        assert "skip" in item.detail
+        if overrides:
+            assert item.value == "archive dir set (/data/kraken-ohlcvt)"
+        else:
+            assert item.value == "archive dir unset (kraken_archive venue skipped)"
+        assert report.safe
+        assert report.warnings == []
