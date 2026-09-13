@@ -153,6 +153,11 @@ traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"
 # independent prints required before anyone may talk about promotion.
 # Never flips PAPER_PROMOTE_*. Empty / negative is success. No CLOB orders.
 traderstack-polymarket-weather-eval = "traderstack.polymarket.eval_cli:main"
+# Second-venue PIT basis (#134): OKX history-mark-price-candles − history-index-candles
+# and Binance Vision markPriceKlines − indexPriceKlines (sha256-verified) daily
+# mark−index into [{opened_at, value}] JSON for traderstack-funding-carry --basis-dir.
+# Skip-not-invent; premium / last-trade / funding-implied refused; empty is success. No live.
+traderstack-download-basis = "traderstack.research.basis_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]
