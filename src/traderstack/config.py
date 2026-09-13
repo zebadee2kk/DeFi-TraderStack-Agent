@@ -291,6 +291,14 @@ class Settings(BaseSettings):
     # never a substitute. Snapshot mids are not historical PIT basis
     # and do not flip PAPER_PROMOTE_*. Default off. Live/shadow ignore.
     paper_perp_hedge: bool = False
+    # --- opportunity funnel (#131) ---
+    # Diagnostic-only run: every gate (kill switch, pre-trade, risk engine,
+    # meta-agent, planner) runs and is audited exactly as normal, but no
+    # paper fill is booked and no venue submission is attempted. The per-cycle
+    # opportunity funnel then explains the nearest blocking gate for each
+    # cycle. This flag can only withhold; it is not read by RiskEngine and
+    # does not move policy_version. Default off.
+    opportunity_diagnostic_mode: bool = False
 
     # --- paper research mode ---
     # Documented paper default. When TRADING_MODE=paper, the pre-trade ensemble
