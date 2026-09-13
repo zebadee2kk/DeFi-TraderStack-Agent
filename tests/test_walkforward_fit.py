@@ -6,7 +6,7 @@ from traderstack.cli import build_pretrade_gate
 from traderstack.config import Settings
 from traderstack.research.leakage import assert_no_lookahead
 from traderstack.research.miles_candidates import default_miles_candidates
-from traderstack.research.miles_search import walkforward_candidate_on_window
+from traderstack.research.miles_search import research_fee_bps, walkforward_candidate_on_window
 from traderstack.research.tuning import grid_search_momentum_lookback
 from traderstack.walkforward import WalkForwardEvaluator
 
@@ -119,7 +119,8 @@ def test_train_warmup_matches_research_walkforward_definition() -> None:
     research = walkforward_candidate_on_window(
         candidate,
         candles,
-        fee_bps=10.0,
+        # --- fee realism (#138) --- the gate scores at the PAPER_FEE_TIER taker
+        fee_bps=research_fee_bps(settings.pretrade_fee_bps, settings.effective_paper_fee_bps),
         slippage_bps=5.0,
         starting_equity=settings.paper_starting_nav_usd,
         train_size=180,
