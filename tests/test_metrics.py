@@ -226,3 +226,51 @@ async def test_timed_provider_call_records_and_reraises_failure() -> None:
 
 def test_timed_provider_call_is_a_coroutine_function() -> None:
     assert asyncio.iscoroutinefunction(metrics.timed_provider_call)
+
+
+# --- protective exit sizing (#130) ---
+
+
+def test_record_paper_fill_rejection_labels_reason() -> None:
+    before_exit = _counter_value(
+        "traderstack_paper_fill_rejections_total",
+        symbol="BTC/USD",
+        side="sell",
+        reason="exit_sizing_invalid",
+    )
+    before_plan = _counter_value(
+        "traderstack_paper_fill_rejections_total",
+        symbol="BTC/USD",
+        side="sell",
+        reason="plan_rejected",
+    )
+    metrics.record_paper_fill_rejection("BTC/USD", "sell", "exit_sizing_invalid")
+    assert (
+        _counter_value(
+            "traderstack_paper_fill_rejections_total",
+            symbol="BTC/USD",
+            side="sell",
+            reason="exit_sizing_invalid",
+        )
+        == before_exit + 1
+    )
+    # A venue/data rejection is a distinct series.
+    assert (
+        _counter_value(
+            "traderstack_paper_fill_rejections_total",
+            symbol="BTC/USD",
+            side="sell",
+            reason="plan_rejected",
+        )
+        == before_plan
+    )
+    metrics.record_paper_fill_rejection("BTC/USD", "sell", "plan_rejected")
+    assert (
+        _counter_value(
+            "traderstack_paper_fill_rejections_total",
+            symbol="BTC/USD",
+            side="sell",
+            reason="plan_rejected",
+        )
+        == before_plan + 1
+    )

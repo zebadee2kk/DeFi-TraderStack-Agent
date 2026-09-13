@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from prometheus_client import REGISTRY  # --- protective exit sizing (#130) ---
 
 from traderstack.execution.ledger import ExecutionLedger, OrderLifecycleState
 from traderstack.execution.paper_fill import PaperFillSimulator, PaperFillStatus
@@ -192,3 +193,111 @@ async def test_reconciliation_block_withholds_paper_fill() -> None:
 
     assert book.nav_usd == pytest.approx(10_000)
     assert captured[0].execution_status == PaperFillStatus.WITHHELD.value
+
+
+# --- protective exit sizing (#130) ---
+
+
+def _exit_result(*, max_quantity: float | None = 1.0) -> RuntimeResult:
+    tick = MarketTick(
+        source=MarketSource.KRAKEN,
+        symbol="BTC/USD",
+        observed_at=datetime.now(UTC),
+        bid=99.99,
+        ask=100.01,
+        last=100.0,
+    )
+    return RuntimeResult(
+        tick=tick,
+        references=[],
+        pipeline=PipelineResult(
+            accepted_market_data=True,
+            paper_order=PaperOrderIntent(
+                decision_id="decision-exit",
+                asset="BTC",
+                side=Side.SELL,
+                notional_usd=100.0,
+                max_quantity=max_quantity,
+            ),
+            exit_reason="exit_stop_loss",
+        ),
+        trading_mode="paper",
+    )
+
+
+def _long_book(quantity: float) -> InMemoryPortfolioBook:
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    book.apply_fill("BTC", Side.BUY, quantity, 100.0)
+    book.mark("BTC", 100.0)
+    return book
+
+
+def _rejection_counter(reason: str) -> float:
+    return (
+        REGISTRY.get_sample_value(
+            "traderstack_paper_fill_rejections_total",
+            {"symbol": "BTC/USD", "side": "sell", "reason": reason},
+        )
+        or 0.0
+    )
+
+
+@pytest.mark.asyncio
+async def test_service_books_a_capped_exit_fill_to_flat_under_slippage() -> None:
+    book = _long_book(1.0)
+    ledger = ExecutionLedger()
+    service = ContinuousPaperService(
+        runtime=FakeRuntime(_exit_result()),  # type: ignore[arg-type]
+        portfolio=book,
+        symbols=("BTC/USD",),
+        submit=False,
+        execution_ledger=ledger,
+        paper_fill_simulator=PaperFillSimulator(paper_fee_bps=10.0, paper_slippage_bps=5.0),
+        error_backoff_seconds=0,
+    )
+    captured: list[RuntimeResult] = []
+
+    async def capture(result: RuntimeResult) -> None:
+        captured.append(result)
+
+    service.on_result = capture
+    await service._run_symbol_safely("BTC/USD")
+
+    assert captured[0].execution_status == PaperFillStatus.FILLED.value
+    assert book.positions["BTC"].quantity == 0
+    order = ledger.orders_for_decision("decision-exit")[0]
+    assert order.state is OrderLifecycleState.FILLED
+    assert order.requested_quantity == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_service_flags_an_exit_intent_larger_than_the_book_as_exit_sizing_invalid() -> None:
+    book = _long_book(0.5)
+    ledger = ExecutionLedger()
+    service = ContinuousPaperService(
+        runtime=FakeRuntime(_exit_result(max_quantity=1.0)),  # type: ignore[arg-type]
+        portfolio=book,
+        symbols=("BTC/USD",),
+        submit=False,
+        execution_ledger=ledger,
+        paper_fill_simulator=PaperFillSimulator(paper_fee_bps=10.0, paper_slippage_bps=5.0),
+        error_backoff_seconds=0,
+    )
+    captured: list[RuntimeResult] = []
+
+    async def capture(result: RuntimeResult) -> None:
+        captured.append(result)
+
+    service.on_result = capture
+    before_exit = _rejection_counter("exit_sizing_invalid")
+    before_plan = _rejection_counter("plan_rejected")
+    cash_before = book.cash_usd
+    await service._run_symbol_safely("BTC/USD")
+
+    assert captured[0].execution_status == PaperFillStatus.REJECTED.value
+    assert (captured[0].execution_reason or "").startswith("exit_sizing_invalid")
+    assert book.positions["BTC"].quantity == pytest.approx(0.5)
+    assert book.cash_usd == pytest.approx(cash_before)
+    assert ledger.processed_fill_ids == set()
+    assert _rejection_counter("exit_sizing_invalid") == before_exit + 1
+    assert _rejection_counter("plan_rejected") == before_plan

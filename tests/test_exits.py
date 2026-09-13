@@ -344,3 +344,63 @@ def test_pipeline_does_not_exit_when_live() -> None:
     )
     assert result.exit_reason is None
     assert result.proposal is None or result.proposal.strategy_id != "exit-stop_loss"
+
+
+# --- protective exit sizing (#130) ---
+
+
+def test_exit_signal_carries_the_held_quantity() -> None:
+    position = held(quantity=0.37)
+    signal = evaluate(position, mark=19_500)
+    assert signal is not None
+    assert signal.held_quantity == pytest.approx(position.quantity)
+    assert signal.requested_notional_usd == pytest.approx(0.37 * 19_500)
+
+
+def test_pipeline_exit_intent_carries_max_quantity_equal_to_the_held_quantity() -> None:
+    engine = RiskEngine(settings(kill_switch=False))
+    pipe = VerticalSlicePipeline(risk_engine=engine)
+    tick = MarketTick(
+        source=MarketSource.KRAKEN,
+        symbol="BTC/USD",
+        observed_at=NOW,
+        bid=19_490,
+        ask=19_510,
+        last=19_500,
+    )
+    refs = [ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=19_500)]
+    result = pipe.process(tick, refs, _pipeline_snapshot(held(mark=19_500), mark=19_500), now=NOW)
+    assert result.exit_reason == "exit_stop_loss"
+    assert result.paper_order is not None
+    assert result.paper_order.max_quantity == pytest.approx(0.1)
+    assert result.paper_order.notional_usd == pytest.approx(0.1 * 19_500)
+
+
+def test_discretionary_buy_intent_leaves_max_quantity_none() -> None:
+    # The discretionary path evaluates risk at the wall clock, so the
+    # snapshot and tick must be fresh against ``datetime.now``.
+    now = datetime.now(UTC)
+    engine = RiskEngine(settings(kill_switch=False, exit_stop_loss_pct=0.0))
+    pipe = VerticalSlicePipeline(risk_engine=engine)
+    tick = MarketTick(
+        source=MarketSource.KRAKEN,
+        symbol="BTC/USD",
+        observed_at=now,
+        bid=19_990,
+        ask=20_010,
+        last=20_000,
+    )
+    refs = [ReferencePrice(source=MarketSource.COINGECKO, asset="BTC", price=20_000)]
+    flat = PortfolioSnapshot(
+        nav_usd=10_000,
+        cash_usd=10_000,
+        daily_pnl_usd=0.0,
+        peak_nav_usd=10_000,
+        asset_exposure_usd={},
+        observed_at=now,
+    )
+    result = pipe.process(tick, refs, flat, now=now)
+    assert result.exit_reason is None
+    assert result.paper_order is not None
+    assert result.paper_order.side is Side.BUY
+    assert result.paper_order.max_quantity is None

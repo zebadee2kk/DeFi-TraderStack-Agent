@@ -12,6 +12,7 @@ from traderstack.execution.ledger import (
     OrderLifecycleState,
 )
 from traderstack.execution.paper_fill import (
+    PaperFillRejectReason,
     PaperFillSimulator,
     PaperFillStatus,
     adverse_fill_price_usd,
@@ -159,3 +160,136 @@ def test_live_mode_is_refused() -> None:
     simulator = PaperFillSimulator(trading_mode="live")
     with pytest.raises(ExecutionSafetyError, match="outside paper mode"):
         simulator.apply(_intent(), mid_usd=20_000.0, ledger=ExecutionLedger(), portfolio=_book())
+
+
+# --- protective exit sizing (#130) ---
+
+
+def _long_book(quantity: float = 1.0, price: float = 100.0) -> InMemoryPortfolioBook:
+    book = _book()
+    book.apply_fill("BTC", Side.BUY, quantity, price)
+    book.mark("BTC", price)
+    return book
+
+
+def test_issue_130_reproduction_exit_fills_the_whole_position_at_5_bps() -> None:
+    """1.0 BTC at a $100 mark, exit intent $100, 5 bps adverse slippage.
+
+    The planner converts $100 back to 1.00050025 units at $99.95; the intent's
+    ``max_quantity`` caps that to the held 1.0 so the stop-loss fills.
+    """
+
+    book = _long_book()
+    ledger = ExecutionLedger()
+    simulator = PaperFillSimulator(paper_fee_bps=10.0, paper_slippage_bps=5.0)
+    exit_intent = PaperOrderIntent(
+        decision_id="exit-1", asset="BTC", side=Side.SELL, notional_usd=100.0, max_quantity=1.0
+    )
+
+    outcome = simulator.apply(exit_intent, mid_usd=100.0, ledger=ledger, portfolio=book)
+
+    assert outcome.status is PaperFillStatus.FILLED, outcome.reason
+    assert outcome.reason_code is None
+    assert outcome.fill is not None
+    assert outcome.fill.quantity == pytest.approx(1.0)
+    assert outcome.fill.price_usd == pytest.approx(99.95)
+    assert book.positions["BTC"].quantity == 0
+    fee = 1.0 * 99.95 * 10.0 / 10_000.0
+    assert outcome.fee_usd == pytest.approx(fee)
+    assert book.cash_usd == pytest.approx(10_000.0 - 100.0 + 99.95 - fee)
+    assert outcome.plan is not None
+    assert outcome.plan.quantity_capped_to_position is True
+
+
+def test_same_oversized_sell_without_max_quantity_is_still_a_short_sale_rejection() -> None:
+    """Documents the pre-fix behaviour for a non-exit SELL larger than the book."""
+
+    book = _long_book()
+    ledger = ExecutionLedger()
+    simulator = PaperFillSimulator(paper_fee_bps=10.0, paper_slippage_bps=5.0)
+
+    outcome = simulator.apply(
+        _intent(side=Side.SELL, notional_usd=100.0), mid_usd=100.0, ledger=ledger, portfolio=book
+    )
+
+    assert outcome.status is PaperFillStatus.REJECTED
+    assert outcome.reason_code is PaperFillRejectReason.SHORT_SALE
+    assert (outcome.reason or "").startswith("short_sale: cannot sell")
+    assert book.positions["BTC"].quantity == pytest.approx(1.0)
+    assert ledger.processed_fill_ids == set()
+
+
+def test_reason_codes_for_invalid_mid_and_planner_rejection() -> None:
+    simulator = PaperFillSimulator()
+    invalid = simulator.apply(_intent(), mid_usd=0.0, ledger=ExecutionLedger(), portfolio=_book())
+    assert invalid.status is PaperFillStatus.REJECTED
+    assert invalid.reason_code is PaperFillRejectReason.INVALID_MID
+    assert (invalid.reason or "").startswith("invalid_mid:")
+
+    dust = PaperFillSimulator(planner=ExecutionPlanner(min_notional_usd=5_000.0))
+    rejected = dust.apply(_intent(), mid_usd=20_000.0, ledger=ExecutionLedger(), portfolio=_book())
+    assert rejected.status is PaperFillStatus.PLAN_REJECTED
+    assert rejected.reason_code is PaperFillRejectReason.PLAN_REJECTED
+    assert (rejected.reason or "").startswith("plan_rejected:")
+
+
+def test_reason_code_for_a_terminal_decision() -> None:
+    planner = ExecutionPlanner()
+    plan = planner.plan(_intent(), execution_price_usd=20_000.0, reference_price_usd=20_000.0)
+    ledger = ExecutionLedger()
+    ledger.register_order(
+        ExecutionOrder(
+            order_id=plan.client_order_id,
+            decision_id=plan.decision_id,
+            asset=plan.asset,
+            side=plan.side,
+            requested_quantity=plan.quantity,
+            state=OrderLifecycleState.REJECTED,
+            client_order_id=plan.client_order_id,
+            correlation_id=plan.correlation_id,
+        )
+    )
+    outcome = PaperFillSimulator().apply(
+        _intent(), mid_usd=20_000.0, ledger=ledger, portfolio=_book()
+    )
+    assert outcome.status is PaperFillStatus.REJECTED
+    assert outcome.reason_code is PaperFillRejectReason.DECISION_TERMINAL
+
+
+def test_exit_intent_exceeding_the_book_is_flagged_as_exit_sizing_invalid() -> None:
+    """A carried max_quantity larger than the book is a sizing bug, not venue noise."""
+
+    book = _long_book(quantity=0.5)
+    ledger = ExecutionLedger()
+    simulator = PaperFillSimulator(paper_fee_bps=10.0, paper_slippage_bps=5.0)
+    hostile = PaperOrderIntent(
+        decision_id="exit-2", asset="BTC", side=Side.SELL, notional_usd=100.0, max_quantity=1.0
+    )
+
+    outcome = simulator.apply(hostile, mid_usd=100.0, ledger=ledger, portfolio=book)
+
+    assert outcome.status is PaperFillStatus.REJECTED
+    assert outcome.reason_code is PaperFillRejectReason.EXIT_SIZING_INVALID
+    assert (outcome.reason or "").startswith("exit_sizing_invalid: cannot sell")
+    assert book.positions["BTC"].quantity == pytest.approx(0.5)
+    assert ledger.processed_fill_ids == set()
+
+
+def test_capped_exit_replay_is_a_duplicate_and_leaves_the_book_unchanged() -> None:
+    book = _long_book()
+    ledger = ExecutionLedger()
+    simulator = PaperFillSimulator(paper_fee_bps=10.0, paper_slippage_bps=5.0)
+    exit_intent = PaperOrderIntent(
+        decision_id="exit-3", asset="BTC", side=Side.SELL, notional_usd=100.0, max_quantity=1.0
+    )
+    first = simulator.apply(exit_intent, mid_usd=100.0, ledger=ledger, portfolio=book)
+    cash_after = book.cash_usd
+
+    second = simulator.apply(exit_intent, mid_usd=100.0, ledger=ledger, portfolio=book)
+
+    assert first.status is PaperFillStatus.FILLED
+    assert second.status is PaperFillStatus.DUPLICATE
+    assert second.reason_code is None
+    assert book.cash_usd == pytest.approx(cash_after)
+    assert book.positions["BTC"].quantity == 0
+    assert len(ledger.processed_fill_ids) == 1
