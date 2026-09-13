@@ -185,3 +185,12 @@ in #116 (0 dual-print passers). Later empty prints: #117 XS,
 #118 Donchian, #119 TSMOM, #120 Bollinger, #121 calendar,
 #122 lead-lag, **#123 volume-confirmed breakout (0 passers)**.
 Those families stay closed on the same windows.
+
+## Update (basis/hl-htx-aware)
+
+Coverage-driven freeze committed **before** scoring: window end
+**2026-06-01**, ≥720 aligned HL+HTX days (`basis-window-freeze.md`).
+HL mark−index fetcher uses asiletto81 `asset_ctxs` (skip-not-invent;
+cache under `var/ops/basis_cache/asilletto81/`). HTX mark−index is
+clamped to the same freeze. Binance Vision is **not** stitched into
+the HL leg. BitMEX remains excluded.
