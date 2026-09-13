@@ -49,6 +49,23 @@
 - [x] lookahead-bias test
 - [x] walk-forward evaluator
 - [x] performance attribution report
+- [x] selection-bias evidence in search reports (#135): pre-registered era
+      prints (2016-2019 / 2020-2022 / 2022-2024 / 2024-2026), Deflated Sharpe
+      (Bailey & Lopez de Prado), probability of backtest overfitting via CSCV,
+      and percentile-bootstrap CIs on Sharpe and expectancy replacing the fixed
+      trade-count floor. Vendored in pure Python (`research/overfitting.py`) —
+      no new dependency. Wired through the shared `run_harder_gates` path, so
+      the eleven dual-print families carry it; `traderstack-strategy-search`,
+      `-miles-search`, `-daily-robustness`, `-liq-regime-search`,
+      `-funding-carry`, `-honesty-pack` and `-second-print` do **not** yet
+      surface it (wiring only, no new statistics). Additional withholding gate:
+      it can only remove a promotion, never grant one.
+- [x] multi-year candle fetchers (#133): `traderstack-download-candles --venue
+      coinbase|binance_vision|kraken_archive`, past Kraken's 720-bar REST cap,
+      with gap detection, checksum-verified Binance Vision months and a
+      cross-venue daily-close divergence flag. **Parse path tested offline
+      only** — all three hosts are egress-blocked from the build environment,
+      so no live multi-year pull has been performed.
 
 ## Epic 6 — Agent Runtime
 - [x] Claude model abstraction
@@ -84,6 +101,14 @@ and reason string behind each control.
 - [x] order/fill state machine
 - [x] venue reconciliation
 - [x] retry/timeout handling
+
+Known gap (#130 follow-up): the reducing-only quantity clamp that stops a
+protective exit overselling after adverse slippage is enforced in
+`PaperFillSimulator` but **not** in `IdempotentSubmitter` (the `--submit` /
+Hummingbot path), which holds no portfolio reference. That path is still
+covered by conservative exit sizing at origin plus the venue connector's own
+balance checks, so the fail-closed stop-loss bug does not reproduce there —
+but the invariant holds in one of the two execution paths, not both.
 
 ## Epic 9 — Observability
 - [x] OpenTelemetry traces
