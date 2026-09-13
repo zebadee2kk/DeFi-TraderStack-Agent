@@ -287,6 +287,38 @@ still backtests on the base asset's Kraken USD candles.
 | Tiingo [V] | Multi-year | No (crypto from $30/mo) | — |
 | On-chain (Robinhood) | Since pool creation (Jul 2026+) | GT free | GeckoTerminal/Codex bars, or rebuild from Swap logs |
 
+### Multi-year candle fetchers (#133; verified 2026-09-13) [V]
+
+Implemented in `research/candles_coinbase.py`, `research/candles_binance_vision.py`
+and `research/candles_kraken_archive.py`, dispatched by
+`traderstack-download-candles --venue …` (RUNBOOK, "Multi-year candle history").
+Verified unauthenticated from the session environment on 2026-09-13:
+
+- **Coinbase Exchange** `GET https://api.exchange.coinbase.com/products/{id}/candles`
+  — **300 candles per request** (the "350/call" rows above describe the
+  Coinbase *Advanced Trade* candle endpoint, which is capped at 350; the
+  Exchange endpoint used here is 300 — an inclusive window of 301 bars still
+  answers, 302 is HTTP 400 "exceeds 300"). Granularities
+  `{60, 300, 900, 3600, 21600, 86400}` only (no 4h). Rows are
+  `[time, low, high, open, close, volume]`, newest first. BTC-USD daily
+  answers from 2015, ETH-USD from 2016, ETH-USD hourly from 2020; a window
+  before listing returns `[]` with 200. Public limit 10 rps/IP; one 429 is
+  a skip. `/products` lists 837 products.
+- **Binance Vision** `https://data.binance.vision/data/spot/monthly/klines/{SYM}/{iv}/{SYM}-{iv}-{YYYY}-{MM}.zip`
+  with sibling `.CHECKSUM` (`<sha256>  <zipname>`) — reachable via S3 while
+  `api.binance.com` REST is HTTP 451 here. Spot klines from 2017-08; the
+  current month is 404 until published; delisted symbols are retained
+  inconsistently (LUNAUSDT 2022-04 still present) — verify per symbol.
+  `open_time` is milliseconds in 2017-era files and **microseconds** (16
+  digits) in 2026 files. Quote is USDT. Checksum mismatch fails closed.
+- **Kraken OHLCVT archive** (support article 360047124832) — full venue
+  history for the eight intervals 1/5/15/30/60/240/720/1440 minutes,
+  quarterly Google Drive zips, manual download, **active pairs only**
+  (survivorship). Intervals with no trades are absent by design. Column
+  layout `time,open,high,low,close,volume,trades` is [S] — confirm against
+  the first drop. Loaded offline from `RESEARCH_KRAKEN_ARCHIVE_DIR`; the
+  Kraken REST `Trades` top-up named under "Backtest data" is not implemented.
+
 ## On-chain analytics and oracles
 
 | Source | What | Free? | Notes |

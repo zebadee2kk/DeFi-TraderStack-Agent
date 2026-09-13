@@ -42,7 +42,7 @@ without activating the venv.
 | `traderstack-calendar-seasonality` | Paper-only UTC calendar seasonality: day-of-week long-only (Mon / Fri / Mon+Fri), skip-weekend (long Mon–Fri, flat Sat/Sun), month-of-year (Q4 / Jan / Nov+Dec), and turn-of-month last 3 / first 3 UTC calendar days. Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/calendar-seasonality.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, or Bollinger reprint. |
 | `traderstack-lead-lag` | Paper-only BTC→ETH lead-lag: ETH follows or fades lagged BTC L-day return (L in {1,2,3,5} follow-lo; {1,2,3} follow-ls / fade-lo; BTC-follows-ETH mirror lo {1,2}). Not same-bar residual z-score (#116). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): both BTC and ETH legs; other leg is **flat**. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/lead-lag.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, Bollinger, or calendar reprint. |
 | `traderstack-volume-breakout` | Paper-only volume-confirmed breakout: long-only or long/short on the prior N-day high/low **and** a volume gate (N×mult in {20x1.5, 55x1.5, 20x2}; V=20 SMA through t−1), plus a small volume-surge set. Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/volume-breakout.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, Bollinger, calendar, or lead-lag reprint. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, `traderstack-calendar-seasonality --candles`, `traderstack-lead-lag --candles`, `traderstack-volume-breakout --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, `traderstack-calendar-seasonality --candles`, `traderstack-lead-lag --candles`, `traderstack-volume-breakout --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). **Multi-year venues (#133):** `--venue coinbase` (Coinbase Exchange, USD, paged in exact-300-bar windows from `--since` to `--end`; no 4h), `--venue binance_vision` (data.binance.vision monthly spot zips, USDT, sha256-verified against the published `.CHECKSUM`; mismatch fails closed), `--venue kraken_archive` (offline Kraken OHLCVT CSV drop in `RESEARCH_KRAKEN_ARCHIVE_DIR` / `--archive-dir`; partial or unparsable files are refused). For these venues the candle file stays the bare list above and the fetch header (venue, first/last bar, bar count, gaps, fetched_at, divergence flags) goes to a sidecar `<out>.meta.json` plus stdout; a skipped fetch writes only the sidecar, leaves any existing candle file untouched and exits 0. One HTTP 429 is a skip (rerun later), never a retry storm. `--cross-check PATH` flags same-bar closes diverging above `MAX_REFERENCE_DIVERGENCE_BPS` (or `--max-divergence-bps`, research-only) without dropping or blending bars. See "Multi-year candle history (#133)". |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-opportunity-funnel` | Zero-trade diagnosis (#131). Rebuilds the per-cycle opportunity funnel (`cycles → valid market data → signal candidate → pre-trade eligible → risk allowed → meta-agent retained → planner accepted → fill`) from a finished run's `audit/runtime.jsonl` (+ optional execution ledger) and names the dominant blocking gate with exact reason counts. Offline, read-only. The same funnel is written live to `--funnel-path` by `traderstack-paper` and into `traderstack-soak`'s `report.json`. See "Zero-trade diagnosis" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
@@ -263,6 +263,12 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
   `build_intelligence` / `PaperRuntime` path is used for paper, shadow,
   and live — live does **not** ignore Crucix. This is safety plumbing,
   not a trading edge; it does not flip `PAPER_PROMOTE_*`.
+- **`RESEARCH_KRAKEN_ARCHIVE_DIR`** (#133): directory of the manually
+  downloaded, unzipped Kraken OHLCVT CSV archive (files like
+  `XBTUSD_1440.csv`). Read only by `traderstack-download-candles --venue
+  kraken_archive`; leave it blank and that venue is skipped with a reason.
+  Never read by the paper loop, `RiskEngine` or any `PAPER_PROMOTE_*` pin.
+  See "Multi-year candle history (#133)".
 
 ## Starting and stopping
 
@@ -2108,3 +2114,100 @@ not alpha. The eval CLI implements the calculator for gates 1 / 4 / 5 in
 Gates 2 (walk-forward parameter fit) and 3 (a full season of live paper
 A/B) are still not claimed. Do not promote this module toward live CLOB
 trading from paper intents or a single fixture pack.
+
+## Multi-year candle history (#133)
+
+Every catalog since #104 was scored on Kraken's 720-bar public OHLC cap
+(about two years daily). `traderstack-download-candles --venue
+coinbase|binance_vision|kraken_archive` extends the same JSON candle
+format back to 2015 (Coinbase BTC-USD), 2016 (Coinbase ETH-USD) and 2017-08
+(Binance spot) so `--candles` consumers can score more than one regime.
+These files are **research inputs only**: nothing fetched here reaches
+`RiskEngine`, the pre-trade gate, or any `PAPER_PROMOTE_*` default, and a
+longer history is not a passer — the dual-print gates are unchanged.
+
+### Verified endpoints (2026-09-13, unauthenticated, from the session environment)
+
+| Venue | Endpoint / file | Granularities | Depth | Quote |
+|---|---|---|---|---|
+| Coinbase Exchange | `GET https://api.exchange.coinbase.com/products/{id}/candles?granularity=&start=&end=` — rows `[time, low, high, open, close, volume]`, newest first | `1m 5m 15m 1h 6h 1d` (`{60,300,900,3600,21600,86400}`; **no 4h**, rejected with a message) | BTC-USD daily from 2015, ETH-USD from 2016 | USD |
+| Binance Vision | `https://data.binance.vision/data/spot/monthly/klines/{SYM}/{iv}/{SYM}-{iv}-{YYYY}-{MM}.zip` + `.CHECKSUM` (`<sha256>  <zipname>`) | `1m 5m 15m 1h 4h 1d` | spot from 2017-08; current month is 404 until published | USDT |
+| Kraken OHLCVT archive | support article 360047124832 — quarterly Google Drive zips, **manual download**; `{PAIR}_{minutes}.csv` (e.g. `XBTUSD_1440.csv`) | `1m 5m 15m 30m 1h 4h 12h 1d` (1/5/15/30/60/240/720/1440) | full venue history, active pairs only | USD |
+
+### Rate limits and pacing
+
+- Coinbase documents 10 requests/second per IP for public endpoints
+  (bursts to 15). The pager asks for **exactly 300 bars per page**
+  (`end = start + 299 × granularity`; an inclusive 301-bar window still
+  answers, 302 is HTTP 400 "exceeds 300") and sleeps 0.25 s between pages (≤ 4 rps).
+  BTC-USD daily 2015→now is ~14 pages; ETH-USD hourly 2020→now is ~200.
+- **A single HTTP 429 ends the fetch as `status=skipped`** with "rerun
+  later" in the reason. There is no retry loop and no partial file.
+- A window before the product listed returns `[]` with HTTP 200; the pager
+  advances past it (recorded as `empty_windows` and as a gap) and stops
+  only at `--end` (default: now, uncommitted bar dropped) or `--max-candles`.
+- Binance Vision is a static S3 bucket; monthly zips are fetched at ≤ 10
+  rps. `api.binance.com` REST is HTTP 451 here and is never used.
+
+### Honesty rules
+
+- **Checksum fails closed.** Each Binance Vision zip is sha256-verified
+  against the published `.CHECKSUM` before it is opened; a mismatch or a
+  missing checksum aborts the whole fetch (`skipped`, nothing written).
+  Zips with anything but one `.csv` member, or a member above 256 MB
+  uncompressed, are refused.
+- **Timestamp units.** Binance `open_time` moved from milliseconds (13
+  digits, 2017 files) to microseconds (16 digits, 2026 files); both are
+  normalised to the same UTC bar. A header row is tolerated.
+- **Strict UTC alignment, no interpolation.** Every bar must open on a UTC
+  multiple of its interval or the series is skipped. Missing bars are
+  reported in the sidecar as gaps (`gap_entries_total`, `missing_bars_total`,
+  the first 200 entries) and never filled. Kraken's archive omits intervals
+  with no trades by design — those show up as gaps, not errors.
+- **Kraken archive refusal.** Any row with the wrong column count, a
+  non-numeric field, a non-increasing or misaligned timestamp, or a file
+  that does not end in a newline (truncated) makes the loader refuse the
+  file with the offending line number. The column layout
+  (`time,open,high,low,close,volume,trades`) is [S] — confirm it against the
+  first drop.
+- **Quote honesty.** Binance Vision is USDT; Coinbase and Kraken are USD.
+  The sidecar records the venue and quote; the cross-check never averages
+  across venues.
+- **Empty is success.** A venue that returns nothing, a month that is
+  404, or an unset `RESEARCH_KRAKEN_ARCHIVE_DIR` is `status=skipped` with a
+  reason and exit 0. No zeros are invented.
+
+### The sidecar header and `--cross-check`
+
+```bash
+traderstack-download-candles BTC/USD --resolution 1d --out var/candles/kraken_btc_1d.json
+traderstack-download-candles BTC/USD --venue coinbase --resolution 1d --since 2016-01-01 \
+  --cross-check var/candles/kraken_btc_1d.json --out var/candles/coinbase_btc_1d.json
+traderstack-download-candles BTC/USD --venue binance_vision --resolution 1d --since 2017-08-01 \
+  --out var/candles/binance_vision_btc_1d.json
+RESEARCH_KRAKEN_ARCHIVE_DIR=/data/kraken-ohlcvt traderstack-download-candles BTC/USD \
+  --venue kraken_archive --resolution 1d --out var/candles/kraken_archive_btc_1d.json
+```
+
+`var/candles/coinbase_btc_1d.json` is the bare list every `--candles`
+consumer loads; `var/candles/coinbase_btc_1d.meta.json` carries `venue`,
+`status`, `reason`, `count`, `first`, `last`, `fetched_at`, the gap summary,
+the adapter notes (quote, pages, pacing) and the divergence flags. The same
+header is printed as one stdout line. `--cross-check PATH` compares closes
+on shared `opened_at` bars against a second candle file (typically the
+Kraken daily 720) and records every bar diverging above
+`MAX_REFERENCE_DIVERGENCE_BPS` (default 50; override with
+`--max-divergence-bps`, research-only — it is *not* the pipeline's
+reference-divergence gate) as a flag. **Flagged bars are never dropped or
+blended**; a report that consumes the file must carry the flags forward. A
+USDT-quoted series checked against a USD one is expected to flag during
+stablecoin stress; that is information, not an error.
+
+### What this does not do
+
+No 4h aggregation from Coinbase 1h, no `--allow-partial` after a 429, no
+automatic Kraken Drive download or quarterly merge, no Kraken REST `Trades`
+top-up, no futures/mark/index dumps (#134), no persistence to the Postgres
+candle store, no wiring into `KrakenCandleProvider` or the paper loop, and
+no cross-venue *gate*. See `docs/artifacts/research/multi-year-candles-2026-09-13.md`
+for the first pull's header table.
