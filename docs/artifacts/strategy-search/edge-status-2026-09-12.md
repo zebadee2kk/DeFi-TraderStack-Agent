@@ -1415,3 +1415,13 @@ See `funding-carry-daily.md` and `pit-basis-archives.md`.
 | `PAPER_PERP_HEDGE` | false | opt-in forward soak; fetches HL midPx / HTX bid/ask mid + same-venue funding; BitMEX not required; not a promote path |
 
 `TRADING_MODE=paper`. No live.
+
+## Addendum 2026-09-13 — odds brief and tracking issue
+
+The bottleneck is statistical power, not the catalog: every family above
+sits on one ~2-year window. See `docs/artifacts/research/odds-brief-2026-09-13.md`
+and tracking issue #132 (sub-issues #133–#143) for the verified free
+multi-year data (Coinbase, Binance Vision, OKX mark/index, Kraken archive),
+the dual-print PIT basis that is now reachable, the DSR/PBO harness gates,
+fee realism, and the Polymarket tape collector. Nothing in that program
+relaxes a gate or flips a `PAPER_PROMOTE_*` default.
