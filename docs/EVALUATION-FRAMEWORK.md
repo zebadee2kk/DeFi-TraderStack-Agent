@@ -261,3 +261,180 @@ per city). Until those are green on two independent prints, the only
 allowed statement remains: "the paper ledger contains would-trade
 intents; the eval CLI can score resolved rows when they exist." Do not
 add a live CLOB path as a side effect of a later change.
+
+## Selection-bias evidence: era prints, DSR, PBO (#135)
+
+The search harness ranked top-1 across a catalog of `K` trials, wrote a
+Bonferroni note, and required **two venue prints** before calling a name
+a passer. Both halves of that were weaker than they looked.
+
+Two venues over the **same two years** are not two independent
+observations. Kraken and Coinbase BTC-USD are near-identical tapes; the
+second venue mostly re-prices the same bars. And a Bonferroni note that
+ignores the *variance* of the trial Sharpes cannot say either how much a
+winner was inflated by the search, or how strong a real winner is.
+
+The binding constraint turns out to be the **window, not the catalog**.
+The standard error of an annualised Sharpe is
+
+```
+SE(SR) ~= sqrt((1 + SR^2 / 2) / T_years)          # Lo (2002)
+```
+
+so at `T = 2` years:
+
+| annual SR | SE  | t-stat | years needed for t = 2 |
+| --------: | --: | -----: | ---------------------: |
+| 0.50 | 0.750 | 0.67 | 18.0 |
+| 0.75 | 0.800 | 0.94 |  9.1 |
+| 1.00 | 0.866 | 1.15 |  6.0 |
+| 1.50 | 1.031 | 1.46 |  3.8 |
+| 2.00 | 1.225 | 1.63 |  3.0 |
+
+No plausible crypto Sharpe clears `t = 2` on a two-year window. That is
+why every strategy family reads as zero — enlarging the catalog cannot
+fix it, and neither can a second venue over the same bars. Every search
+report now carries this table, computed at that run's own window length
+(`research.overfitting.power_table`).
+
+### Pre-registered print policy
+
+`src/traderstack/research/era_prints.py`. A second independent print is
+either
+
+* a second **venue** over the same window (unchanged, still valid), or
+* a second **era** — a non-overlapping calendar window on the *same*
+  venue. Pre-registered eras, frozen before any score, half-open UTC:
+  `2016-2019`, `2020-2022`, `2022-2024`, `2024-2026`. An era counts as
+  covered only with at least 240 committed bars in it (one #96
+  train+test block).
+
+Every report now **names which kind of print it used**: `venue`, `era`,
+`venue+era`, or `single`. A `single` print cannot claim an independent
+confirmation and withholds the evidence gate for every candidate in the
+run. Moving, re-cutting or adding an era after seeing a score is
+retuning: change the tuple in version control, with a note, first.
+
+### Deflated Sharpe Ratio
+
+`src/traderstack/research/overfitting.py`, vendored in pure Python (no
+numpy/scipy/pandas, no new dependency — the normal CDF is `math.erf` and
+its inverse is Acklam's rational approximation plus one Halley step,
+unit-tested against published quantiles).
+
+* **PSR** — Bailey & López de Prado, *The Sharpe Ratio Efficient
+  Frontier*, Journal of Risk 15(2), 2012, eq. (3).
+* **Expected maximum Sharpe over N trials** and **DSR** — Bailey &
+  López de Prado, *The Deflated Sharpe Ratio*, JPM 40(5), 2014
+  (SSRN 2460551), eq. (5). `DSR = PSR(E[max SR_n])`, with
+  `E[max SR_n] ~= sqrt(V[SR_n]) * ((1 - gamma) * Phi^-1(1 - 1/N) + gamma
+  * Phi^-1(1 - 1/(N e)))`.
+
+DSR takes the trial count, the **variance of the trial Sharpes**, the
+skew and raw kurtosis of the return sample, and the sample length. It is
+reported alongside the raw Sharpe, never instead of it. A strategy can
+pass raw Sharpe and fail DSR — that is the point, and
+`tests/test_selection_evidence.py::test_a_candidate_can_pass_raw_sharpe_and_fail_the_dsr_gate`
+pins exactly that case.
+
+### Probability of backtest overfitting
+
+CSCV — Bailey, Borwein, López de Prado & Zhu, *The Probability of
+Backtest Overfitting*, JCF 20(4), 2016. The fold-return matrix (rows =
+time slices, columns = trials) is cut into `S` equal, disjoint,
+contiguous blocks; over all `C(S, S/2)` in-sample/out-of-sample splits,
+PBO is the share whose in-sample winner lands below the out-of-sample
+median. It is exhaustive, so it has no seed and reproduces exactly.
+
+PBO is reported **per catalog**, so "0 passers" and "1 passer with PBO
+0.6" are now distinguishable outcomes rather than the same line in a
+report.
+
+### Trade-count floor by bootstrap
+
+The fixed `min_trades` floor is replaced by the count a percentile
+bootstrap CI on expectancy needs in order to exclude zero at the stated
+confidence (default 95%), found by a doubling bracket and a bisection,
+each size evaluated from its own `random.Random(seed)`. An analytic
+cross-check `n > (z s / |mu|)^2` is reported next to it.
+
+The bootstrap **can only raise** the floor:
+`effective_min_trades = max(configured_min_trades, required_trades)`.
+No configured threshold is ever lowered by it.
+
+### Observation unit — stated plainly
+
+Search reports strip per-bar and per-trade logs, so the finest return
+sample that survives into a report is the **walk-forward fold**: one net
+total return per fold per promotion asset, stacked BTC → ETH → SOL.
+Every statistic above runs on that sample and every report names the
+unit (`observation_unit: walk_forward_fold`). The trade-count floor is
+found in fold units and scaled to trades by the observed trades-per-fold,
+with both numbers reported so the conversion is visible rather than
+implied. A series that is missing, skipped, or produced no walk-forward
+is left out of the sample entirely — **never zero-filled**.
+
+### Reporting order
+
+Every `traderstack-*-search` report renders the evidence block in this
+order, and the JSON carries the same fields under `selection_evidence`:
+
+1. **print kind** (`venue` / `era` / `venue+era` / `single`) and why
+2. **trial count** `K`, and how many trials had a usable return sample
+3. **observation unit**
+4. **PBO** for the catalog, with the split count and combination count
+5. **bootstrap** seed, iteration count and confidence level
+6. **evidence passers** (an empty set is a successful result)
+7. per-candidate table: observations, trades, annualised Sharpe, **DSR**,
+   **bootstrap CI on Sharpe**, **bootstrap CI on expectancy**, effective
+   trade floor, and the gate verdict
+8. **era coverage** of the primary venue's series
+9. the **power table** at this run's window length
+
+### Where the gate sits
+
+DSR, PBO, the bootstrap CIs and the trade floor are **additional** gates
+layered on top of #96 + A + B + C. They are computed in the shared
+scoring path (`research.harder_gates.run_harder_gates`) and can only
+**withhold**: a combined-passer that cannot show them is not promoted,
+and nothing is promoted in its place. They never lower a threshold,
+never flip a `PAPER_PROMOTE_*` default, and never turn a name that
+failed #96/A/B/C into a passer. A statistic that cannot be computed is
+reported as skipped **with a reason** and withholds the gate — absent
+evidence is never read as a pass.
+
+Thresholds (`research.selection_evidence`, frozen in version control and
+deliberately **not** `Settings` fields, because a bar an operator can
+move after seeing PnL is not a pre-registered test): `DSR_MIN = 0.95`,
+`PBO_MAX = 0.50`, bootstrap seed 135, 2000 iterations, 95% percentile
+CIs.
+
+### Determinism
+
+Every bootstrap draws from an explicit `random.Random(seed)` created
+inside the call; the global RNG is never touched (pinned by
+`tests/test_overfitting.py` and `tests/test_selection_evidence.py`). CSCV
+is exhaustive over combinations and has no RNG at all. A fixed seed
+reproduces every bootstrap number bit-for-bit, and the whole
+`SelectionEvidence` block round-trips identically across runs.
+
+### Coverage
+
+Wired through `run_harder_gates`, so it reaches `traderstack-harder-gates`,
+`traderstack-second-print`, `traderstack-intraday-dual-print`, and every
+family that scores through `dual_print_search._score`:
+`traderstack-dual-print-search`, `traderstack-relative-value`,
+`traderstack-xs-momentum`, `traderstack-donchian-breakout`,
+`traderstack-tsmom`, `traderstack-bollinger-fade`,
+`traderstack-calendar-seasonality`, `traderstack-lead-lag`,
+`traderstack-volume-breakout`.
+
+**Not yet carrying the block:** `traderstack-strategy-search`,
+`traderstack-miles-search`, `traderstack-daily-robustness`,
+`traderstack-liq-regime-search`, `traderstack-funding-carry` and
+`traderstack-honesty-pack`, which build their reports on
+`research.search` / `research.miles_search` / `research.daily_robustness`
+rather than on the harder-gates path. Extending
+`build_selection_evidence` to those report models is the next slice; it
+needs no new statistics, only wiring. This is the first slice of #48 and
+does not close it.
