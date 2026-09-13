@@ -34,6 +34,16 @@ class ExecutionPlanRejected(ValueError):
         self.reason = reason
 
 
+# --- protective-exit sizing (#130) ---
+class ExitSizingRejected(ExecutionPlanRejected):
+    """A reducing-only order could not be sized at or below the held quantity.
+
+    A subclass, so every existing ``except ExecutionPlanRejected`` handler
+    keeps working unchanged, while callers that report to an operator can tell
+    "the exit was sized wrong" apart from "the venue or the data refused this".
+    """
+
+
 class ExecutionPlan(BaseModel):
     """A single venue child order, fully constrained and identified."""
 
@@ -110,6 +120,12 @@ class ExecutionPlanner:
         *,
         execution_price_usd: float,
         reference_price_usd: float,
+        # --- protective-exit sizing (#130) ---
+        # Reducing-only cap (the held quantity) for a protective exit. The
+        # plan may be clamped DOWN to it but never up, whatever price produced
+        # the quantity; ``None`` means the caller is not reducing a position
+        # and the clamp is not available to resize the order at all.
+        max_quantity: float | None = None,
     ) -> ExecutionPlan:
         if execution_price_usd <= 0:
             raise ExecutionPlanRejected("execution price must be positive")
@@ -127,11 +143,31 @@ class ExecutionPlanner:
         if quantity <= 0:
             raise ExecutionPlanRejected(f"quantity rounds to zero at lot step {self.lot_step}")
 
-        notional = quantity * execution_price_usd
+        # --- protective-exit sizing (#130) ---
+        # Invariant backstop: a reducing-only order never plans more than is
+        # held, whatever execution price the caller derived. ``min`` plus the
+        # round-*down* lot step means this can only ever shrink the order.
+        clamped = quantity
+        if max_quantity is not None:
+            if max_quantity <= 0:
+                raise ExitSizingRejected("reducing-only order has no held quantity left to reduce")
+            clamped = min(quantity, self._round_to_lot(max_quantity))
+            if clamped <= 0:
+                raise ExitSizingRejected(
+                    f"reducing-only cap {max_quantity} rounds to zero at lot step {self.lot_step}"
+                )
+
+        notional = clamped * execution_price_usd
         if notional < self.min_notional_usd:
+            if clamped < quantity:
+                raise ExitSizingRejected(
+                    f"reducing-only order clamped to {clamped} leaves notional "
+                    f"{notional:.2f} USD below minimum {self.min_notional_usd:.2f} USD"
+                )
             raise ExecutionPlanRejected(
                 f"order notional {notional:.2f} USD below minimum {self.min_notional_usd:.2f} USD"
             )
+        quantity = clamped
 
         return ExecutionPlan(
             decision_id=intent.decision_id,

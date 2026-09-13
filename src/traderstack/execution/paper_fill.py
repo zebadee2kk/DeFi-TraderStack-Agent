@@ -28,7 +28,12 @@ from traderstack.execution.ledger import (
     FeeSource,
     OrderLifecycleState,
 )
-from traderstack.execution.planner import ExecutionPlan, ExecutionPlanner, ExecutionPlanRejected
+from traderstack.execution.planner import (
+    ExecutionPlan,
+    ExecutionPlanner,
+    ExecutionPlanRejected,
+    ExitSizingRejected,
+)
 from traderstack.models import Side
 from traderstack.pipeline import PaperOrderIntent
 from traderstack.portfolio import InMemoryPortfolioBook
@@ -46,6 +51,13 @@ class PaperFillStatus(StrEnum):
     PLAN_REJECTED = "plan_rejected"
     REJECTED = "paper_fill_rejected"
     WITHHELD = "paper_fill_withheld"
+    # --- protective-exit sizing (#130) ---
+    # A reducing-only exit that could not be sized at or below the held
+    # quantity. Deliberately distinct from PLAN_REJECTED (venue/data
+    # bounds: lot step, min notional, slippage) and REJECTED (book or
+    # ledger state), so an operator can tell invalid exit sizing apart
+    # from a venue/data rejection in traderstack_paper_fills_total.
+    INVALID_EXIT_SIZE = "paper_fill_invalid_exit_size"
 
 
 @dataclass(frozen=True)
@@ -137,12 +149,17 @@ class PaperFillSimulator:
                 )
 
         fill_price = adverse_fill_price_usd(intent.side, mid_usd, self.paper_slippage_bps)
+        # --- protective-exit sizing (#130) ---
+        reduce_only_cap = self._reduce_only_cap(portfolio, intent)
         try:
             plan = self.planner.plan(
                 intent,
                 execution_price_usd=fill_price,
                 reference_price_usd=mid_usd,
+                max_quantity=reduce_only_cap,
             )
+        except ExitSizingRejected as exc:
+            return PaperFillOutcome(status=PaperFillStatus.INVALID_EXIT_SIZE, reason=exc.reason)
         except ExecutionPlanRejected as exc:
             return PaperFillOutcome(status=PaperFillStatus.PLAN_REJECTED, reason=exc.reason)
 
@@ -152,6 +169,12 @@ class PaperFillSimulator:
             # ask/bid). Never increase quantity on a restart or re-plan.
             quantity = existing.requested_quantity
             client_order_id = existing.client_order_id or existing.order_id
+            if reduce_only_cap is not None:
+                # --- protective-exit sizing (#130) ---
+                # Both candidates are already at or below the held quantity or
+                # were planned earlier; taking the smaller keeps the reducing-
+                # only invariant without ever increasing a replanned order.
+                quantity = min(quantity, plan.quantity)
         else:
             quantity = plan.quantity
             client_order_id = plan.client_order_id
@@ -226,6 +249,23 @@ class PaperFillSimulator:
         )
         ledger.register_order(order)
         return order
+
+    # --- protective-exit sizing (#130) ---
+    @staticmethod
+    def _reduce_only_cap(
+        portfolio: InMemoryPortfolioBook, intent: PaperOrderIntent
+    ) -> float | None:
+        """Held quantity a reducing-only SELL may not exceed, or ``None``.
+
+        ``None`` for every order that is not a protective exit, so the clamp
+        can never become a way to resize an entry: it exists only to hold a
+        reducing order at or below the position it is closing.
+        """
+
+        if not intent.reduce_only or intent.side is not Side.SELL:
+            return None
+        held = portfolio.positions.get(intent.asset.upper())
+        return held.quantity if held is not None else 0.0
 
     @staticmethod
     def _short_sale_reason(
