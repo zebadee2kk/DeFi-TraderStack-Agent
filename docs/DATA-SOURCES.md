@@ -143,6 +143,28 @@ it is relied upon.
   closed for volume names. Fill at t+1 open. No exogenous
   series. Input to `traderstack-volume-breakout`.
 
+### Fee schedules (#138)
+
+- **Kraken Pro spot fee schedule** [V] — https://www.kraken.com/features/fee-schedule.
+  HTML page, no public API. Read 2026-09-13 and frozen in
+  `src/traderstack/fee_tiers.py` (`KRAKEN_PRO_SPOT_TIERS`, five tiers with a
+  `source` / `read_on` stamp: Tier 1 $0+ 40/80 bps maker/taker, Tier 2 $2.5K+
+  30/60, Tier 3 $10K+ 22/38, Tier 8 ~$500K+ 8/20, Tier 12 $10M+ 0/10).
+  Never scraped at runtime; re-read the page and bump `read_on` when the
+  tiers change. Intermediate tiers not transcribed in
+  `docs/artifacts/research/odds-brief-2026-09-13.md` section 5 are not
+  invented. `PAPER_FEE_TIER` selects the tier; every paper fill and every
+  research print charges the **taker** leg.
+- **Kraken support, "What are maker and taker fees" / post-only** — the
+  reference for the post-only semantics (post-only cancels rather than
+  crosses) that #73's `post_only_limit` order type will implement. Not used
+  by this slice; maker bps are printed for information only until post-only
+  orders exist and a month of paper fill-rate data is on record.
+- **Binance.US and Coinbase taker schedules are not substituted** for the
+  second-venue prints: the Kraken tier is applied to every print so the
+  costs stay comparable across venues, and no maker rebate is assumed
+  anywhere (`research/binance_spot.py::BINANCE_TAKER_BPS_NOTE`).
+
 ## Robinhood Chain
 
 ### Network facts [V — docs.robinhood.com]
