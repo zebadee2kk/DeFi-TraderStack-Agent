@@ -39,6 +39,12 @@ class ExitSignal:
     requested_notional_usd: float
     mark_price_usd: float
     entry_price_usd: float
+    # --- protective exit sizing (#130) ---
+    # The quantity the book actually holds, from the snapshot only (Zone C).
+    # Carried onto the exit intent so the planner can never request more
+    # units than are held once notional is converted back at an adverse
+    # execution price.
+    held_quantity: float
 
 
 def is_exit_strategy_id(strategy_id: str) -> bool:
@@ -88,8 +94,11 @@ def evaluate_position_exits(
         return None
     if mark_price_usd <= 0 or position.quantity <= 0:
         return None
-    # Size at the live mark so the planner's notional/price conversion
-    # cannot invent more quantity than is held.
+    # Size at the live mark: the notional is the risk-engine cap (it can
+    # only be reduced by ``RiskEngine.evaluate``), while ``held_quantity``
+    # is the planner cap -- the planner's notional/price conversion at an
+    # adverse execution price can never invent more units than are held
+    # (#130).
     exposure = position.quantity * mark_price_usd
     side = reducing_side(exposure)
     if side is None or exposure <= 0:
@@ -119,6 +128,7 @@ def evaluate_position_exits(
         requested_notional_usd=exposure,
         mark_price_usd=mark_price_usd,
         entry_price_usd=entry,
+        held_quantity=position.quantity,
     )
 
 

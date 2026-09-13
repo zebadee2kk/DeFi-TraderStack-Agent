@@ -27,6 +27,12 @@ class PaperOrderIntent(BaseModel):
     side: Side
     notional_usd: float = Field(gt=0)
     venue: str = "kraken_paper_trade"
+    # --- protective exit sizing (#130) ---
+    # Reduce-only planner cap in units. Set ONLY on ``exit-*`` intents, from
+    # the snapshot's held quantity; discretionary intents leave it None.
+    # ``ExecutionPlanner.plan`` takes min(notional / price, max_quantity) so
+    # it can only lower size. Never read by ``RiskEngine``.
+    max_quantity: float | None = Field(default=None, gt=0)
 
 
 class PipelineResult(BaseModel):
@@ -355,6 +361,8 @@ class VerticalSlicePipeline:
                 asset=signal.asset,
                 side=signal.side,
                 notional_usd=risk_result.approved_notional_usd,
+                # --- protective exit sizing (#130) --- planner cap = held units.
+                max_quantity=signal.held_quantity,
             )
         return PipelineResult(
             accepted_market_data=True,

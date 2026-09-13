@@ -8,7 +8,10 @@ typically never emit those. This module is the paper book of record:
 * TRADING_MODE=paper only — live/shadow raise ``ExecutionSafetyError``;
 * fill at the primary mid plus documented adverse slippage;
 * charge ``PAPER_FEE_BPS`` as a modelled fee (same path as #66 / #88);
-* ledger-backed: one decision produces at most one fill, including after restart.
+* ledger-backed: one decision produces at most one fill, including after restart;
+* protective exits fill at most the held quantity (#130): an ``exit-*`` intent
+  carries ``max_quantity`` and the planner caps to it, so adverse slippage
+  cannot turn a full stop into a short-sale rejection.
 
 It never talks to a venue and never relaxes risk, the kill switch, or a
 meta-agent veto (those already null ``paper_order`` before this is called).
@@ -48,6 +51,24 @@ class PaperFillStatus(StrEnum):
     WITHHELD = "paper_fill_withheld"
 
 
+# --- protective exit sizing (#130) ---
+class PaperFillRejectReason(StrEnum):
+    """Bounded reason code for a rejected paper fill (metric label).
+
+    Distinguishes invalid exit sizing from venue/data rejections without
+    adding a ``PaperFillStatus`` value (the status strings are consumed by the
+    opportunity funnel, the soak report and the RUNBOOK status table).
+    """
+
+    INVALID_MID = "invalid_mid"
+    DECISION_TERMINAL = "decision_terminal"
+    PLAN_REJECTED = "plan_rejected"
+    SHORT_SALE = "short_sale"
+    # An ``exit-*`` intent carrying ``max_quantity`` would still sell more than
+    # the book holds. Unreachable after #130; its appearance is the alarm.
+    EXIT_SIZING_INVALID = "exit_sizing_invalid"
+
+
 @dataclass(frozen=True)
 class PaperFillOutcome:
     status: PaperFillStatus
@@ -55,6 +76,8 @@ class PaperFillOutcome:
     fill: ExecutionFill | None = None
     plan: ExecutionPlan | None = None
     fee_usd: float = 0.0
+    # --- protective exit sizing (#130) --- set on every REJECTED / PLAN_REJECTED.
+    reason_code: PaperFillRejectReason | None = None
 
     @property
     def applied(self) -> bool:
@@ -119,7 +142,9 @@ class PaperFillSimulator:
             raise ExecutionSafetyError("paper fill simulator cannot operate outside paper mode")
         if mid_usd <= 0:
             return PaperFillOutcome(
-                status=PaperFillStatus.REJECTED, reason="primary mid must be positive"
+                status=PaperFillStatus.REJECTED,
+                reason=f"{PaperFillRejectReason.INVALID_MID}: primary mid must be positive",
+                reason_code=PaperFillRejectReason.INVALID_MID,
             )
 
         existing = self._existing_order(ledger, intent.decision_id)
@@ -133,7 +158,11 @@ class PaperFillSimulator:
             ):
                 return PaperFillOutcome(
                     status=PaperFillStatus.REJECTED,
-                    reason=f"decision {intent.decision_id} is already {existing.state}",
+                    reason=(
+                        f"{PaperFillRejectReason.DECISION_TERMINAL}: decision "
+                        f"{intent.decision_id} is already {existing.state}"
+                    ),
+                    reason_code=PaperFillRejectReason.DECISION_TERMINAL,
                 )
 
         fill_price = adverse_fill_price_usd(intent.side, mid_usd, self.paper_slippage_bps)
@@ -144,7 +173,11 @@ class PaperFillSimulator:
                 reference_price_usd=mid_usd,
             )
         except ExecutionPlanRejected as exc:
-            return PaperFillOutcome(status=PaperFillStatus.PLAN_REJECTED, reason=exc.reason)
+            return PaperFillOutcome(
+                status=PaperFillStatus.PLAN_REJECTED,
+                reason=f"{PaperFillRejectReason.PLAN_REJECTED}: {exc.reason}",
+                reason_code=PaperFillRejectReason.PLAN_REJECTED,
+            )
 
         order = existing if existing is not None else self._register(ledger, plan)
         if existing is not None:
@@ -166,7 +199,10 @@ class PaperFillSimulator:
 
         short = self._short_sale_reason(portfolio, intent, quantity)
         if short is not None:
-            return PaperFillOutcome(status=PaperFillStatus.REJECTED, reason=short, plan=plan)
+            reason, code = short
+            return PaperFillOutcome(
+                status=PaperFillStatus.REJECTED, reason=reason, plan=plan, reason_code=code
+            )
 
         fee_usd = quantity * fill_price * self.paper_fee_bps / 10_000.0
         fill = ExecutionFill(
@@ -230,11 +266,25 @@ class PaperFillSimulator:
     @staticmethod
     def _short_sale_reason(
         portfolio: InMemoryPortfolioBook, intent: PaperOrderIntent, quantity: float
-    ) -> str | None:
+    ) -> tuple[str, PaperFillRejectReason] | None:
         if intent.side is not Side.SELL:
             return None
         held = portfolio.positions.get(intent.asset.upper())
         available = held.quantity if held is not None else 0.0
         if quantity > available + 1e-12:
-            return f"cannot sell {quantity} {intent.asset.upper()} with paper position {available}"
+            # --- protective exit sizing (#130) ---
+            # An intent that carried the held quantity and *still* exceeds the
+            # book is an exit-sizing bug, not a venue/data rejection; a plain
+            # discretionary SELL larger than the book is the pre-existing
+            # short-sale guard.
+            code = (
+                PaperFillRejectReason.EXIT_SIZING_INVALID
+                if intent.max_quantity is not None
+                else PaperFillRejectReason.SHORT_SALE
+            )
+            reason = (
+                f"{code}: cannot sell {quantity} {intent.asset.upper()} "
+                f"with paper position {available}"
+            )
+            return reason, code
         return None

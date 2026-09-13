@@ -60,6 +60,13 @@ paper_fill_fees_usd_total = Counter(
     "Modelled paper-fill fees booked into the local book, by symbol",
     ("symbol",),
 )
+# --- protective exit sizing (#130) ---
+paper_fill_rejections_total = Counter(
+    "traderstack_paper_fill_rejections_total",
+    "Paper-fill rejections by symbol, side and bounded reason code "
+    "(exit_sizing_invalid vs plan_rejected/short_sale/invalid_mid/decision_terminal)",
+    ("symbol", "side", "reason"),
+)
 
 # --- shadow-live (Roadmap Phase 7) -----------------------------------------
 
@@ -157,6 +164,11 @@ def record_paper_fill(symbol: str, side: str, status: str, fee_usd: float = 0.0)
     paper_fills_total.labels(symbol=symbol, side=side, status=status).inc()
     if fee_usd > 0:
         paper_fill_fees_usd_total.labels(symbol=symbol).inc(fee_usd)
+
+
+# --- protective exit sizing (#130) ---
+def record_paper_fill_rejection(symbol: str, side: str, reason: str) -> None:
+    paper_fill_rejections_total.labels(symbol=symbol, side=side, reason=reason).inc()
 
 
 def record_shadow_intent(symbol: str, side: str, status: str) -> None:

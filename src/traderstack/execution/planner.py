@@ -50,6 +50,11 @@ class ExecutionPlan(BaseModel):
     notional_usd: float = Field(gt=0)
     requested_notional_usd: float = Field(gt=0)
     slippage_bps: float = Field(ge=0)
+    # --- protective exit sizing (#130) ---
+    # True when ``intent.max_quantity`` (the held quantity on an exit intent)
+    # was the binding constraint, i.e. the notional/price conversion asked
+    # for more units than the book holds. Never raises quantity or notional.
+    quantity_capped_to_position: bool = False
 
 
 def client_order_id_for(decision_id: str, *, prefix: str = "ts") -> str:
@@ -88,6 +93,12 @@ class ExecutionPlanner:
                       pipeline's validated tick by more than this, in either
                       direction — a large favourable deviation is as much a
                       data-integrity signal as an adverse one.
+
+    An intent's optional ``max_quantity`` (#130; set only on protective
+    ``exit-*`` intents from the held quantity) is floored to the lot step and
+    the planned quantity is the *minimum* of it and the notional/price
+    conversion. The cap only ever lowers quantity and notional; it can never
+    raise either above what the risk engine approved.
     """
 
     lot_step: float = 1e-8
@@ -124,6 +135,23 @@ class ExecutionPlanner:
             )
 
         quantity = self._round_to_lot(intent.notional_usd / execution_price_usd)
+        # --- protective exit sizing (#130) ---
+        # Cap to the held quantity so an adverse execution price (paper
+        # slippage, or a bid-side price on the --submit path) cannot convert
+        # the approved notional into more units than the book holds. min()
+        # only lowers; the rounds-to-zero and min-notional checks below then
+        # apply to the capped size.
+        quantity_capped = False
+        if intent.max_quantity is not None:
+            cap = self._round_to_lot(intent.max_quantity)
+            if cap <= 0:
+                raise ExecutionPlanRejected(
+                    f"held quantity {intent.max_quantity} rounds to zero at lot step "
+                    f"{self.lot_step}"
+                )
+            if cap < quantity:
+                quantity = cap
+                quantity_capped = True
         if quantity <= 0:
             raise ExecutionPlanRejected(f"quantity rounds to zero at lot step {self.lot_step}")
 
@@ -149,6 +177,7 @@ class ExecutionPlanner:
             notional_usd=notional,
             requested_notional_usd=intent.notional_usd,
             slippage_bps=slippage_bps,
+            quantity_capped_to_position=quantity_capped,
         )
 
     def _round_to_lot(self, quantity: float) -> float:

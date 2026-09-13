@@ -22,6 +22,7 @@ from traderstack.market.providers import EdgeFeedCollector
 from traderstack.metrics import (  # --- observability (Epic 9) ---
     record_event_sink_failure,
     record_paper_fill,
+    record_paper_fill_rejection,  # --- protective exit sizing (#130) ---
     record_portfolio_snapshot,
 )
 from traderstack.opportunity_funnel import (  # --- opportunity funnel (#131) ---
@@ -413,6 +414,11 @@ class ContinuousPaperService:
             outcome.status.value,
             fee_usd=outcome.fee_usd,
         )
+        # --- protective exit sizing (#130) ---
+        if outcome.reason_code is not None:
+            record_paper_fill_rejection(
+                result.tick.symbol, intent.side.value, outcome.reason_code.value
+            )
         # --- paper perp / hedge path ---
         # Do not pass result.tick.mid: that is the Kraken spot mid.
         # A missing venue mid is a skip, not an invented number.
