@@ -381,12 +381,20 @@ explicitly accepted before any real money reaches this system.
     with a reason, and a `Settings` field in none of the three tuples fails
     `test_policy_version_covers_every_setting.py`. That closes the structural
     risk that this finding recurs under a field name no pattern anticipated.
-12. **The audit trail is append-only by convention, not by permission.** The
-    hash chain detects tampering after the fact; nothing prevents a process with
-    write access from truncating the file and starting a fresh valid chain. A
-    genuinely immutable sink (append-only filesystem attribute, WORM object
-    storage, or an external log service) is required before the trail can be
-    treated as evidence.
+12. **The audit trail is append-only by convention, not by permission.**
+    **Partly addressed in #68.** The hash chain detects tampering after the
+    fact; nothing prevents a process with write access from truncating the file
+    and starting a fresh valid chain. That rewrite is now *detectable*: the
+    chain head is anchored outside the file and `traderstack-verify-audit`
+    cross-checks the trail against every published anchor, naming the sequence
+    where they diverge, and a divergent anchor halts the service at startup
+    through the #67 durable-state gate rather than appending onto a forked
+    chain. Detection is not prevention: a genuinely immutable sink (append-only
+    filesystem attribute, WORM object storage, or an external log service) is
+    still required before the trail can be treated as evidence, and the anchors
+    themselves are not yet signed with a key the runtime does not hold, so an
+    attacker who compromises both the trail and an anchor store can still
+    produce a consistent pair.
 
 ---
 

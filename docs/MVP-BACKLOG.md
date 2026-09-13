@@ -87,6 +87,18 @@
 - [x] strategy circuit breaker (`circuit_breaker.py`)
 - [x] kill-switch API (`killswitch.py`; sentinel file, Redis key, SIGUSR1, setting)
 - [x] immutable risk-decision audit trail (`risk_audit.py`; SHA-256 chained JSONL)
+- [x] externally anchored chain head (#68): `{sequence, head_hash,
+      policy_version, anchored_at}` published every `AUDIT_ANCHOR_EVERY`
+      records and on shutdown to sinks outside the audit file, so a
+      regenerate-from-genesis rewrite — which passes `verify_chain` perfectly —
+      is caught by `traderstack-verify-audit`, and a divergent anchor halts the
+      service at startup through the #67 durable-state gate. Publishing never
+      blocks a cycle (failures counted on
+      `traderstack_audit_anchor_failures_total`); verification fails closed.
+      **Detection, not prevention**: a WORM/append-only sink is still the
+      unticked half, and anchors are not yet signed with an operator-held key,
+      so compromising both the trail and an anchor store still yields a
+      consistent pair.
 - [x] stale-state shutdown
 - [x] policy versioning derived from the risk limits in force
 

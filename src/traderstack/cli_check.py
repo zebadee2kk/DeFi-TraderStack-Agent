@@ -888,6 +888,38 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
 
+    # --- audit anchoring (#68) ---
+    if settings.audit_anchor_enabled:
+        channels = "local file"
+        if settings.audit_anchor_redis_enabled:
+            channels += f", Redis ({settings.audit_anchor_redis_key})"
+        items.append(
+            CheckItem(
+                "Audit anchoring",
+                "on",
+                f"every {settings.audit_anchor_every} records + shutdown -> {channels}",
+            )
+        )
+        if not settings.audit_anchor_redis_enabled:
+            items.append(
+                CheckItem(
+                    "  root of trust",
+                    "local file only",
+                    "same host as the trail it protects; enable AUDIT_ANCHOR_REDIS_ENABLED "
+                    "with an insert-only ACL to move it off-process",
+                )
+            )
+        items.append(CheckItem("  verify with", "traderstack-verify-audit"))
+    else:
+        items.append(
+            CheckItem(
+                "Audit anchoring",
+                "off",
+                "verify_chain alone cannot detect a whole-file rewrite of the "
+                "risk audit trail (#68)",
+            )
+        )
+
     # --- position management (#58) ---
     if settings.position_exits_active:
         items.append(

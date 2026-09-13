@@ -235,6 +235,23 @@ class Settings(BaseSettings):
     # Append-only, hash-chained risk-decision audit trail.
     risk_audit_path: str = "var/audit/risk_decisions.jsonl"
 
+    # --- audit anchoring (#68) ---
+    # The hash chain makes an edited line detectable; it cannot make a
+    # whole-file rewrite detectable, because the file is its own only root of
+    # trust. Anchoring publishes {sequence, head_hash, policy_version,
+    # anchored_at} outside the file so a regenerate-from-genesis rewrite is
+    # caught by traderstack-verify-audit. On by default because a control
+    # nobody enables protects nobody; the local JSONL sink is cheap and
+    # additive. It is also the *weakest* form -- same host, same process --
+    # so enable the Redis sink (insert-only grant) for a real boundary.
+    audit_anchor_enabled: bool = True
+    audit_anchor_path: str = "var/audit/audit_anchors.jsonl"
+    # Records between anchors. The final head is always published on shutdown,
+    # so this bounds how much of a tail can go unanchored after a crash-stop.
+    audit_anchor_every: int = 25
+    audit_anchor_redis_enabled: bool = False
+    audit_anchor_redis_key: str = "traderstack:audit:head"
+
     # --- position management (#58) ---
     # Paper-first conservative defaults. Live never evaluates these
     # (see position_exits_active). 0 / false disables that rule.

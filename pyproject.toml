@@ -145,6 +145,10 @@ traderstack-paper-report = "traderstack.acceptance.report:main"
 # Zero-trade diagnosis (#131): rebuild the opportunity funnel from a run's
 # audit/runtime.jsonl (+ optional ledger). Offline; evidence only.
 traderstack-opportunity-funnel = "traderstack.funnel_cli:main"
+# Verifies the risk-audit hash chain AND cross-checks it against the chain
+# heads anchored outside the file (#68), so a regenerate-from-genesis rewrite
+# is detectable rather than self-consistent. Offline and read-only.
+traderstack-verify-audit = "traderstack.audit_verify_cli:main"
 # Paper-only Polymarket weather research. Isolated from traderstack-paper;
 # never signs or submits CLOB orders.
 traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"

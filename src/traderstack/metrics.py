@@ -132,6 +132,13 @@ event_sink_failures_total = Counter(
     ("sink",),
 )
 
+# --- audit anchoring (#68) ---
+audit_anchor_failures_total = Counter(
+    "traderstack_audit_anchor_failures_total",
+    "Risk-audit chain-head anchor publish/read failures, by sink.",
+    ("sink",),
+)
+
 
 def record_pipeline_result(symbol: str, pipeline: PipelineResult) -> None:
     """Record pipeline-level outcome/rejection/proposal/risk metrics for one cycle."""
@@ -192,6 +199,19 @@ def record_portfolio_snapshot(nav_usd: float, cash_usd: float, peak_nav_usd: flo
 
 def record_event_sink_failure(sink: str) -> None:
     event_sink_failures_total.labels(sink=sink).inc()
+
+
+# --- audit anchoring (#68) ---
+def record_audit_anchor_failure(sink: str) -> None:
+    """One anchor publish or read that failed, by sink name.
+
+    Anchoring is evidence, not control flow: a sink being down never blocks a
+    trading cycle. That makes this counter the only signal an operator gets, so
+    alert on it ("no successful anchor in N minutes") rather than waiting to
+    discover the gap at audit time.
+    """
+
+    audit_anchor_failures_total.labels(sink=sink).inc()
 
 
 async def timed_provider_call[T](provider: str, kind: str, awaitable: Awaitable[T]) -> T:

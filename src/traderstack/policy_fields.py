@@ -27,6 +27,16 @@ the separate Polymarket paper strategy.
 from __future__ import annotations
 
 NON_POLICY_FIELDS: tuple[str, ...] = (
+    # Audit anchoring (#68). Evidence about the trail, not a limit on a trade:
+    # publishing a chain head cannot change whether an order is built, sized or
+    # submitted, so it must not move the digest stamped on a decision. The
+    # integrity guarantee it provides is verified by
+    # tests/security/test_audit_anchoring.py, not by policy_version.
+    "audit_anchor_enabled",
+    "audit_anchor_every",
+    "audit_anchor_path",
+    "audit_anchor_redis_enabled",
+    "audit_anchor_redis_key",
     # Evidence-only diagnostics. `opportunity_diagnostic_mode` can only
     # withhold a fill, never authorise one, and
     # tests/security/test_diagnostic_mode_cannot_relax_controls.py pins that it

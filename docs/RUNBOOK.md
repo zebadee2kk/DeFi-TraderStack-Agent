@@ -1391,6 +1391,51 @@ out of order all produce a specific, located failure rather than a bare "invalid
 whole window (see "24/7 acceptance soak" above); run it by hand any time you
 need to hand someone evidence the trail hasn't been altered.
 
+#### What `verify_chain` alone does *not* prove (#68)
+
+A hash chain is only as good as its root of trust, and here the root is the
+file itself. Anyone who can write to `var/audit/` can regenerate the chain from
+genesis with different content, and the rewritten file **passes `verify_chain`
+perfectly** — every hash is self-consistent because every hash was recomputed.
+The same applies to a file restored from an older backup, or truncated.
+
+`traderstack-verify-audit` closes that by cross-checking the trail against
+chain heads published *outside* it:
+
+```bash
+.venv/bin/traderstack-verify-audit \
+  --audit-path var/audit/risk_decisions.jsonl \
+  --anchor-path var/audit/anchors.jsonl
+```
+
+Exit codes are meant for cron: `0` chain intact **and** every anchor matches,
+`1` verification failed, `2` no trail at that path. A rewrite is reported as
+the sequence number where the file and an anchor disagree:
+
+```
+chain:   intact (412 record(s))
+anchors: 3 checked
+result:  FAILED
+error:   record 199 hashes to 8f21c0a4b7de but the published anchor commits to
+         1c9d4ee20b13: the trail was rewritten
+diverged at sequence: 199
+```
+
+**No anchors is a failure, not a pass.** An attacker who can rewrite the trail
+can usually delete a local anchor log too, so an intact chain with nothing to
+check it against proves only internal consistency. `--allow-unanchored`
+downgrades that to a pass; use it only when you know anchoring was never
+enabled for the run in question.
+
+A local anchor log on the same host is the weakest form of this: it raises the
+bar (two files to forge instead of one) without moving the root of trust off
+the box. Prefer the Redis or Postgres sinks with an insert-only grant for the
+app role, so the trading process can add an anchor but never rewrite one.
+`AUDIT_ANCHOR` sinks are wired through `FanoutAuditAnchorSink`, which counts
+failures on `traderstack_audit_anchor_failures_total{sink=...}` and never
+blocks a trading cycle — so alert on "no successful anchor in N minutes"
+rather than expecting a loud failure at the time.
+
 To see whether a decision the risk engine allowed was actually executed, read
 one record's `result` (the risk engine's own decision) alongside its
 `meta_review` and `execution_status`/`execution_reason` fields — added

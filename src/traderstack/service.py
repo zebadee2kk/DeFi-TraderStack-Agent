@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 import structlog
 
+from traderstack.audit_anchor import AuditAnchorPublisher
 from traderstack.config import Settings
 from traderstack.execution.ledger import ExecutionFill, ExecutionLedger, ExecutionOrder
 from traderstack.execution.paper_fill import PaperFillSimulator, PaperFillStatus
@@ -72,6 +73,11 @@ class ContinuousPaperService:
     kill_switch: KillSwitch | None = None
     # Append-only hash-chained record of every risk decision the cycle produced.
     risk_audit: JsonlRiskAuditTrail | None = None
+    # --- audit anchoring (#68) ---
+    # Publishes the chain head outside the audit file so a whole-file rewrite
+    # is detectable. Evidence, never control flow: publish failures are counted
+    # and swallowed by the fanout sink, never surfaced into the cycle.
+    audit_anchors: AuditAnchorPublisher | None = None
     # The limits in force, stamped into each audit record.
     settings: Settings | None = None
     # --- execution hardening (Epic 8) ---
@@ -154,6 +160,13 @@ class ContinuousPaperService:
                 task.cancel()
             if collector_tasks:
                 await asyncio.gather(*collector_tasks, return_exceptions=True)
+            # --- audit anchoring (#68) ---
+            # Commit the final head on the way out, so the records written
+            # since the last interval anchor are covered too. In `finally` on
+            # purpose: a crash-stop is exactly when an unanchored tail would
+            # otherwise be the easiest thing to rewrite unnoticed.
+            if self.audit_anchors is not None:
+                await self.audit_anchors.publish_now()
 
     async def _run_cycles(self) -> None:
         while not self._stop_event.is_set():
@@ -192,7 +205,7 @@ class ContinuousPaperService:
         risk_result = result.pipeline.risk_result
         if proposal is None or risk_result is None:
             return
-        await self.risk_audit.arecord(
+        record = await self.risk_audit.arecord(
             proposal,
             risk_result,
             self.settings,
@@ -200,6 +213,9 @@ class ContinuousPaperService:
             execution_status=result.execution_status,
             execution_reason=result.execution_reason,
         )
+        # --- audit anchoring (#68) ---
+        if self.audit_anchors is not None:
+            await self.audit_anchors.maybe_publish(record.sequence)
 
     async def _run_symbol_safely(self, symbol: str) -> None:
         self._cycle += 1  # observability (Epic 9)
