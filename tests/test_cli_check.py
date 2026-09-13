@@ -253,6 +253,21 @@ def test_funding_carry_is_report_only() -> None:
     assert "UNAVAILABLE" in item.detail or "PIT basis" in item.detail
 
 
+def test_opportunity_diagnostic_mode_is_off_by_default_and_reported_when_on() -> None:
+    off = build_report(settings())
+    item = next(i for i in off.items if i.label == "Opportunity diagnostic mode")
+    assert item.value == "off"
+    assert off.safe
+
+    on = build_report(settings(opportunity_diagnostic_mode=True))
+    item = next(i for i in on.items if i.label == "Opportunity diagnostic mode")
+    assert item.value.startswith("active")
+    assert "diagnostic_withheld" in item.detail
+    assert "NAV will not move" in item.detail
+    # Withholding is never unsafe: the mode adds no warning of its own.
+    assert on.warnings == []
+
+
 def test_paper_perp_hedge_stub_is_off_by_default() -> None:
     report = build_report(settings())
     item = next(i for i in report.items if i.label == "Paper perp / hedge stub")

@@ -192,6 +192,8 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
                                                     BEFORE the pipeline runs. An unreachable
                                                     Redis channel is treated as engaged.
     2b. submission_enabled = submit AND NOT reconciliation_blocked
+                              AND durable_state_error is None
+                              AND NOT diagnostic_mode (#131)
                                                     -- the reconciliation gate is evaluated
                                                     and applied HERE, before run_once is even
                                                     called with submit=True/False. Submission
@@ -280,6 +282,10 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
         (fee_source=modelled), set execution_status=paper_filled. Does not call
         a venue. Compose app.command has no --submit; this is how NAV moves.
         A kill switch, reconciliation block, or torn ledger withholds.
+        OPPORTUNITY_DIAGNOSTIC_MODE=true (#131) withholds here too, AFTER every
+        upstream control has had its say (execution_status=diagnostic_withheld;
+        the kill switch stays the first explanation when engaged). It can only
+        withhold: it is not read by RiskEngine and does not move policy_version.
         If PAPER_PERP_HEDGE=true (paper only; default false): fetch an
         explicit current perp mid from Hyperliquid `midPx` (HTX bid/ask
         mid fallback) and hedge the opposite perp on `PaperPerpBook`.
@@ -297,6 +303,12 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
         `meta_review`/`execution_status`/`execution_reason` from the SAME cycle, so an ALLOW
         that was subsequently vetoed is legible on one line, not only inferable by
         cross-referencing the runtime audit log separately.
+    2g-b. opportunity_funnel.observe(result)      -- #131. Reduce the POST-fill result to the
+        furthest stage reached and the nearest blocking gate (market_data / candle_history /
+        universe / intelligence / signal / pretrade / risk / meta_agent / planner / fill),
+        keyed by symbol and strategy, and rewrite the JSON snapshot at --funnel-path.
+        Evidence only: nothing upstream reads it, and a snapshot write failure is
+        logged, not raised.
     2h. checkpoint the portfolio (on_portfolio)    -- BEFORE the event fan-out (Epic 10).
         This is the durable local state a restart resumes from; on_result fans out to
         remote sinks (Postgres/Redis) that can be down far longer than a local write. Saving
@@ -333,6 +345,11 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
    dropped between the risk engine's decision and what gets recorded.
 4. The portfolio checkpoint is written before the event fan-out, so the
    locally-resumable state never depends on a remote sink's availability.
+4a. The opportunity funnel (#131) observes the same post-fill `RuntimeResult`
+   the audit trail records, so its stage counts, `execution_statuses` and the
+   risk audit agree cycle for cycle; it is never consulted by the pipeline,
+   the risk engine, the meta-agent or the execution boundary, and diagnostic
+   mode can only add a withhold at step 2b/2d, never remove one.
 5. `RiskEngine.evaluate` classifies a proposal as risk-reducing only from
    `proposal.side is SELL` and `portfolio.asset_exposure_usd[asset] > 0`.
    Thesis text and signal ids cannot flip that. Risk-reducing exits skip

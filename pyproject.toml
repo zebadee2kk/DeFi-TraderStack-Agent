@@ -142,6 +142,9 @@ traderstack-check-config = "traderstack.cli_check:main"
 # performance-versus-baselines report. Both are offline by construction.
 traderstack-soak = "traderstack.acceptance.soak:main"
 traderstack-paper-report = "traderstack.acceptance.report:main"
+# Zero-trade diagnosis (#131): rebuild the opportunity funnel from a run's
+# audit/runtime.jsonl (+ optional ledger). Offline; evidence only.
+traderstack-opportunity-funnel = "traderstack.funnel_cli:main"
 # Paper-only Polymarket weather research. Isolated from traderstack-paper;
 # never signs or submits CLOB orders.
 traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"

@@ -2,8 +2,9 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Protocol
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Protocol
 
 import structlog
 
@@ -22,6 +23,10 @@ from traderstack.metrics import (  # --- observability (Epic 9) ---
     record_event_sink_failure,
     record_paper_fill,
     record_portfolio_snapshot,
+)
+from traderstack.opportunity_funnel import (  # --- opportunity funnel (#131) ---
+    DIAGNOSTIC_WITHHELD_STATUS,
+    OpportunityFunnel,
 )
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.reconciliation import ReconciliationResult
@@ -91,9 +96,22 @@ class ContinuousPaperService:
     # Background WS collectors (Binance liquidations / optional bookTicker).
     # Failure here is informational: missing features, not a halt.
     edge_collectors: tuple[EdgeFeedCollector, ...] = ()
+    # --- opportunity funnel (#131) ---
+    # Diagnostic-only mode (OPPORTUNITY_DIAGNOSTIC_MODE): every control runs
+    # unchanged and every decision is audited, but no paper fill is booked and
+    # no venue submission is attempted. It can only withhold, never relax.
+    diagnostic_mode: bool = False
+    # Live per-run funnel: where each cycle stopped and why. Evidence only.
+    opportunity_funnel: OpportunityFunnel = field(default_factory=OpportunityFunnel)
+    # When set, a JSON snapshot of the funnel is rewritten after every cycle.
+    opportunity_funnel_path: Path | None = None
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
     _cycle: int = field(default=0, init=False)  # observability (Epic 9): monotonic cycle counter
     _last_reconcile_at: float | None = field(default=None, init=False)
+
+    def __post_init__(self) -> None:
+        # --- opportunity funnel (#131) ---
+        self.opportunity_funnel.set_flags(diagnostic_mode=self.diagnostic_mode)
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -251,6 +269,7 @@ class ContinuousPaperService:
                 )
 
             await self._record_risk_decision(result)  # --- risk plane (Epic 7) ---
+            await self._observe_opportunity(result, log)  # --- opportunity funnel (#131) ---
 
             # --- paper-trading acceptance (Epic 10) ---
             # The portfolio checkpoint is written BEFORE the event fan-out. It is
@@ -293,7 +312,33 @@ class ContinuousPaperService:
             self.submit
             and not self.health.reconciliation_blocked
             and self.health.durable_state_error is None
+            and not self.diagnostic_mode  # --- opportunity funnel (#131) ---
         )
+
+    # --- opportunity funnel (#131) ---
+    async def _observe_opportunity(self, result: RuntimeResult, log: Any) -> None:
+        """Record where this cycle stopped in the funnel; never affects it."""
+
+        funnel = self.opportunity_funnel
+        funnel.set_flags(
+            paper_fills_enabled=self.paper_fill_enabled,
+            submission_enabled=self.submission_enabled,
+        )
+        observation = funnel.observe(result, now=datetime.now(UTC), ledger=self.execution_ledger)
+        if self.diagnostic_mode:
+            log.info(
+                "opportunity_diagnosis",
+                stage=observation.stage.value,
+                gate=observation.gate.value if observation.gate is not None else None,
+                category=observation.category.value,
+                reasons=observation.reasons,
+                explanation=observation.explain(),
+            )
+        if self.opportunity_funnel_path is not None:
+            try:
+                await asyncio.to_thread(funnel.write, self.opportunity_funnel_path)
+            except Exception as exc:  # noqa: BLE001 - a diagnostic file must never fail the cycle.
+                log.warning("opportunity_funnel_write_failed", error=f"{type(exc).__name__}: {exc}")
 
     # --- paper fill simulation ---
     @property
@@ -310,13 +355,27 @@ class ContinuousPaperService:
             and self.execution_ledger is not None
             and not self.health.reconciliation_blocked
             and self.health.durable_state_error is None
+            and not self.diagnostic_mode  # --- opportunity funnel (#131) ---
         )
 
     async def _maybe_apply_paper_fill(self, result: RuntimeResult) -> RuntimeResult:
         if result.trading_mode != "paper":
             return result
         intent = result.pipeline.paper_order
-        if intent is None or self.paper_fill_simulator is None:
+        if intent is None:
+            return result
+        # --- opportunity funnel (#131) ---
+        # Diagnostic mode withholds after every upstream control has had its
+        # say, so the funnel still shows what *would* have been booked. The
+        # kill switch stays the first explanation when it is engaged.
+        if self.diagnostic_mode:
+            reason = "diagnostic mode: paper fill withheld; upstream controls allowed this order"
+            if self.kill_switch is not None and self.kill_switch.engaged:
+                reason = "kill switch engaged; diagnostic mode also withholds"
+            return result.model_copy(
+                update={"execution_status": DIAGNOSTIC_WITHHELD_STATUS, "execution_reason": reason}
+            )
+        if self.paper_fill_simulator is None:
             return result
         if self.kill_switch is not None and self.kill_switch.engaged:
             return result.model_copy(

@@ -454,6 +454,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--shadow-ledger-path", default="var/audit/shadow_intents.jsonl")
     parser.add_argument("--cycle-seconds", type=float, default=5.0)
     parser.add_argument("--metrics-port", type=int, default=9108)
+    # --- opportunity funnel (#131) ---
+    parser.add_argument(
+        "--funnel-path",
+        default="var/ops/opportunity_funnel.json",
+        help="rewrite the zero-trade opportunity funnel snapshot here after every cycle",
+    )
     parser.add_argument(
         "--persistent-events",
         action="store_true",
@@ -830,6 +836,8 @@ def build_service(
         paper_perp_feed=paper_perp_feed,
         # --- paper-research edge data plane ---
         edge_collectors=tuple(edge_collectors),
+        # --- opportunity funnel (#131) ---
+        diagnostic_mode=settings.opportunity_diagnostic_mode,
     )
 
 
@@ -905,6 +913,8 @@ async def _main_async(args: argparse.Namespace) -> None:
     if durable_error is not None:
         service.submit = False
         service.health.record_durable_state_failure(durable_error)
+    # --- opportunity funnel (#131) ---
+    service.opportunity_funnel_path = Path(args.funnel_path)
     try:
         await service.run()
     finally:

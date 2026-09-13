@@ -110,6 +110,12 @@ When you add a field or method to one of these files:
   trail (`JsonlRiskAuditTrail`); carries the risk engine's decision *and* the
   meta-agent review *and* the execution outcome for the same cycle.
 - `src/traderstack/killswitch.py` — the four-channel kill switch.
+- `src/traderstack/opportunity_funnel.py` — zero-trade diagnosis (#131): reduces
+  each post-fill `RuntimeResult` to the furthest funnel stage reached and the
+  nearest blocking gate, per symbol/strategy, with bounded reason maps.
+  Written live by the service (`--funnel-path`), persisted in the soak
+  `report.json`, and rebuilt offline by `traderstack-opportunity-funnel`.
+  Evidence only; `OPPORTUNITY_DIAGNOSTIC_MODE` can only withhold fills.
 - `src/traderstack/cli.py` — wires everything above from `Settings` into a
   running `ContinuousPaperService` (`traderstack-paper`).
 - `src/traderstack/cli_check.py` — `traderstack-check-config`; must know
