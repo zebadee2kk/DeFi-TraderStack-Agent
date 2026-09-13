@@ -340,6 +340,16 @@ class Settings(BaseSettings):
     paper_search_require_wf_total_return: bool = True
     paper_search_require_holdout: bool = True
 
+    # --- multi-year candle archives (#133) ---
+    # Where an operator unpacked Kraken's official OHLCVT drop (support
+    # article 360047124832). Offline research input for
+    # `traderstack-download-candles --venue kraken_archive` only: it is never
+    # read on the trading cycle, never reaches the RiskEngine, and an empty
+    # value simply means the loader is unavailable (a skip, not a fallback).
+    # The drop is a manual Google Drive download and ships ACTIVE PAIRS ONLY
+    # — anything scored on it alone is survivorship-biased.
+    research_kraken_archive_path: str = ""
+
     # --- miles-inspired GARCH sizing (paper research) ---
     # Optional overlay on paper RiskEngine sizing. Default false until a
     # miles-inspired candidate clears WF total_return>0 AND holdout
