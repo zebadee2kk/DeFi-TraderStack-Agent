@@ -157,7 +157,14 @@ SIGNAL_REASONS = frozenset({"no_strategy_consensus", "strategy_does_not_confirm_
 META_AGENT_REASONS = frozenset({VETO_REASON, UNAVAILABLE_REASON})
 
 PLANNER_STATUSES = frozenset(
-    {SubmissionStatus.PLAN_REJECTED.value, PaperFillStatus.PLAN_REJECTED.value}
+    {
+        SubmissionStatus.PLAN_REJECTED.value,
+        PaperFillStatus.PLAN_REJECTED.value,
+        # --- protective-exit sizing (#130) --- also a planner-boundary
+        # refusal; the distinct status stays the reason so the funnel still
+        # separates invalid exit sizing from a venue/data rejection.
+        PaperFillStatus.INVALID_EXIT_SIZE.value,
+    }
 )
 FILLED_STATUSES = frozenset({PaperFillStatus.FILLED.value})
 #: Accepted by the planner and handed onward, but not a fill yet: the venue

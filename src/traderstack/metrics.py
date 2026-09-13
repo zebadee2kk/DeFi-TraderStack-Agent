@@ -50,6 +50,11 @@ paper_orders_submitted_total = Counter(
     ("symbol", "side"),
 )
 # --- paper fill simulation ---
+# --- protective-exit sizing (#130) ---
+# The ``status`` label carries the full PaperFillStatus vocabulary, so
+# status="paper_fill_invalid_exit_size" (a reducing-only exit that could not be
+# sized at or below the held quantity) is countable apart from
+# status="plan_rejected" / "paper_fill_rejected" (venue or data refusal).
 paper_fills_total = Counter(
     "traderstack_paper_fills_total",
     "Paper fills booked into the local book, by symbol, side and status",

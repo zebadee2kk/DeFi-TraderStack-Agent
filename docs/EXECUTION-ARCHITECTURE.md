@@ -229,7 +229,13 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
                HERE so an adverse-news or missing-candle reject cannot
                freeze a stop. Live mode skips this step. A fired rule
                becomes a reducing SELL (`strategy_id=exit-<rule>`) and
-               skips the discretionary path below.
+               skips the discretionary path below. The exit notional is
+               sized at the *worst-case execution price* (mark less
+               `PAPER_SLIPPAGE_BPS`), not at the mark: the planner divides
+               the approved notional by the adverse sell price, so a
+               mark-priced notional would ask for more quantity than is
+               held and the fill would be refused as a short sale (#130).
+               The resulting `PaperOrderIntent` is marked `reduce_only`.
              - paper daily promote universe (#100 honesty): when a daily
                pin is active, a tick outside PAPER_PROMOTE_UNIVERSE /
                {BTC/USD, ETH/USD} is rejected (`promote_universe_excluded`)
@@ -404,6 +410,16 @@ execution price into one venue child order:
 
 - quantity is floored to `EXECUTION_LOT_STEP` (never rounded up, so a plan can
   never exceed the approved notional) and rejected if it rounds to zero;
+- a *reducing-only* intent (`PaperOrderIntent.reduce_only`, set only by the
+  deterministic exit path) carries a `max_quantity` cap — the held quantity —
+  and the planned quantity is clamped **down** to it. The clamp can only ever
+  shrink an order: it is an invariant backstop, not a sizing input, and is
+  unavailable to an entry (#130). When the cap leaves nothing safe to submit
+  (no position left, the cap rounds to zero at the lot step, or clamping drops
+  the order under `EXECUTION_MIN_NOTIONAL_USD`) the planner raises
+  `ExitSizingRejected` — a subclass of `ExecutionPlanRejected`, so existing
+  handlers are unchanged while `PaperFillSimulator` can stamp the distinct
+  `paper_fill_invalid_exit_size` status;
 - the resulting notional must reach `EXECUTION_MIN_NOTIONAL_USD`;
 - the execution price must be within `EXECUTION_MAX_SLIPPAGE_BPS` of the
   pipeline's validated tick, in *either* direction — a suspiciously favourable
