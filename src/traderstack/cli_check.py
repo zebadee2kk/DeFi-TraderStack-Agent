@@ -557,6 +557,35 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
 
+    # --- multi-year candle archives (#133) ---
+    archive_path = settings.research_kraken_archive_path.strip()
+    items.append(
+        CheckItem(
+            "Multi-year candle archives",
+            "research-only",
+            "traderstack-download-candles --venue coinbase|binance_vision|"
+            "kraken_archive; longer history than Kraken's 720-bar REST cap. "
+            "Offline research input only: never on the trading cycle, never "
+            "read by the RiskEngine, and no PAPER_PROMOTE_* effect. Coinbase "
+            "is paced inside its 10 req/s public limit and treats HTTP 429 as "
+            "a skip; Binance Vision zips are sha256-verified against the "
+            "published .CHECKSUM and fail closed; missing bars stay gaps",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  Kraken OHLCVT archive path",
+            archive_path or "(unset)",
+            (
+                "manual download (support article 360047124832), ACTIVE PAIRS "
+                "ONLY — survivorship-biased; a partial or unparsable file is "
+                "refused outright"
+            )
+            if archive_path
+            else "unset: --venue kraken_archive skips unless --archive-path is given",
+        )
+    )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(
