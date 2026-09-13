@@ -41,6 +41,11 @@ def _scenario(tmp_path: Path, **overrides) -> SoakScenario:
     return SoakScenario(**values)  # type: ignore[arg-type]
 
 
+def test_default_soak_kill_switch_is_scoped_to_workdir(tmp_path: Path) -> None:
+    runner = SoakRunner(scenario=SoakScenario(name="unit", cycles=1), workdir=tmp_path)
+    assert Path(runner.settings.kill_switch_file) == tmp_path / "state" / "KILL"
+
+
 async def test_a_clean_run_passes_and_reports_everything(tmp_path: Path) -> None:
     report = await SoakRunner(scenario=_scenario(tmp_path), workdir=tmp_path).run()
 

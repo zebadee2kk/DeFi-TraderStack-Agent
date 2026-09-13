@@ -206,7 +206,12 @@ class ContinuousPaperService:
                 if result.pipeline.feature_vector is not None
                 else symbol.split("/", 1)[0].upper()
             )
-            self.portfolio.mark(asset, result.tick.last)
+            # Rejected market data must not mutate NAV, marks, or drawdown
+            # state. A rejected tick may be stale, crossed, divergent, or
+            # otherwise unsuitable for portfolio accounting; only validated
+            # market data is allowed to enter the book.
+            if result.pipeline.accepted_market_data:
+                self.portfolio.mark(asset, result.tick.last)
             # --- observability (Epic 9): portfolio gauges + one structured log line/cycle ---
             snapshot = self.portfolio.snapshot()
             record_portfolio_snapshot(snapshot.nav_usd, snapshot.cash_usd, snapshot.peak_nav_usd)

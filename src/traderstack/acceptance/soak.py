@@ -297,7 +297,12 @@ class SoakRunner:
     def __post_init__(self) -> None:
         self.workdir = Path(self.workdir)
         self.symbols = tuple(self.scenario.symbols)
-        self.settings = Settings(**{**_BASE_SETTINGS, **self.scenario.settings})
+        settings = {**_BASE_SETTINGS, **self.scenario.settings}
+        # Keep the harness sentinel inside its own workdir unless a scenario
+        # explicitly supplies a path. A soak must never touch the operator's
+        # production/default kill-switch file.
+        settings.setdefault("kill_switch_file", str(self.workdir / "state" / "KILL"))
+        self.settings = Settings(**settings)
         self.market = SyntheticMarket(
             symbols=self.symbols,
             seed=self.scenario.seed,
