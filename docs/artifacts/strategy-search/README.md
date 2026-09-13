@@ -832,3 +832,6 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `volume-breakout.md`.
 
+## Evidence section (#135)
+
+Reports generated after #135 (`traderstack-harder-gates`, `traderstack-dual-print-search`, `traderstack-tsmom`; the other families in the next slice) carry `print_kind`, an era-coverage table and an **Evidence** section with Deflated Sharpe, CSCV probability of backtest overfitting, seeded bootstrap CIs on Sharpe and expectancy, trades needed, and the evidence-passer set. The reports committed in this directory were written before #135 and lack that section; they are re-scored under #136 (eras, two venues, the #138 fee tier), not regenerated offline from synthetic data. Evidence is an additional gate and can only withhold a recommended flag; no committed verdict above changes.

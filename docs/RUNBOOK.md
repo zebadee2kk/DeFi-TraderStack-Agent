@@ -2108,3 +2108,19 @@ not alpha. The eval CLI implements the calculator for gates 1 / 4 / 5 in
 Gates 2 (walk-forward parameter fit) and 3 (a full season of live paper
 A/B) are still not claimed. Do not promote this module toward live CLOB
 trading from paper intents or a single fixture pack.
+
+## Search-report evidence layer (#135)
+
+`traderstack-harder-gates`, `traderstack-dual-print-search` and `traderstack-tsmom` reports (JSON and markdown) now carry print kind, era coverage, Deflated Sharpe, probability of backtest overfitting, bootstrap CIs and the evidence-passer set. The remaining daily families carry the same per-row evidence in their JSON rows (`kraken_evidence`, `binance_evidence`, `evidence_pass`) and get their report headers in the next slice. **Evidence can only withhold**: it never promotes a name the raw #96+A+B+C bar rejected, never reorders the ranking, and never flips a `PAPER_PROMOTE_*` default.
+
+### Reading the evidence section
+
+- `print_kind` — `venue` today (Kraken primary + Binance.US older-720). `era` arrives with #136. The **Print policy / era coverage** table lists, per venue, the bars inside each frozen era window and whether the era is scoreable (≥ 720 bars on every series). `no (fewer_than_720_bars_in_era)` is a skip, never a zero.
+- `trial count N` — catalog K; the multiple-testing denominator.
+- **PBO** per asset — CSCV probability of backtest overfitting over the walk-forward fold-Sharpe matrix; `groups` / `combos` / `folds` show how much data produced it. `n/a (reason)` means undefined (for example `fewer_than_4_groups` or `no_walkforward_folds`), which fails closed.
+- **DSR** per candidate per asset — Deflated Sharpe from the holdout per-bar returns against `SR0`, the expected maximum Sharpe of `N` trials with the printed trial-Sharpe variance. `dsr_not_passed` covers both `< 0.95` and undefined.
+- **SR CI** / **expectancy CI** — seeded bootstrap intervals; **trades needed** is the count for the expectancy CI to exclude zero. `min_trades` is unchanged and still applies.
+- **pass** / **reasons** — `evidence_pass` needs DSR ≥ 0.95, PBO ≤ 0.50 and expectancy CI low bound > 0 on BTC *and* ETH (SOL is reported, not gated). Reasons are prefixed with the asset.
+- **Evidence passers** — raw passers whose evidence also passes, in ranking order. `dual_print_passer_ids` / `combined_passer_ids` and `selected_candidate_id` stay raw, so `0 dual-print passers` and `1 raw passer, 0 evidence passers (PBO 0.6)` are distinguishable. `recommended_promote_flag` follows `evidence_selected_candidate_id` only and is `None` whenever evidence withholds.
+
+Thresholds (`DSR_MIN=0.95`, `PBO_MAX=0.50`, 95% × 2000 resamples, `CSCV` 4–16 groups, `ERA_MIN_BARS=720`) are constants in `src/traderstack/research/evidence.py`, not `.env` settings; there is nothing to configure and nothing an agent can relax. Determinism comes from `EVIDENCE_SEED=20260913` (`random.Random(seed)` per call): re-running the same inputs reproduces every DSR, PBO and CI byte for byte. The status line printed by the two dual-print CLIs ends with `evidence_passers=N; print_kind=venue`. See `docs/EVALUATION-FRAMEWORK.md` ("Reporting order and statistical power") for the formulas, the power table and the honesty caveats.

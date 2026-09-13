@@ -137,6 +137,8 @@ The research harness (Epic 5) and the signal registry (Epic 4) are implemented i
 
 **Volume-confirmed breakout (`traderstack-volume-breakout`).** Continues after #122: the BTC→ETH lead-lag dual-print was empty (informational `leadlag_eth_follow_lo_5` was ETH-carried / #96 FAIL). This is a **different family** — not another EMA dual-print, not a residual / XS / Donchian / TSMOM / Bollinger / calendar / lead-lag retune, and not invented basis. Not a Donchian N retune (#118): every promote-eligible name requires a volume gate. Frozen catalog: long-only volume-confirmed breakout (`volbrk_lo_{20x1_5,55x1_5,20x2}`), long/short symmetric (`volbrk_ls_{20x1_5,55x1_5}`), volume-surge long-only (`volsurge_lo_{20x2,20x2_5}`), plus informational `ma_cross_10_30` (cannot enter the passer set). Prior channel uses bars `[t-N, t)` (bar t's high/low never set the breakout level). Volume SMA through t−1 (V frozen at 20). Missing volume skips that bar (never invented); quote volume is not a substitute. A venue without usable base volume fails closed for volume names. Exit is `opposite_band_same_n` (long-only exit does not require volume). Fill at t+1 open. A missing/short series is skipped, not zero-filled. Multi-asset combined bar (frozen before scoring): same #96+A+B+C on **BTC and ETH**; SOL is reported when present and is not a gate. Equal-weight portfolio metrics are not used. Same pre-registered dual-print prints as #104: Kraken public Spot daily 720 **and** the #102 Binance.US older-720 (non-overlapping). Ranking key (frozen): Kraken BTC+ETH mean holdout excess among dual-print passers. Venues are not averaged. A Kraken-only combined-passer cannot promote. Paper-executable on Kraken spot BTC/USD+ETH/USD. Empty dual-print set is success. Never flips `PAPER_PROMOTE_*`. A new paper pin is added only if a committed report names a passer, and then default false. Report: `docs/artifacts/strategy-search/volume-breakout.md`.
 
+**Search evidence: era prints, Deflated Sharpe, PBO, bootstrap floors (#135, first slice of #48).** `src/traderstack/research/evidence.py` is a pure, deterministic, stdlib-only layer (no numpy, no `purgedcv`) that every harder-gates run now computes on its baseline `DailyRobustnessReport` and that `traderstack-harder-gates`, `traderstack-dual-print-search` and `traderstack-tsmom` print (the other daily families carry the per-row evidence through `DualPrintRow` and get their report-level fields in the next slice). Per catalog run: the **Deflated Sharpe Ratio** (Bailey & López de Prado) per candidate per promotion asset from the candidate's Kraken holdout per-bar returns, with `N = catalog K` and the variance of holdout period-Sharpes across the catalog; the **probability of backtest overfitting** per asset by CSCV over the walk-forward fold-Sharpe matrix (symmetric half splits, at most 16 groups by averaging adjacent folds, odd counts drop the oldest fold, fewer than 4 groups is undefined); a seeded **circular-block bootstrap CI** on annualised Sharpe (report-only) and a seeded iid bootstrap CI on per-trade expectancy, plus the trade count needed for that CI to exclude zero; and a frozen **era-print policy** (`ERA_WINDOWS`, `ERA_MIN_BARS=720`, `print_kind=venue` on every current report, era coverage per venue). Thresholds are frozen module constants (`DSR_MIN=0.95`, `PBO_MAX=0.50`, 95% × 2000 resamples, seed `20260913`), never `Settings`. They are **additional gates, never replacements**: `min_trades`, the ranking key, the selection rule and every A/B/C threshold are unchanged, and evidence can only withhold a `recommended_promote_flag` (a raw combined / dual-print top-1 is still shown as a raw pass). A missing statistic is a fail-closed reason, never a zero; an empty evidence-passer set is success. See "Reporting order and statistical power" below and `docs/RUNBOOK.md` ("Search-report evidence layer").
+
 ## Acceptance drills
 
 Stage 4 (Paper Trading) is not "we ran it and nothing crashed". Before a paper run
@@ -261,3 +263,62 @@ per city). Until those are green on two independent prints, the only
 allowed statement remains: "the paper ledger contains would-trade
 intents; the eval CLI can score resolved rows when they exist." Do not
 add a live CLOB path as a side effect of a later change.
+
+## Reporting order and statistical power
+
+Added by #135 (first slice of #48). Every `traderstack-*-search` report that carries the evidence layer prints, in this order, so a reader sees the power of the sample before the verdict:
+
+1. **Print kind and era coverage** — `print_kind` (`venue` today; `era` once #136 scores era prints) and, per venue, which of the frozen era windows the series covers and whether each is scoreable (≥ 720 bars on every series). A missing era is a skip with a reason, never a zero.
+2. **Catalog K = trial count** — the number of candidates scored on the same window; it is the `N` fed to the Deflated Sharpe.
+3. **Raw #96 + A + B + C result** — dual-print / combined passers exactly as before (ranking key and selection rule unchanged).
+4. **DSR per promotion asset** — with `N`, the trial-Sharpe variance, the expected max Sharpe `SR0`, skew, kurtosis and the holdout bar count.
+5. **PBO per asset** — with the number of groups, combinations and folds that produced it (and whether folds were merged or an oldest fold dropped).
+6. **Bootstrap CIs** — annualised Sharpe (circular block, block ≈ T^(1/3)) and per-trade expectancy (iid), both seeded.
+7. **Trades needed** for the expectancy CI to exclude zero, beside the unchanged `min_trades`.
+8. **Evidence passers** — names that clear the raw bar *and* DSR ≥ 0.95 *and* PBO ≤ 0.50 *and* expectancy CI low bound > 0 on BTC and ETH (SOL reported, not gated). `0 dual-print passers` and `1 raw passer, 0 evidence passers (PBO 0.6)` are now distinguishable.
+9. **PAPER_PROMOTE status** — the recommended flag is derived from the evidence-selected passer only; it is `None` whenever the evidence layer withholds. No default flips.
+
+### Frozen thresholds
+
+| constant | value | role |
+| --- | ---: | --- |
+| `DSR_MIN` | 0.95 | Deflated Sharpe floor on BTC and ETH |
+| `PBO_MAX` | 0.50 | CSCV probability-of-overfitting ceiling per asset |
+| `BOOTSTRAP_CONFIDENCE` | 0.95 | percentile CI level |
+| `BOOTSTRAP_RESAMPLES` | 2000 | resamples per CI |
+| `EVIDENCE_SEED` | 20260913 | `random.Random(seed)` per call; fixed seeds reproduce every number |
+| `CSCV_MIN_GROUPS` / `CSCV_MAX_GROUPS` | 4 / 16 | CSCV group bounds |
+| `ERA_MIN_BARS` | 720 | bars an era needs to be scoreable |
+
+These live in `src/traderstack/research/evidence.py`, not in `Settings`, so nothing env- or LLM-reachable can move them (`tests/security/test_research_evidence_cannot_relax_gates.py`). They are additional gates and never replacements: no existing threshold was lowered, `min_trades=3` stays, and the fixed floor is *joined* by the bootstrap floor, not replaced by it.
+
+### Power table
+
+Standard error of an annualised Sharpe (Lo 2002): `SE ≈ sqrt((1 + SR²/2) / T_years)`; years for `SR / SE = t` are `t² (1 + SR²/2) / SR²`. Computed by `evidence.power_table_rows()` (the odds brief `docs/artifacts/research/odds-brief-2026-09-13.md` quotes the same SE column; its years column for SR 1.5 and 2.0 was rounded differently — the values below are the ones the formula gives):
+
+| true Sharpe | SE at 2y | SE at 4y | years for t = 2 |
+| ---: | ---: | ---: | ---: |
+| 0.5 | 0.75 | 0.53 | ≈ 18.0 |
+| 1.0 | 0.87 | 0.61 | ≈ 6.0 |
+| 1.5 | 1.03 | 0.73 | ≈ 3.8 |
+| 2.0 | 1.22 | 0.87 | ≈ 3.0 |
+
+At T = 2 and SR = 1 the SE is 0.87; a t-statistic of 2 needs about six years. The 720-bar Kraken window is therefore expected to read as zero passers even when a family works — the window, not the catalog, is the bottleneck, and that is why the strict gates stay.
+
+### Era windows (frozen; #136 boundaries)
+
+| era | start | end |
+| --- | --- | --- |
+| `era_1_2016_2019` | 2016-01-01 | 2019-12-31 |
+| `era_2_2020_2022h1` | 2020-01-01 | 2022-06-30 |
+| `era_3_2022h2_2024h1` | 2022-07-01 | 2024-06-30 |
+| `era_4_2024h2_2026` | 2024-07-01 | 2026-12-31 |
+
+A second *era* (non-overlapping calendar window on the same venue) counts as an independent print once #136 scores it; venue prints remain valid, and the report names which kind it used. #136 must import `ERA_WINDOWS` from `research/evidence.py` rather than redefine the boundaries.
+
+### Honesty caveats
+
+- **DSR uses holdout returns.** The trial-Sharpe variance and the per-candidate DSR are computed from the Kraken holdout tail, i.e. post-holdout information. That is acceptable only because it is used to *withhold* a recommendation; it never ranks or selects (the ranking key is walk-forward-blind as before).
+- **The block bootstrap ignores regime dependence.** A circular block of ≈ T^(1/3) bars preserves short-range autocorrelation, not a regime that spans the whole holdout. Treat the Sharpe CI as report-only.
+- **PBO on ~6 folds of a 720-bar window is weak evidence** and the report says so: it prints groups, combinations and folds next to the number. Ties in the out-of-sample rank are scored conservatively (as overfit).
+- **Trial count is the catalog K**, not every variant ever tried; if a family was retuned after seeing PnL, the true `N` is larger and the DSR is optimistic. That is one more reason catalogs are frozen before scoring.
