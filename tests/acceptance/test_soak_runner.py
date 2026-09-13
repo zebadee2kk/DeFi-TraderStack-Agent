@@ -30,7 +30,7 @@ from traderstack.acceptance.soak import (
 SCENARIO_DIR = Path(__file__).resolve().parents[2] / "ops" / "soak" / "scenarios"
 
 
-def _scenario(tmp_path: Path, **overrides) -> SoakScenario:
+def test_default_soak_kill_switch_is_scoped_to_workdir(tmp_path: Path) -> None:\n    runner = SoakRunner(scenario=SoakScenario(name="unit", cycles=1), workdir=tmp_path)\n    assert Path(runner.settings.kill_switch_file) == tmp_path / "state" / "KILL"\n\n\ndef _scenario(tmp_path: Path, **overrides) -> SoakScenario:
     values: dict[str, object] = {
         "name": "unit",
         "cycles": 6,
