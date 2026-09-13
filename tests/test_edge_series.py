@@ -8,10 +8,9 @@ from traderstack.research.candidates import FeatureZVoter
 from traderstack.research.edge_series import (
     BITMEX_BASIS_UNAVAILABLE,
     BITMEX_SUNSET_NOTE,
-    BASIS_AWARE_MIN_ALIGNED_DAYS,
-    BASIS_AWARE_WINDOW_END_UTC,
     HYPERLIQUID_BASIS_UNAVAILABLE,
     bitmex_current_mid_usd,
+    fetch_asilletto81_hyperliquid_basis,
     fetch_binance_funding,
     fetch_binance_liquidations,
     fetch_bitmex_basis,
@@ -19,7 +18,6 @@ from traderstack.research.edge_series import (
     fetch_bybit_funding,
     fetch_htx_basis,
     fetch_htx_funding,
-    fetch_asilletto81_hyperliquid_basis,
     fetch_hyperliquid_basis,
     fetch_hyperliquid_funding,
     fetch_okx_funding,
@@ -369,9 +367,7 @@ async def test_hyperliquid_basis_skips_current_only_and_refuses_premium() -> Non
     async with httpx.AsyncClient(
         base_url="https://api.hyperliquid.xyz", transport=transport
     ) as client:
-        result = await fetch_hyperliquid_basis(
-            "BTC/USD", client=client, prefer_archive=False
-        )
+        result = await fetch_hyperliquid_basis("BTC/USD", client=client, prefer_archive=False)
     assert result.status == "skipped"
     assert result.points == ()
     assert "UNAVAILABLE" in result.reason
@@ -474,11 +470,10 @@ def test_feature_z_voter_uses_per_symbol_series() -> None:
     assert eth_signal.side is not None
     assert btc_signal.side != eth_signal.side
 
+
 @pytest.mark.asyncio
 async def test_asilletto81_basis_mark_minus_oracle(tmp_path, monkeypatch) -> None:
     import lz4.frame
-    from datetime import UTC, datetime, timedelta
-    from traderstack.research.edge_series import ASILLETTO81_CACHE_DIR
 
     day = datetime(2024, 6, 12, tzinfo=UTC)
     csv_text = (
@@ -497,9 +492,7 @@ async def test_asilletto81_basis_mark_minus_oracle(tmp_path, monkeypatch) -> Non
         path = cache_dir / f"{day.strftime('%Y%m%d')}.csv.lz4"
         return path.read_bytes() if path.is_file() else None
 
-    monkeypatch.setattr(
-        "traderstack.research.edge_series._asilletto_download_day", fake_download
-    )
+    monkeypatch.setattr("traderstack.research.edge_series._asilletto_download_day", fake_download)
     async with httpx.AsyncClient() as client:
         result = await fetch_asilletto81_hyperliquid_basis(
             "BTC/USD",
@@ -511,4 +504,3 @@ async def test_asilletto81_basis_mark_minus_oracle(tmp_path, monkeypatch) -> Non
     assert result.status == "ok"
     assert len(result.points) == 1
     assert result.points[0][1] == pytest.approx(0.02)  # last mark 102 / oracle 100
-

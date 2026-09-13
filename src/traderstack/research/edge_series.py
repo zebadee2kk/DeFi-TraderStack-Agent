@@ -79,8 +79,8 @@ from __future__ import annotations
 
 import asyncio
 import csv
-import json
 import io
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -952,7 +952,6 @@ def _hyperliquid_ctx_for(payload: object, coin: str) -> dict[str, Any] | None:
     return None
 
 
-
 ASILLETTO81_CACHE_DIR = Path("var/ops/basis_cache/asilletto81/asset_ctxs")
 ASILLETTO81_COMPACT_PATH = Path("var/ops/basis_cache/asilletto81/daily_mark_oracle.json")
 
@@ -971,7 +970,9 @@ def truncate_points_to_end(
     return tuple((ts, value) for ts, value in points if utc_day(ts) <= end_d)
 
 
-def freeze_window_start(end: datetime | None = None, *, days: int = BASIS_AWARE_MIN_ALIGNED_DAYS) -> datetime:
+def freeze_window_start(
+    end: datetime | None = None, *, days: int = BASIS_AWARE_MIN_ALIGNED_DAYS
+) -> datetime:
     end_d = utc_day(end or BASIS_AWARE_WINDOW_END_UTC)
     return end_d - timedelta(days=days - 1)
 
@@ -1022,11 +1023,10 @@ async def _asilletto_download_day(
     if response.status_code != 200 or not response.content:
         return None
     head = response.content[:32].lstrip()
-    if head.startswith(b"<") or head.startswith(b"{") or head.startswith(b"Invalid"):
+    if head.startswith((b"<", b"{", b"Invalid")):
         return None
     path.write_bytes(response.content)
     return response.content
-
 
 
 def _load_asilletto_compact_basis(
@@ -1062,6 +1062,7 @@ def _load_asilletto_compact_basis(
         if start_d <= day <= end_d:
             points.append((day, basis))
     return points
+
 
 async def fetch_asilletto81_hyperliquid_basis(
     symbol: str,
@@ -1116,7 +1117,7 @@ async def fetch_asilletto81_hyperliquid_basis(
             continue
         try:
             pair = _asilletto_last_mark_oracle(_asilletto_decompress(payload), coin)
-        except Exception:
+        except Exception:  # noqa: BLE001 - corrupt day file is skipped, never invented.
             missing += 1
             day = day + timedelta(days=1)
             continue
@@ -1139,6 +1140,7 @@ async def fetch_asilletto81_hyperliquid_basis(
             f"{BASIS_AWARE_WINDOW_END_UTC.date()}."
         ),
     )
+
 
 async def fetch_hyperliquid_basis(
     symbol: str,
@@ -1174,8 +1176,7 @@ async def fetch_hyperliquid_basis(
                 reason=(
                     f"asilletto81 returned {len(archive.points)} days "
                     f"(need >={BASIS_AWARE_MIN_ALIGNED_DAYS} inside freeze "
-                    f"ending {BASIS_AWARE_WINDOW_END_UTC.date()}). "
-                    + archive.reason
+                    f"ending {BASIS_AWARE_WINDOW_END_UTC.date()}). " + archive.reason
                 ),
                 source=archive.source,
             )

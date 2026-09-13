@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -30,11 +31,8 @@ from traderstack.research.cli import load_candles_from_json
 from traderstack.research.daily_robustness import KRAKEN_PUBLIC_OHLC_MAX_BARS
 from traderstack.research.download_candles import download_spot_histories
 from traderstack.research.edge_series import (
-    utc_day,
-    truncate_points_to_end,
-    freeze_window_start,
-    BASIS_AWARE_WINDOW_END_UTC,
     BASIS_AWARE_MIN_ALIGNED_DAYS,
+    BASIS_AWARE_WINDOW_END_UTC,
     BINANCE_FAPI_BASE,
     BITMEX_BASE,
     BITMEX_DAILY_LIMIT_PAGES,
@@ -61,6 +59,9 @@ from traderstack.research.edge_series import (
     fetch_hyperliquid_basis,
     fetch_hyperliquid_funding,
     fetch_okx_funding,
+    freeze_window_start,
+    truncate_points_to_end,
+    utc_day,
 )
 from traderstack.research.funding_carry import (
     ALLOWED_INTERVALS,
@@ -319,8 +320,6 @@ async def fetch_basis_venues(
     window_start: datetime | None = None,
 ) -> tuple[dict[str, dict[str, tuple]], list[dict[str, str]]]:
     """Fetch HL (asilletto81) + HTX PIT basis; BitMEX notes only (sunset)."""
-    from datetime import datetime as _dt
-
     end = window_end or BASIS_AWARE_WINDOW_END_UTC
     start = window_start or freeze_window_start(end)
     notes: list[dict[str, str]] = []
@@ -350,7 +349,8 @@ async def fetch_basis_venues(
                     {
                         **result.as_note(),
                         "points": str(len(clamped)),
-                        "reason": result.reason + f" Clamped to freeze [{start.date()}→{end.date()}].",
+                        "reason": result.reason
+                        + f" Clamped to freeze [{start.date()}→{end.date()}].",
                     }
                 )
                 if len(clamped) >= BASIS_AWARE_MIN_ALIGNED_DAYS:
