@@ -427,6 +427,10 @@ def build_report(settings: Settings) -> ConfigReport:
             "1d resamples funding to UTC daily sums; PIT basis probed on "
             "Hyperliquid+HTX and recorded UNAVAILABLE on the current "
             "Kraken 720 (skip-not-invent); "
+            # --- second-venue PIT basis (#134) ---
+            "second-venue PIT basis: OKX + Binance Vision daily mark−index "
+            "(traderstack-download-basis → --basis-dir; premium/last-trade "
+            "refused; one venue alone is not applied; report-only); "
             "paper hedge+funding soak path is cycle-wired "
             "(PAPER_CARRY_PATH_READY=true when PAPER_PERP_HEDGE fetches "
             "an explicit HL/HTX mid + same-venue funding); snapshot "
