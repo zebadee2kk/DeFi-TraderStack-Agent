@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
 from traderstack.config import EMA_9_21_PAPER_MAX_DRAWDOWN_PCT
+from traderstack.fee_tiers import FeeTierStamp
 from traderstack.research.daily_robustness import (
     KRAKEN_DAILY_CAP_NOTE,
     _holdout_excess,
@@ -147,6 +148,8 @@ class HonestyPackReport(BaseModel):
     recommendation: str
     data_notes: list[str] = Field(default_factory=list)
     kraken_cap_note: str = KRAKEN_DAILY_CAP_NOTE
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None
 
 
 def _row_from_series(
@@ -298,6 +301,8 @@ def run_honesty_pack(
     paper_dd_ceiling: float = PAPER_DD_CEILING,
     now: datetime | None = None,
     data_notes: list[str] | None = None,
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None,
 ) -> HonestyPackReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -466,6 +471,8 @@ def run_honesty_pack(
         recommendation=_recommendation(flag, gaps),
         data_notes=list(data_notes or []),
         kraken_cap_note=KRAKEN_DAILY_CAP_NOTE,
+        # --- fee realism (#138) ---
+        fee_tier=fee_tier,
     )
 
 
@@ -491,6 +498,8 @@ def render_honesty_pack_markdown(report: HonestyPackReport) -> str:
             f"{report.train_size} test={report.test_size} step="
             f"{report.step_size}; holdout_fraction={report.holdout_fraction:.0%}."
         ),
+        # --- fee realism (#138) ---
+        *([report.fee_tier.render_line()] if report.fee_tier is not None else []),
         (
             f"Catalog: {report.catalog_name}. Ranking key: `{report.ranking_key}`. "
             f"Paper DD ceiling: {report.paper_dd_ceiling:.0%} "

@@ -41,6 +41,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
+from traderstack.fee_tiers import FeeTierStamp
 from traderstack.research.daily_candidates import (
     BALANCED_HOLDOUT_GRID_NOTE,
     EXPANDED_HARDER_GATES_GRID_NOTE,
@@ -424,6 +425,8 @@ class HarderGatesReport(BaseModel):
     honesty: str
     data_notes: list[str] = Field(default_factory=list)
     yahoo_notes: list[str] = Field(default_factory=list)
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None
 
 
 def paper_promote_flag_name(candidate_id: str) -> str:
@@ -516,6 +519,8 @@ def run_harder_gates(
     now: datetime | None = None,
     data_notes: list[str] | None = None,
     promotion_interval: str = "1d",
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None,
 ) -> HarderGatesReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -722,7 +727,7 @@ def run_harder_gates(
         fee_stress_fee_bps=stress_fee,
         fee_stress_slippage_bps=stress_slip,
         cost_note=(
-            "fee_bps is max(PRETRADE_FEE_BPS, PAPER_FEE_BPS); "
+            "fee_bps is max(PRETRADE_FEE_BPS, PAPER_FEE_TIER taker; PAPER_FEE_BPS when modelled); "
             "slippage_bps is PRETRADE_SLIPPAGE_BPS. Every fill pays both. "
             f"Gate C re-scores at {FEE_STRESS_MULTIPLIER:g}× both legs."
         ),
@@ -758,6 +763,8 @@ def run_harder_gates(
         honesty=honesty,
         data_notes=list(data_notes or []),
         yahoo_notes=yahoo_notes,
+        # --- fee realism (#138) ---
+        fee_tier=fee_tier,
     )
 
 
@@ -787,6 +794,8 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
             f"{report.fee_stress_fee_bps:g} bps + slippage="
             f"{report.fee_stress_slippage_bps:g} bps ({report.cost_note})"
         ),
+        # --- fee realism (#138) ---
+        *([report.fee_tier.render_line()] if report.fee_tier is not None else []),
         (
             f"Walk-forward: train={report.train_size} test={report.test_size} "
             f"step={report.step_size}; holdout_fraction={report.holdout_fraction:.0%} "

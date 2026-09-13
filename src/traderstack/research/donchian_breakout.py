@@ -55,6 +55,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
+from traderstack.fee_tiers import FeeTierStamp
 from traderstack.models import Side
 from traderstack.research.binance_spot import BINANCE_TAKER_BPS_NOTE
 from traderstack.research.candidates import AlwaysOnTrendStrategy
@@ -531,6 +532,8 @@ class DonchianBreakoutReport(BaseModel):
     kraken_cap_note: str = KRAKEN_DAILY_CAP_NOTE
     paper_path_note: str = PAPER_EXECUTABLE_PATH_NOTE
     data_notes: list[str] = Field(default_factory=list)
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None
 
 
 def _recommendation(
@@ -615,6 +618,8 @@ def run_donchian_breakout_search(
     binance_source: str | None = None,
     now: datetime | None = None,
     data_notes: list[str] | None = None,
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None,
 ) -> DonchianBreakoutReport:
     generated = now or datetime.now(UTC)
     kraken = _score_symbols_only(kraken_histories)
@@ -798,6 +803,8 @@ def run_donchian_breakout_search(
             eth_carried=eth_carried_ids,
         ),
         data_notes=notes,
+        # --- fee realism (#138) ---
+        fee_tier=fee_tier,
     )
 
 
@@ -891,6 +898,8 @@ def render_donchian_breakout_markdown(
             f"{report.train_size} test={report.test_size} step="
             f"{report.step_size}; holdout_fraction={report.holdout_fraction:.0%}."
         ),
+        # --- fee realism (#138) ---
+        *([report.fee_tier.render_line()] if report.fee_tier is not None else []),
         (
             f"Primary Kraken first bar: {report.primary_first} "
             f"(source=`{report.primary_first_source}`; last="
