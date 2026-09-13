@@ -79,6 +79,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import json
 import io
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -953,6 +954,7 @@ def _hyperliquid_ctx_for(payload: object, coin: str) -> dict[str, Any] | None:
 
 
 ASILLETTO81_CACHE_DIR = Path("var/ops/basis_cache/asilletto81/asset_ctxs")
+ASILLETTO81_COMPACT_PATH = Path("var/ops/basis_cache/asilletto81/daily_mark_oracle.json")
 
 
 def utc_day(ts: datetime) -> datetime:
@@ -1026,6 +1028,41 @@ async def _asilletto_download_day(
     return response.content
 
 
+
+def _load_asilletto_compact_basis(
+    coin: str,
+    *,
+    start: datetime,
+    end: datetime,
+    path: Path | None = None,
+) -> list[tuple[datetime, float]] | None:
+    """Load precomputed daily (mark-oracle)/oracle if compact cache exists."""
+    compact = path or ASILLETTO81_COMPACT_PATH
+    if not compact.is_file():
+        return None
+    try:
+        payload = json.loads(compact.read_text())
+        rows = payload.get("series", {}).get(coin)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(rows, list) or not rows:
+        return None
+    start_d = utc_day(start)
+    end_d = utc_day(end)
+    points: list[tuple[datetime, float]] = []
+    for row in rows:
+        if not isinstance(row, list) or len(row) < 4:
+            continue
+        try:
+            day = datetime.fromisoformat(str(row[0])).replace(tzinfo=UTC)
+            basis = float(row[3])
+        except (TypeError, ValueError):
+            continue
+        day = utc_day(day)
+        if start_d <= day <= end_d:
+            points.append((day, basis))
+    return points
+
 async def fetch_asilletto81_hyperliquid_basis(
     symbol: str,
     *,
@@ -1053,6 +1090,18 @@ async def fetch_asilletto81_hyperliquid_basis(
             status="skipped",
             reason="asilletto81 freeze window empty",
             source="asilletto81/hyperliquid asset_ctxs",
+        )
+
+    compact_points = _load_asilletto_compact_basis(coin, start=start_d, end=end_d)
+    if compact_points is not None:
+        return _finish(
+            name,
+            source="huggingface:asiletto81/hyperliquid compact daily_mark_oracle",
+            points=compact_points,
+            ok_reason=(
+                f"asilletto81 compact daily (mark_px-oracle_px)/oracle_px for {coin}; "
+                f"{len(compact_points)} days in [{start_d.date()}→{end_d.date()}]."
+            ),
         )
 
     cache = cache_dir or ASILLETTO81_CACHE_DIR
