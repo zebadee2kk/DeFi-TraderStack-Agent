@@ -115,11 +115,34 @@ Notes on the implemented semantics:
   with no restart, no API call and no cooperation from the agent runtime. An
   unreachable Redis halt channel is treated as engaged.
 - **Policy version is derived.** `RiskEngine.policy_version` is
-  `RISK_POLICY_LABEL` plus a SHA-256 digest of every risk limit in force
-  (`RISK_LIMIT_FIELDS`), including the pre-trade, market-data, execution-planner
-  and Robinhood Chain policy settings enforced *around* the engine
-  (SEC-2026-09-18), so any of those changing is visible in every audit record
-  without anyone remembering to bump a string.
+  `RISK_POLICY_LABEL` plus a SHA-256 digest of every policy setting in force,
+  so any of them changing is visible in every audit record without anyone
+  remembering to bump a string. The set is declared in two halves for legibility
+  and hashed as one union (`POLICY_FIELDS`): `RISK_LIMIT_FIELDS` is what
+  `RiskEngine.evaluate` itself enforces, and `CONTROL_PLANE_FIELDS` is what is
+  enforced *around* it — the pre-trade, market-data, execution-planner,
+  reconciliation, intelligence, meta-agent-mode, trading-mode and Robinhood
+  Chain policy settings (SEC-2026-09-18). `meta_agent_mode` matters
+  particularly: off / advisory / veto decides whether a veto suppresses an order
+  at all, so those three runs must never share a version.
+- **Coverage is default-deny, not pattern-matched.** Every `Settings` field must
+  appear in `RISK_LIMIT_FIELDS`, `CONTROL_PLANE_FIELDS`, or the explicit
+  `NON_POLICY_FIELDS` exclude-list in `policy_fields.py`, each entry grouped
+  under its reason.
+  `tests/security/test_policy_version_covers_every_setting.py` fails on any
+  field in none of the three, so a new gate cannot be added without someone
+  deciding whether it is policy. An include-list — even a regex over field
+  names — would reproduce SEC-2026-09-18 one layer up, because a future gate
+  named outside the pattern would be silently left out of the digest. An
+  exclude-list can only fail the harmless way: a non-policy field gets versioned
+  too.
+- **Deliberately not policy.** `opportunity_diagnostic_mode` can only withhold a
+  fill, never authorise one, and
+  `tests/security/test_diagnostic_mode_cannot_relax_controls.py` pins that it
+  leaves the digest unmoved. Research promotion and search bars
+  (`PAPER_PROMOTE_*`, `PAPER_SEARCH_*`) are likewise excluded, pinned by
+  `test_promotion_settings_do_not_move_risk_policy_version`: they gate which
+  strategy the paper path may run, not how much risk it may take.
 - **Every decision is evidence.** Each `evaluate` result recorded by the service
   is appended to a hash-chained JSONL file carrying the proposal, the full
   result, the policy version and the limits in force (inline and hashed).
