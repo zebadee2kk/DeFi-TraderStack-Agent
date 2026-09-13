@@ -585,3 +585,119 @@ def test_cli_writes_json_and_markdown(tmp_path: Path) -> None:
     assert "Expanded catalog harder-gates report" in text
     assert "PAPER_PROMOTE" in text
     assert RANKING_KEY in text
+
+
+# --- search evidence (#135) ---
+def test_report_carries_catalog_evidence_with_print_kind_venue() -> None:
+    from traderstack.research.evidence import CatalogEvidence
+
+    report = _search(
+        {
+            "BTC/USD@1d": downtrend(720, symbol="BTC/USD"),
+            "ETH/USD@1d": downtrend(720, symbol="ETH/USD"),
+        }
+    )
+    assert isinstance(report.evidence, CatalogEvidence)
+    assert report.evidence.trial_count == len(_ema_catalog())
+    assert report.print_kind == "venue"
+    assert set(report.evidence_passer_ids) <= set(report.combined_passer_ids)
+    for row in report.candidates:
+        assert row.evidence is not None
+        assert row.evidence.candidate_id == row.candidate_id
+        assert row.evidence_pass is row.evidence.evidence_pass
+        if row.promoted:
+            assert row.evidence_pass is True
+    rendered = render_harder_gates_markdown(report)
+    assert "## Evidence (DSR / PBO / bootstrap; additional gates)" in rendered
+    assert "Print kind: `venue`" in rendered
+
+
+def test_cli_json_carries_evidence_fields(tmp_path: Path) -> None:
+    btc = tmp_path / "btc.json"
+    eth = tmp_path / "eth.json"
+    write_candles(btc, downtrend(720, symbol="BTC/USD"))
+    write_candles(eth, downtrend(720, symbol="ETH/USD"))
+    out_json = tmp_path / "ops" / "report.json"
+    out_md = tmp_path / "ops" / "report.md"
+    args = build_parser().parse_args(
+        [
+            "--candles",
+            str(btc),
+            "--candles",
+            str(eth),
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+            "--train-size",
+            "80",
+            "--test-size",
+            "40",
+            "--step-size",
+            "40",
+            "--min-trades",
+            "1",
+            "--fee-bps",
+            "10",
+            "--catalog",
+            "legacy",
+            "--no-yahoo",
+        ]
+    )
+    written_json, _written_md = run(args, settings=settings())
+    payload = json.loads(written_json.read_text())
+    assert "evidence" in payload
+    assert payload["print_kind"] == "venue"
+    assert payload["evidence_passer_ids"] == []
+    assert payload["evidence"]["trial_count"] == len(payload["candidates"])
+    assert "DSR >= 0.95" in payload["evidence_rules"]
+
+
+def test_combined_passer_with_failing_evidence_is_not_promoted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from traderstack.research import harder_gates as module
+    from traderstack.research.evidence import CandidateEvidence, CatalogEvidence
+
+    def fake_apply(rows: list[CandidateHarderResult]) -> CandidateHarderResult | None:
+        for row in rows:
+            row.selected = False
+            row.promoted = False
+        winner = rows[0]
+        winner.combined = True
+        winner.combined_rank = 1
+        winner.selected = True
+        winner.promoted = True
+        return winner
+
+    def fake_evidence(report, **kwargs):  # type: ignore[no-untyped-def]
+        return CatalogEvidence(
+            trial_count=len(report.candidates),
+            candidates=[
+                CandidateEvidence(
+                    candidate_id=row.candidate_id,
+                    evidence_pass=False,
+                    reasons=["BTC/USD:pbo_above_max"],
+                )
+                for row in report.candidates
+            ],
+        )
+
+    monkeypatch.setattr(module, "apply_combined_promotion", fake_apply)
+    monkeypatch.setattr(module, "evaluate_catalog_evidence", fake_evidence)
+    report = _search(
+        {
+            "BTC/USD@1d": downtrend(720, symbol="BTC/USD"),
+            "ETH/USD@1d": downtrend(720, symbol="ETH/USD"),
+        }
+    )
+    winner = report.candidates[0]
+    assert winner.selected is True and winner.combined is True
+    assert winner.promoted is False
+    assert report.promoted_candidate_ids == []
+    assert report.recommended_promote_flag is None
+    assert report.any_promoted is False
+    assert report.selected_candidate_id == winner.candidate_id
+    rendered = render_harder_gates_markdown(report)
+    assert "withheld by the evidence layer" in rendered
+    assert "BTC/USD:pbo_above_max" in rendered

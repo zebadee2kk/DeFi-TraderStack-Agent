@@ -56,6 +56,14 @@ from traderstack.research.daily_robustness import (
     run_daily_robustness,
     series_for_asset,
 )
+from traderstack.research.evidence import (  # --- search evidence (#135) ---
+    EVIDENCE_RULES,
+    PRINT_KIND_VENUE,
+    CandidateEvidence,
+    CatalogEvidence,
+    evaluate_catalog_evidence,
+    render_evidence_lines,
+)
 from traderstack.research.miles_candidates import SearchCandidate
 from traderstack.research.miles_search import (
     CandidateSearchResult,
@@ -381,6 +389,11 @@ class CandidateHarderResult(BaseModel):
     gate_c_reasons: list[str] = Field(default_factory=list)
     combined: bool = False
     promoted: bool = False
+    # --- search evidence (#135) ---
+    # DSR / PBO / bootstrap evidence for this candidate (additional gate;
+    # can only withhold a promotion, never create one).
+    evidence: CandidateEvidence | None = None
+    evidence_pass: bool = False
 
 
 class HarderGatesReport(BaseModel):
@@ -424,6 +437,11 @@ class HarderGatesReport(BaseModel):
     honesty: str
     data_notes: list[str] = Field(default_factory=list)
     yahoo_notes: list[str] = Field(default_factory=list)
+    # --- search evidence (#135) ---
+    evidence: CatalogEvidence | None = None
+    print_kind: str = PRINT_KIND_VENUE
+    evidence_passer_ids: list[str] = Field(default_factory=list)
+    evidence_rules: str = EVIDENCE_RULES
 
 
 def paper_promote_flag_name(candidate_id: str) -> str:
@@ -643,6 +661,32 @@ def run_harder_gates(
         )
 
     selected = apply_combined_promotion(rows)
+    # --- search evidence (#135) ---
+    # Additional gate applied after the frozen ranking/selection: a raw
+    # combined top-1 keeps selected=True / combined=True (the raw pass is
+    # still shown) but is not promoted when its evidence fails. Evidence
+    # never promotes a non-passer and never reorders the ranking.
+    evidence = evaluate_catalog_evidence(baseline, interval=promotion_interval)
+    evidence_by_id = {item.candidate_id: item for item in evidence.candidates}
+    for row in rows:
+        row.evidence = evidence_by_id.get(row.candidate_id)
+        row.evidence_pass = bool(row.evidence is not None and row.evidence.evidence_pass)
+    evidence_withheld: list[str] = []
+    if selected is not None and not selected.evidence_pass:
+        selected.promoted = False
+        evidence_withheld = (
+            list(selected.evidence.reasons) if selected.evidence else ["evidence_missing"]
+        )
+    evidence_passer_ids = [
+        row.candidate_id
+        for row in sorted(
+            (item for item in rows if item.combined and item.evidence_pass),
+            key=lambda item: (
+                item.combined_rank if item.combined_rank is not None else 10**9,
+                item.candidate_id,
+            ),
+        )
+    ]
     wf_top1 = next((row for row in rows if row.wf_rank == 1), None)
     promoted_ids = [row.candidate_id for row in rows if row.promoted]
     combined_ids = [row.candidate_id for row in rows if row.combined]
@@ -677,7 +721,16 @@ def run_harder_gates(
             f"Gate C fee stress: {'PASS' if ema_c else 'FAIL'}. "
             f"Combined: {'PASS' if ema_combined else 'FAIL'}."
         )
-    if selected is None or not selected.promoted:
+    if selected is not None and evidence_withheld:
+        # --- search evidence (#135) ---
+        honesty += (
+            f" Combined-passer top-1 {selected.candidate_id} cleared #96+A+B+C "
+            "but the evidence layer withheld promotion (DSR >= 0.95, PBO <= 0.50, "
+            "expectancy CI > 0 on BTC and ETH; additional gates, never "
+            f"replacements): {', '.join(evidence_withheld)}. Paper promotion "
+            "must stay off."
+        )
+    elif selected is None or not selected.promoted:
         honesty += (
             " No candidate cleared the combined harder-gates bar; paper promotion must stay off."
         )
@@ -758,6 +811,11 @@ def run_harder_gates(
         honesty=honesty,
         data_notes=list(data_notes or []),
         yahoo_notes=yahoo_notes,
+        # --- search evidence (#135) ---
+        evidence=evidence,
+        print_kind=evidence.print_kind,
+        evidence_passer_ids=evidence_passer_ids,
+        evidence_rules=EVIDENCE_RULES,
     )
 
 
@@ -1027,6 +1085,18 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
             lines.append(f"- {note}")
         lines.append("")
 
+    # --- search evidence (#135) ---
+    lines.append(
+        f"Print kind: `{report.print_kind}` (era prints are #136; evidence passers: "
+        f"{len(report.evidence_passer_ids)})."
+    )
+    lines.append("")
+    lines.extend(
+        render_evidence_lines(
+            report.evidence, heading="## Evidence (DSR / PBO / bootstrap; additional gates)"
+        )
+    )
+
     lines.extend(["## Promotion decision", ""])
     lines.append(
         f"`ema_9_21` #96 balanced-holdout: "
@@ -1084,6 +1154,17 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
         if not report.ema_9_21_combined:
             lines.append(
                 "`ema_9_21` does **not** clear the combined harder-gates bar on this window."
+            )
+        # --- search evidence (#135) ---
+        if report.selected_candidate_id:
+            withheld = next(
+                row for row in report.candidates if row.candidate_id == report.selected_candidate_id
+            )
+            reasons = ", ".join(withheld.evidence.reasons) if withheld.evidence else "n/a"
+            lines.append(
+                f"Raw combined top-1 `{withheld.candidate_id}` cleared #96+A+B+C but was "
+                f"**withheld by the evidence layer** ({reasons}). Evidence is an "
+                "additional gate, never a replacement; it cannot promote."
             )
     lines.append("")
     lines.append(

@@ -39,6 +39,16 @@ from traderstack.research.daily_candidates import (
     default_dual_print_search_candidates,
 )
 from traderstack.research.daily_robustness import KRAKEN_DAILY_CAP_NOTE, is_yahoo_symbol
+from traderstack.research.evidence import (  # --- search evidence (#135) ---
+    EVIDENCE_RULES,
+    PRINT_KIND_VENUE,
+    CandidateEvidence,
+    CatalogEvidence,
+    EraCoverage,
+    era_coverage,
+    render_era_coverage_lines,
+    render_evidence_lines,
+)
 from traderstack.research.harder_gates import (
     HARDER_GATES_NOTE,
     CandidateHarderResult,
@@ -137,6 +147,17 @@ class DualPrintRow(BaseModel):
     binance_gate_c: bool = False
     selected: bool = False
     can_promote: bool = False
+    # --- search evidence (#135) ---
+    # Per-print DSR / PBO / bootstrap evidence. evidence_pass requires
+    # dual_print AND both prints' evidence; evidence_selected marks the
+    # first ranked dual-print passer whose evidence also passes. Neither
+    # changes dual_print, dual_print_rank or selected (raw pass stays shown).
+    kraken_evidence: CandidateEvidence | None = None
+    binance_evidence: CandidateEvidence | None = None
+    kraken_evidence_pass: bool = False
+    binance_evidence_pass: bool = False
+    evidence_pass: bool = False
+    evidence_selected: bool = False
 
 
 class DualPrintReport(BaseModel):
@@ -178,6 +199,14 @@ class DualPrintReport(BaseModel):
     fee_note: str = BINANCE_TAKER_BPS_NOTE
     kraken_cap_note: str = KRAKEN_DAILY_CAP_NOTE
     data_notes: list[str] = Field(default_factory=list)
+    # --- search evidence (#135) ---
+    print_kind: str = PRINT_KIND_VENUE
+    kraken_evidence: CatalogEvidence | None = None
+    binance_evidence: CatalogEvidence | None = None
+    evidence_passer_ids: list[str] = Field(default_factory=list)
+    evidence_selected_candidate_id: str | None = None
+    era_coverage: list[EraCoverage] = Field(default_factory=list)
+    evidence_rules: str = EVIDENCE_RULES
 
 
 def rank_dual_print_passers(rows: list[DualPrintRow]) -> list[DualPrintRow]:
@@ -197,7 +226,85 @@ def rank_dual_print_passers(rows: list[DualPrintRow]) -> list[DualPrintRow]:
         row.dual_print_rank = index
         row.selected = index == 1
         row.can_promote = False
+    # --- search evidence (#135) ---
+    # Evidence never reorders: the first ranked passer whose evidence also
+    # passes is evidence_selected. A non-dual-print row can never be.
+    for row in rows:
+        row.evidence_selected = False
+    for row in passers:
+        if row.dual_print and row.evidence_pass:
+            row.evidence_selected = True
+            break
     return passers
+
+
+# --- search evidence (#135) ---
+def evidence_selected_row(rows: list[DualPrintRow]) -> DualPrintRow | None:
+    """The evidence-selected dual-print passer, if any (never a non-passer)."""
+    return next((row for row in rows if row.evidence_selected and row.dual_print), None)
+
+
+def evidence_passer_ids_of(passers: list[DualPrintRow]) -> list[str]:
+    """Dual-print passers whose evidence also passes, in ranking order."""
+    return [row.candidate_id for row in passers if row.dual_print and row.evidence_pass]
+
+
+def print_era_coverage(
+    kraken: dict[str, tuple[Candle, ...]],
+    remapped: dict[str, tuple[Candle, ...]],
+    *,
+    binance_source: str | None,
+) -> list[EraCoverage]:
+    """Era coverage for the Kraken primary and the remapped Binance slice."""
+    return era_coverage(kraken, venue="kraken") + era_coverage(
+        remapped, venue=binance_source or "binance_spot"
+    )
+
+
+def evidence_summary(*, evidence_ids: list[str], evidence_selected_id: str | None) -> str:
+    """Honesty sentence shared by the dual-print families."""
+    text = (
+        f" Evidence passers: {len(evidence_ids)} (DSR>=0.95, PBO<=0.50, "
+        "expectancy CI>0 on both prints; additional gates, never replacements)."
+    )
+    if evidence_selected_id is None:
+        text += (
+            " No dual-print passer also clears the evidence layer; the "
+            "recommended promote flag is withheld (None)."
+        )
+    else:
+        text += f" Evidence-selected: `{evidence_selected_id}` (first ranked passer with evidence)."
+    return text
+
+
+def print_policy_lines(
+    *,
+    print_kind: str,
+    era_rows: list[EraCoverage],
+    evidence_ids: list[str],
+    evidence_selected_id: str | None,
+) -> list[str]:
+    """Print-policy line + era-coverage table."""
+    lines = [
+        (
+            f"Print policy: print_kind=`{print_kind}` (venue prints: Kraken primary + "
+            "Binance.US older-720; era prints are #136). Evidence passers: "
+            f"{len(evidence_ids)}; evidence-selected: "
+            f"{('`' + evidence_selected_id + '`') if evidence_selected_id else 'none'}."
+        ),
+        "",
+        "## Print policy / era coverage",
+        "",
+        (
+            "Frozen era windows (#136 boundaries). An era is scoreable only with "
+            "at least 720 bars on every series of that venue; a missing era is a "
+            "skip, never a zero."
+        ),
+        "",
+    ]
+    lines.extend(render_era_coverage_lines(era_rows))
+    lines.append("")
+    return lines
 
 
 def _kraken_only(histories: dict[str, tuple[Candle, ...]]) -> dict[str, tuple[Candle, ...]]:
@@ -336,6 +443,13 @@ def _merge_row(
         binance_gate_c=binance_row.gate_c_pass,
         selected=False,
         can_promote=False,
+        # --- search evidence (#135) ---
+        kraken_evidence=kraken_row.evidence,
+        binance_evidence=binance_row.evidence,
+        kraken_evidence_pass=kraken_row.evidence_pass,
+        binance_evidence_pass=binance_row.evidence_pass,
+        evidence_pass=bool(dual and kraken_row.evidence_pass and binance_row.evidence_pass),
+        evidence_selected=False,
     )
 
 
@@ -345,6 +459,8 @@ def _recommendation(
     dual_ids: list[str],
     kraken_ids: list[str],
     binance_meta: SliceMeta,
+    evidence_ids: list[str] | None = None,
+    evidence_selected_id: str | None = None,
 ) -> str:
     lines = [
         (
@@ -384,6 +500,15 @@ def _recommendation(
             f"Documented paper-only name would be `{flag}` "
             "(default **false** if added). This run does not flip it."
         )
+    # --- search evidence (#135) ---
+    evidence_ids = evidence_ids or []
+    lines.append(
+        f"- Evidence passers: {len(evidence_ids)} (DSR>=0.95, PBO<=0.50, expectancy CI>0)"
+        + (f" (`{'`, `'.join(evidence_ids)}`)" if evidence_ids else "")
+        + ". Additional gates, never replacements. The recommended flag "
+        "is derived from the evidence-selected passer"
+        + (f": `{evidence_selected_id}`." if evidence_selected_id else "; none, so it is None.")
+    )
     lines.append("- Do not enable live. Do not fabricate PnL.")
     return "\n".join(lines)
 
@@ -443,6 +568,9 @@ def run_dual_print_search(
         now=generated,
     )
     kraken_by_id = {row.candidate_id: row for row in kraken_report.candidates}
+    # --- search evidence (#135) ---
+    kraken_evidence = kraken_report.evidence
+    binance_evidence: CatalogEvidence | None = None
 
     binance_by_id: dict[str, CandidateHarderResult] = {}
     if binance_meta.available:
@@ -462,6 +590,8 @@ def run_dual_print_search(
             now=generated,
         )
         binance_by_id = {row.candidate_id: row for row in binance_report.candidates}
+        # --- search evidence (#135) ---
+        binance_evidence = binance_report.evidence
 
     rows = [
         _merge_row(
@@ -485,7 +615,15 @@ def run_dual_print_search(
         )
     ]
     binance_ids = [row.candidate_id for row in rows if row.binance_combined]
-    recommended = paper_promote_flag_name(selected.candidate_id) if selected is not None else None
+    # --- search evidence (#135) ---
+    # selected_candidate_id / dual_print_passer_ids stay raw; the recommended
+    # flag is derived from the evidence-selected passer (evidence can only
+    # withhold).
+    evidence_selected = evidence_selected_row(passers)
+    evidence_ids = evidence_passer_ids_of(passers)
+    evidence_selected_id = evidence_selected.candidate_id if evidence_selected else None
+    recommended = paper_promote_flag_name(evidence_selected_id) if evidence_selected_id else None
+    eras = print_era_coverage(kraken, remapped, binance_source=binance_source)
     honesty = (
         DUAL_PRINT_RULES
         + " "
@@ -508,6 +646,10 @@ def run_dual_print_search(
             f"{RANKING_KEY}. Document a paper-only pin only; default "
             "false; do not enable live."
         )
+    # --- search evidence (#135) ---
+    honesty += evidence_summary(
+        evidence_ids=evidence_ids, evidence_selected_id=evidence_selected_id
+    )
 
     return DualPrintReport(
         generated_at=generated,
@@ -547,8 +689,18 @@ def run_dual_print_search(
             dual_ids=dual_ids,
             kraken_ids=kraken_ids,
             binance_meta=binance_meta,
+            evidence_ids=evidence_ids,
+            evidence_selected_id=evidence_selected_id,
         ),
         data_notes=list(data_notes or []),
+        # --- search evidence (#135) ---
+        print_kind=PRINT_KIND_VENUE,
+        kraken_evidence=kraken_evidence,
+        binance_evidence=binance_evidence,
+        evidence_passer_ids=evidence_ids,
+        evidence_selected_candidate_id=evidence_selected_id,
+        era_coverage=eras,
+        evidence_rules=EVIDENCE_RULES,
     )
 
 
@@ -635,7 +787,13 @@ def render_dual_print_markdown(report: DualPrintReport) -> str:
             f"`can_average_venues={str(report.can_average_venues).lower()}`; "
             f"`keep_flag_false={str(report.keep_flag_false).lower()}`."
         ),
-        "",
+        # --- search evidence (#135) ---
+        *print_policy_lines(
+            print_kind=report.print_kind,
+            era_rows=report.era_coverage,
+            evidence_ids=report.evidence_passer_ids,
+            evidence_selected_id=report.evidence_selected_candidate_id,
+        ),
         "## Honesty / pre-registered rules",
         "",
         report.honesty,
@@ -697,6 +855,17 @@ def render_dual_print_markdown(report: DualPrintReport) -> str:
                 "means zero dual-print passers (success)."
             ),
             "",
+            # --- search evidence (#135) ---
+            *render_evidence_lines(
+                report.kraken_evidence,
+                heading="## Evidence — Kraken primary (DSR / PBO / bootstrap; additional gates)",
+            ),
+            *render_evidence_lines(
+                report.binance_evidence,
+                heading=(
+                    "## Evidence — Binance.US older-720 (DSR / PBO / bootstrap; additional gates)"
+                ),
+            ),
             "## Dual-print passers (promotion ranking)",
             "",
             (
@@ -704,18 +873,19 @@ def render_dual_print_markdown(report: DualPrintReport) -> str:
                 "already clear combined on **both** prints appear here. "
                 "Empty table = no promotee (success). A new Settings pin is "
                 "added only if this table is non-empty, and then default "
-                "**false**."
+                "**false**. `evidence` is the #135 additional gate (both prints); "
+                "the recommended flag follows the evidence-selected row only."
             ),
             "",
             (
                 "| dual rank | id | Kraken mean HO | Binance mean HO | "
-                "Kraken BTC HO | Kraken ETH HO | selected | can flip flag |"
+                "Kraken BTC HO | Kraken ETH HO | selected | evidence | can flip flag |"
             ),
-            "| ---: | --- | ---: | ---: | ---: | ---: | :---: | :---: |",
+            "| ---: | --- | ---: | ---: | ---: | ---: | :---: | :---: | :---: |",
         ]
     )
     if not dual_rows:
-        lines.append("| — | — | n/a | n/a | n/a | n/a | no | no |")
+        lines.append("| — | — | n/a | n/a | n/a | n/a | no | no | no |")
     else:
         for row in dual_rows:
             lines.append(
@@ -723,7 +893,9 @@ def render_dual_print_markdown(report: DualPrintReport) -> str:
                 f"{_pct(row.kraken_mean_holdout_excess)} | "
                 f"{_pct(row.binance_mean_holdout_excess)} | "
                 f"{_pct(row.kraken_btc_holdout)} | {_pct(row.kraken_eth_holdout)} | "
-                f"{'yes' if row.selected else 'no'} | no |"
+                f"{'yes' if row.selected else 'no'} | "
+                f"{_verdict(row.evidence_pass)}"
+                f"{' (selected)' if row.evidence_selected else ''} | no |"
             )
     lines.extend(
         [

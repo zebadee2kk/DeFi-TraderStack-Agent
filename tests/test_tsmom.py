@@ -547,3 +547,62 @@ def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     assert "Keep every `PAPER_PROMOTE_*=false`" in text
     assert settings().paper_promote_ema_9_21 is False
     assert settings().paper_promote_ema_9_21_adx15 is False
+
+
+# --- search evidence (#135) ---
+def test_cli_payload_carries_evidence_fields(tmp_path: Path) -> None:
+    from traderstack.research.evidence import ERA_WINDOWS
+
+    primary = datetime(2024, 9, 22, tzinfo=UTC)
+    older = datetime(2022, 10, 3, tzinfo=UTC)
+    btc = tmp_path / "btc.json"
+    eth = tmp_path / "eth.json"
+    btc_usdt = tmp_path / "btcusdt.json"
+    eth_usdt = tmp_path / "ethusdt.json"
+    write_candles(btc, downtrend(240, symbol="BTC/USD", start=primary))
+    write_candles(eth, downtrend(240, symbol="ETH/USD", start=primary))
+    write_candles(btc_usdt, downtrend(720, symbol="BTCUSDT", start=older))
+    write_candles(eth_usdt, downtrend(720, symbol="ETHUSDT", start=older))
+    out_json = tmp_path / "ops" / "tsmom.json"
+    out_md = tmp_path / "ops" / "tsmom.md"
+    parsed = build_parser().parse_args(
+        [
+            "--candles",
+            str(btc),
+            "--candles",
+            str(eth),
+            "--binance-candles",
+            str(btc_usdt),
+            "--binance-candles",
+            str(eth_usdt),
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+            "--train-size",
+            "80",
+            "--test-size",
+            "40",
+            "--step-size",
+            "40",
+            "--min-trades",
+            "1",
+            "--fee-bps",
+            "10",
+        ]
+    )
+    written_json, written_md = run(parsed, settings=settings(), candidates=_tiny_catalog())
+    payload = json.loads(written_json.read_text())
+    assert payload["print_kind"] == "venue"
+    assert payload["evidence_passer_ids"] == []
+    assert payload["evidence_selected_candidate_id"] is None
+    assert payload["recommended_promote_flag"] is None
+    assert "kraken_evidence" in payload
+    assert payload["kraken_evidence"]["trial_count"] == len(_tiny_catalog())
+    assert len(payload["era_coverage"]) == 2 * len(ERA_WINDOWS)
+    assert "DSR >= 0.95" in payload["evidence_rules"]
+    text = written_md.read_text()
+    assert "## Evidence" in text
+    assert "print_kind=`venue`" in text
+    assert "Evidence passers: 0" in text
+    assert settings().paper_promote_ema_9_21 is False

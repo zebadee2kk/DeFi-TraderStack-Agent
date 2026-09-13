@@ -391,3 +391,130 @@ def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     assert "Keep every `PAPER_PROMOTE_*=false`" in text
     assert settings().paper_promote_ema_9_21 is False
     assert settings().paper_promote_ema_9_21_adx15 is False
+
+
+# --- search evidence (#135) ---
+def _evidence_row(
+    candidate_id: str,
+    *,
+    dual_print: bool,
+    kraken_ho: float,
+    evidence_pass: bool,
+) -> DualPrintRow:
+    return DualPrintRow(
+        candidate_id=candidate_id,
+        family="ema_cross",
+        label=candidate_id,
+        kraken_combined=dual_print,
+        binance_combined=dual_print,
+        dual_print=dual_print,
+        kraken_mean_holdout_excess=kraken_ho,
+        evidence_pass=evidence_pass,
+    )
+
+
+def test_evidence_selected_only_on_a_row_with_evidence() -> None:
+    rows = [
+        _evidence_row("raw_top", dual_print=True, kraken_ho=0.30, evidence_pass=False),
+        _evidence_row("evidence_second", dual_print=True, kraken_ho=0.20, evidence_pass=True),
+        _evidence_row("not_dual", dual_print=False, kraken_ho=0.90, evidence_pass=True),
+    ]
+    passers = rank_dual_print_passers(rows)
+    assert [row.candidate_id for row in passers] == ["raw_top", "evidence_second"]
+    assert passers[0].selected is True
+    assert passers[0].evidence_selected is False
+    assert passers[1].evidence_selected is True
+    assert rows[2].evidence_selected is False
+    assert all(row.can_promote is False for row in rows)
+
+
+def test_merged_row_requires_both_prints_evidence() -> None:
+    from traderstack.research.dual_print_search import _merge_row
+    from traderstack.research.evidence import CandidateEvidence
+    from traderstack.research.harder_gates import CandidateHarderResult
+
+    candidate = _tiny_catalog()[0]
+
+    def harder(*, combined: bool, evidence_pass: bool) -> CandidateHarderResult:
+        return CandidateHarderResult(
+            candidate_id=candidate.candidate_id,
+            family=candidate.family,
+            label=candidate.label,
+            combined=combined,
+            evidence=CandidateEvidence(
+                candidate_id=candidate.candidate_id, evidence_pass=evidence_pass
+            ),
+            evidence_pass=evidence_pass,
+        )
+
+    passing = harder(combined=True, evidence_pass=True)
+    both = _merge_row(candidate, passing, harder(combined=True, evidence_pass=True))
+    assert both.dual_print is True and both.evidence_pass is True
+    assert both.kraken_evidence is not None and both.binance_evidence is not None
+    one = _merge_row(candidate, passing, harder(combined=True, evidence_pass=False))
+    assert one.dual_print is True and one.evidence_pass is False
+    raw_fail = _merge_row(candidate, passing, harder(combined=False, evidence_pass=True))
+    assert raw_fail.dual_print is False and raw_fail.evidence_pass is False
+    missing = _merge_row(candidate, passing, None)
+    assert missing.binance_evidence is None and missing.evidence_pass is False
+
+
+def test_cli_payload_carries_print_kind_evidence_and_era_coverage(tmp_path: Path) -> None:
+    from traderstack.research.evidence import ERA_WINDOWS
+
+    primary = datetime(2024, 9, 22, tzinfo=UTC)
+    older = datetime(2022, 10, 3, tzinfo=UTC)
+    btc = tmp_path / "btc.json"
+    eth = tmp_path / "eth.json"
+    btc_usdt = tmp_path / "btcusdt.json"
+    eth_usdt = tmp_path / "ethusdt.json"
+    write_candles(btc, downtrend(240, symbol="BTC/USD", start=primary))
+    write_candles(eth, downtrend(240, symbol="ETH/USD", start=primary))
+    write_candles(btc_usdt, downtrend(720, symbol="BTCUSDT", start=older))
+    write_candles(eth_usdt, downtrend(720, symbol="ETHUSDT", start=older))
+    out_json = tmp_path / "ops" / "dual.json"
+    out_md = tmp_path / "ops" / "dual.md"
+    parsed = build_parser().parse_args(
+        [
+            "--candles",
+            str(btc),
+            "--candles",
+            str(eth),
+            "--binance-candles",
+            str(btc_usdt),
+            "--binance-candles",
+            str(eth_usdt),
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+            "--train-size",
+            "80",
+            "--test-size",
+            "40",
+            "--step-size",
+            "40",
+            "--min-trades",
+            "1",
+            "--fee-bps",
+            "10",
+        ]
+    )
+    written_json, written_md = run(parsed, settings=settings(), candidates=_tiny_catalog())
+    payload = json.loads(written_json.read_text())
+    assert payload["print_kind"] == "venue"
+    assert payload["kraken_evidence"] is not None
+    assert payload["kraken_evidence"]["trial_count"] == len(_tiny_catalog())
+    assert payload["evidence_passer_ids"] == []
+    assert payload["evidence_selected_candidate_id"] is None
+    assert payload["recommended_promote_flag"] is None
+    assert len(payload["era_coverage"]) == 2 * len(ERA_WINDOWS)
+    venues = {row["venue"] for row in payload["era_coverage"]}
+    assert venues == {"kraken", "binance_json"}
+    assert all(row["scoreable"] is False for row in payload["era_coverage"])
+    assert "DSR >= 0.95" in payload["evidence_rules"]
+    text = written_md.read_text()
+    assert "## Evidence" in text
+    assert "DSR" in text
+    assert "## Print policy / era coverage" in text
+    assert "print_kind=`venue`" in text

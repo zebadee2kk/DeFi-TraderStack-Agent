@@ -223,7 +223,10 @@ def run(
             f"btc_wf_fail={len(report.btc_wf_fail_ids)}; "
             f"ranking_key={report.ranking_key}; "
             f"paper_path_ready={report.paper_path_ready}; "
-            f"keep_flag_false={report.keep_flag_false}). "
+            f"keep_flag_false={report.keep_flag_false}; "
+            # --- search evidence (#135) ---
+            f"evidence_passers={len(report.evidence_passer_ids)}; "
+            f"print_kind={report.print_kind}). "
             "PAPER_PROMOTE_* flags are unchanged."
         )
     return args.output_json, args.output_md

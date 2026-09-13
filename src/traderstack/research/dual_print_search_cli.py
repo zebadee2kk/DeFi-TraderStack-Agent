@@ -212,7 +212,10 @@ def run(
             f"kraken_combined={len(report.kraken_combined_passer_ids)}; "
             f"binance_combined={len(report.binance_combined_passer_ids)}; "
             f"ranking_key={report.ranking_key}; "
-            f"keep_flag_false={report.keep_flag_false}). "
+            f"keep_flag_false={report.keep_flag_false}; "
+            # --- search evidence (#135) ---
+            f"evidence_passers={len(report.evidence_passer_ids)}; "
+            f"print_kind={report.print_kind}). "
             "PAPER_PROMOTE_* flags are unchanged."
         )
     return args.output_json, args.output_md

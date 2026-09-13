@@ -59,7 +59,7 @@ from traderstack.models import Side
 from traderstack.research.binance_spot import BINANCE_TAKER_BPS_NOTE
 from traderstack.research.candidates import AlwaysOnTrendStrategy
 from traderstack.research.daily_robustness import KRAKEN_DAILY_CAP_NOTE
-from traderstack.research.dual_print_search import (
+from traderstack.research.dual_print_search import (  # evidence_*/print_* are #135
     CAN_AVERAGE_VENUES,
     CAN_ENTER_PROMOTION_AVERAGE,
     MULTI_VENUE_BAR_PREREGISTERED,
@@ -69,7 +69,19 @@ from traderstack.research.dual_print_search import (
     _binance_slice_meta,
     _merge_row,
     _score,
+    evidence_passer_ids_of,
+    evidence_selected_row,
+    evidence_summary,
+    print_era_coverage,
+    print_policy_lines,
     rank_dual_print_passers,
+)
+from traderstack.research.evidence import (  # --- search evidence (#135) ---
+    EVIDENCE_RULES,
+    PRINT_KIND_VENUE,
+    CatalogEvidence,
+    EraCoverage,
+    render_evidence_lines,
 )
 from traderstack.research.harder_gates import (
     HARDER_GATES_NOTE,
@@ -513,6 +525,14 @@ class TimeSeriesMomentumReport(BaseModel):
     kraken_cap_note: str = KRAKEN_DAILY_CAP_NOTE
     paper_path_note: str = PAPER_EXECUTABLE_PATH_NOTE
     data_notes: list[str] = Field(default_factory=list)
+    # --- search evidence (#135) ---
+    print_kind: str = PRINT_KIND_VENUE
+    kraken_evidence: CatalogEvidence | None = None
+    binance_evidence: CatalogEvidence | None = None
+    evidence_passer_ids: list[str] = Field(default_factory=list)
+    evidence_selected_candidate_id: str | None = None
+    era_coverage: list[EraCoverage] = Field(default_factory=list)
+    evidence_rules: str = EVIDENCE_RULES
 
 
 def _recommendation(
@@ -523,6 +543,8 @@ def _recommendation(
     binance_meta: SliceMeta,
     eth_carried: list[str],
     btc_wf_fail: list[str],
+    evidence_ids: list[str] | None = None,
+    evidence_selected_id: str | None = None,
 ) -> str:
     lines = [
         (
@@ -579,6 +601,15 @@ def _recommendation(
             f"Documented paper-only name would be `{flag}` "
             "(default **false** if added). This run does not flip it."
         )
+    # --- search evidence (#135) ---
+    evidence_ids = evidence_ids or []
+    lines.append(
+        f"- Evidence passers: {len(evidence_ids)} (DSR>=0.95, PBO<=0.50, expectancy CI>0)"
+        + (f" (`{'`, `'.join(evidence_ids)}`)" if evidence_ids else "")
+        + ". Additional gates, never replacements. The recommended flag "
+        "is derived from the evidence-selected passer"
+        + (f": `{evidence_selected_id}`." if evidence_selected_id else "; none, so it is None.")
+    )
     lines.append(
         "- Do not enable live. Do not fabricate PnL. Do not re-run #104 "
         "or #108 EMA dual-prints. Do not re-run the #116 residual, "
@@ -646,6 +677,9 @@ def run_tsmom_search(
         now=generated,
     )
     kraken_by_id = {row.candidate_id: row for row in kraken_report.candidates}
+    # --- search evidence (#135) ---
+    kraken_evidence = kraken_report.evidence
+    binance_evidence: CatalogEvidence | None = None
 
     binance_by_id: dict[str, CandidateHarderResult] = {}
     if binance_meta.available:
@@ -667,6 +701,8 @@ def run_tsmom_search(
             now=generated,
         )
         binance_by_id = {row.candidate_id: row for row in binance_report.candidates}
+        # --- search evidence (#135) ---
+        binance_evidence = binance_report.evidence
 
     rows = [
         _merge_row(
@@ -702,7 +738,14 @@ def run_tsmom_search(
     eth_carried_ids = [row.candidate_id for row in eth_carried]
     wf_fail = btc_wf_fail_informational(rows)
     btc_wf_fail_ids = [row.candidate_id for row in wf_fail]
-    recommended = paper_promote_flag_name(selected.candidate_id) if selected is not None else None
+    # --- search evidence (#135) ---
+    # selected_candidate_id / dual_print_passer_ids stay raw; the recommended
+    # flag follows the evidence-selected passer (evidence can only withhold).
+    evidence_selected = evidence_selected_row(passers)
+    evidence_ids = evidence_passer_ids_of(passers)
+    evidence_selected_id = evidence_selected.candidate_id if evidence_selected else None
+    recommended = paper_promote_flag_name(evidence_selected_id) if evidence_selected_id else None
+    eras = print_era_coverage(kraken, remapped, binance_source=binance_source)
     honesty = (
         TSMOM_RULES
         + " "
@@ -735,6 +778,10 @@ def run_tsmom_search(
             f"{RANKING_KEY}. Document a paper-only pin only; default "
             "false; do not enable live."
         )
+    # --- search evidence (#135) ---
+    honesty += evidence_summary(
+        evidence_ids=evidence_ids, evidence_selected_id=evidence_selected_id
+    )
 
     notes = list(data_notes or [])
     if not btc or not eth:
@@ -794,8 +841,18 @@ def run_tsmom_search(
             binance_meta=binance_meta,
             eth_carried=eth_carried_ids,
             btc_wf_fail=btc_wf_fail_ids,
+            evidence_ids=evidence_ids,
+            evidence_selected_id=evidence_selected_id,
         ),
         data_notes=notes,
+        # --- search evidence (#135) ---
+        print_kind=PRINT_KIND_VENUE,
+        kraken_evidence=kraken_evidence,
+        binance_evidence=binance_evidence,
+        evidence_passer_ids=evidence_ids,
+        evidence_selected_candidate_id=evidence_selected_id,
+        era_coverage=eras,
+        evidence_rules=EVIDENCE_RULES,
     )
 
 
@@ -905,7 +962,13 @@ def render_tsmom_markdown(
             f"`paper_path_ready={str(report.paper_path_ready).lower()}`; "
             f"`keep_flag_false={str(report.keep_flag_false).lower()}`."
         ),
-        "",
+        # --- search evidence (#135) ---
+        *print_policy_lines(
+            print_kind=report.print_kind,
+            era_rows=report.era_coverage,
+            evidence_ids=report.evidence_passer_ids,
+            evidence_selected_id=report.evidence_selected_candidate_id,
+        ),
         "## Honesty / pre-registered rules",
         "",
         report.honesty,
@@ -1007,6 +1070,17 @@ def render_tsmom_markdown(
                 "and not a gate)."
             ),
             "",
+            # --- search evidence (#135) ---
+            *render_evidence_lines(
+                report.kraken_evidence,
+                heading="## Evidence — Kraken primary (DSR / PBO / bootstrap; additional gates)",
+            ),
+            *render_evidence_lines(
+                report.binance_evidence,
+                heading=(
+                    "## Evidence — Binance.US older-720 (DSR / PBO / bootstrap; additional gates)"
+                ),
+            ),
             "## Dual-print passers (promotion ranking)",
             "",
             (
@@ -1020,13 +1094,13 @@ def render_tsmom_markdown(
             (
                 "| dual rank | id | Kraken mean HO | Binance mean HO | "
                 "Kraken BTC HO | Kraken ETH HO | Kraken SOL HO | "
-                "selected | can flip flag |"
+                "selected | evidence | can flip flag |"
             ),
-            "| ---: | --- | ---: | ---: | ---: | ---: | ---: | :---: | :---: |",
+            "| ---: | --- | ---: | ---: | ---: | ---: | ---: | :---: | :---: | :---: |",
         ]
     )
     if not dual_rows:
-        lines.append("| — | — | n/a | n/a | n/a | n/a | n/a | no | no |")
+        lines.append("| — | — | n/a | n/a | n/a | n/a | n/a | no | no | no |")
     else:
         for row in dual_rows:
             lines.append(
@@ -1035,7 +1109,9 @@ def render_tsmom_markdown(
                 f"{_pct(row.binance_mean_holdout_excess)} | "
                 f"{_pct(row.kraken_btc_holdout)} | {_pct(row.kraken_eth_holdout)} | "
                 f"{_pct(row.kraken_sol_holdout)} | "
-                f"{'yes' if row.selected else 'no'} | no |"
+                f"{'yes' if row.selected else 'no'} | "
+                f"{_verdict(row.evidence_pass)}"
+                f"{' (selected)' if row.evidence_selected else ''} | no |"
             )
     lines.extend(
         [
