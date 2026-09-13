@@ -102,13 +102,17 @@ and reason string behind each control.
 - [x] venue reconciliation
 - [x] retry/timeout handling
 
-Known gap (#130 follow-up): the reducing-only quantity clamp that stops a
-protective exit overselling after adverse slippage is enforced in
-`PaperFillSimulator` but **not** in `IdempotentSubmitter` (the `--submit` /
-Hummingbot path), which holds no portfolio reference. That path is still
-covered by conservative exit sizing at origin plus the venue connector's own
-balance checks, so the fail-closed stop-loss bug does not reproduce there —
-but the invariant holds in one of the two execution paths, not both.
+The reducing-only quantity clamp that stops a protective exit overselling
+after adverse slippage (#130) is now enforced on **both** execution paths:
+`PaperFillSimulator` reads the cap from the in-memory paper book, and
+`IdempotentSubmitter` takes it from `PaperRuntime`, which passes the held
+quantity from the same `PortfolioSnapshot` the risk engine and the exit rules
+used for that cycle. A resumed `SUBMISSION_UNCERTAIN` order contributes its
+already-planned quantity as a second ceiling, so a replan at a moved price can
+only hold or shrink a reducing order. When no position view is supplied the
+order is left unclamped rather than refused — refusing a protective exit for
+want of a position view would reproduce #130's actual harm, a stop-loss that
+does not reduce risk. Covered by `tests/security/test_submitter_reduce_only.py`.
 
 ## Epic 9 — Observability
 - [x] OpenTelemetry traces

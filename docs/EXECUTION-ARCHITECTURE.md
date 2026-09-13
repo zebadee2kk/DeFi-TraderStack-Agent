@@ -419,7 +419,19 @@ execution price into one venue child order:
   the order under `EXECUTION_MIN_NOTIONAL_USD`) the planner raises
   `ExitSizingRejected` — a subclass of `ExecutionPlanRejected`, so existing
   handlers are unchanged while `PaperFillSimulator` can stamp the distinct
-  `paper_fill_invalid_exit_size` status;
+  `paper_fill_invalid_exit_size` status. Both execution paths supply the cap:
+  `PaperFillSimulator` reads it from the in-memory paper book, and
+  `IdempotentSubmitter` takes it from the caller — `PaperRuntime` passes the
+  held quantity from the same `PortfolioSnapshot` the risk engine and the exit
+  rules used for that cycle, so the submitted order is bounded by the book the
+  decision was made against rather than a separately fetched view. A resumed
+  (`SUBMISSION_UNCERTAIN`) reducing order contributes its already-planned
+  quantity as a second ceiling, so re-planning at a moved price can only hold
+  or shrink it — `notional / execution_price` grows as the price falls, which
+  is exactly where a reducing order could otherwise get bigger on a retry.
+  When the caller supplies no cap the order is left unclamped rather than
+  refused: refusing a protective exit whose position view is unavailable would
+  reproduce #130's actual harm, a stop-loss that does not reduce risk;
 - the resulting notional must reach `EXECUTION_MIN_NOTIONAL_USD`;
 - the execution price must be within `EXECUTION_MAX_SLIPPAGE_BPS` of the
   pipeline's validated tick, in *either* direction — a suspiciously favourable
