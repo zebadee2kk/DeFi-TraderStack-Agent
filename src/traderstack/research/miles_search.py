@@ -76,7 +76,10 @@ def _safe_regime(classifier: RegimeClassifier, window: tuple[Candle, ...]) -> Re
 
 
 def _strip_trade_log(metrics: BacktestMetrics) -> BacktestMetrics:
-    return metrics.model_copy(update={"trade_log": []})
+    # --- search evidence (#135) ---
+    # period_returns is captured onto SeriesCandidateMetrics before this
+    # runs so fold and holdout JSON stay lean.
+    return metrics.model_copy(update={"trade_log": [], "period_returns": []})
 
 
 def _mean(values: list[float]) -> float | None:
@@ -97,6 +100,11 @@ class SeriesCandidateMetrics(BaseModel):
     walkforward_mean_total_return: float | None = None
     holdout: BacktestMetrics | None = None
     skipped_reason: str | None = None
+    # --- search evidence (#135) ---
+    # Holdout per-bar returns and per-trade returns, captured before the
+    # trade log is stripped. Evidence only (DSR / bootstrap); never ranked on.
+    holdout_period_returns: list[float] = Field(default_factory=list)
+    holdout_trade_returns: list[float] = Field(default_factory=list)
 
 
 class CandidateSearchResult(BaseModel):
@@ -349,6 +357,9 @@ def evaluate_candidate_on_series(
         wf_reason = str(exc)
 
     holdout_metrics: BacktestMetrics | None = None
+    # --- search evidence (#135) ---
+    holdout_period_returns: list[float] = []
+    holdout_trade_returns: list[float] = []
     try:
         # Holdout trades see the research prefix as warmup (GARCH/EMA history).
         combined = research + holdout
@@ -363,6 +374,9 @@ def evaluate_candidate_on_series(
             garch_refit_every=garch_refit_every,
             garch_target_vol_ann=garch_target_vol_ann,
         )
+        # --- search evidence (#135) ---
+        holdout_period_returns = list(holdout_metrics.period_returns)
+        holdout_trade_returns = [trade.return_pct for trade in holdout_metrics.trade_log]
         holdout_metrics = _strip_trade_log(holdout_metrics)
     except ValueError:
         holdout_metrics = None
@@ -387,6 +401,9 @@ def evaluate_candidate_on_series(
         ),
         holdout=holdout_metrics,
         skipped_reason=wf_reason if walkforward is None else None,
+        # --- search evidence (#135) ---
+        holdout_period_returns=holdout_period_returns,
+        holdout_trade_returns=holdout_trade_returns,
     )
 
 

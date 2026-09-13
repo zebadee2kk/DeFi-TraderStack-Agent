@@ -50,6 +50,10 @@ class BacktestMetrics(BaseModel):
     turnover: float = Field(default=0.0, ge=0)
     total_fees: float = Field(default=0.0, ge=0)
     trade_log: list[BacktestTrade] = Field(default_factory=list)
+    # --- search evidence (#135) ---
+    # Per-bar equity returns (one per decision bar after warmup). Feeds the
+    # Deflated Sharpe / bootstrap evidence layer; stripped from fold JSON.
+    period_returns: list[float] = Field(default_factory=list)
 
 
 def _mean(values: list[float]) -> float:
@@ -235,6 +239,8 @@ def simulate_positions(
         turnover=turnover,
         total_fees=total_fees,
         trade_log=trade_log,
+        # --- search evidence (#135) ---
+        period_returns=list(returns),
     )
 
 
