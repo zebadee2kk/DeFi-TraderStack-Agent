@@ -229,7 +229,9 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
                HERE so an adverse-news or missing-candle reject cannot
                freeze a stop. Live mode skips this step. A fired rule
                becomes a reducing SELL (`strategy_id=exit-<rule>`) and
-               skips the discretionary path below.
+               skips the discretionary path below. The resulting
+               `PaperOrderIntent` carries `max_quantity` = the snapshot's
+               held quantity (#130); discretionary intents leave it None.
              - paper daily promote universe (#100 honesty): when a daily
                pin is active, a tick outside PAPER_PROMOTE_UNIVERSE /
                {BTC/USD, ETH/USD} is rejected (`promote_universe_excluded`)
@@ -410,7 +412,14 @@ execution price into one venue child order:
   price is a data-integrity signal, not a gift;
 - a deterministic `client_order_id` (the idempotency key) and `correlation_id`
   are derived from `decision_id` alone, so two processes, or the same process
-  after a restart, mint identical identifiers for the same decision.
+  after a restart, mint identical identifiers for the same decision;
+- an intent's optional `max_quantity` (#130; set only on `exit-*` intents from
+  the held quantity) is floored to the lot step and the planned quantity is
+  the *minimum* of it and notional ÷ price — it can only lower size, so
+  adverse paper slippage or a bid-side execution price can never plan a SELL
+  larger than the position. The rounds-to-zero and min-notional checks then
+  apply to the capped size, and `ExecutionPlan.quantity_capped_to_position`
+  records that the cap was binding.
 
 Every rejection is terminal for that decision: the planner never resizes,
 relaxes a bound or retries.
@@ -448,7 +457,12 @@ API. `--submit` + Hummingbot remains an optional alternate; a Hummingbot
 receipt is still not a fill (`_reconcile_trades` is). When the local paper
 fill is the book of record, Hummingbot NAV reconcile is not wired (it would
 drift) and venue trade rows for an already-`FILLED` modelled order are
-ignored so they cannot double-apply.
+ignored so they cannot double-apply. A rejected paper fill carries a bounded
+`PaperFillRejectReason` (`invalid_mid`, `decision_terminal`, `plan_rejected`,
+`short_sale`, `exit_sizing_invalid`) that prefixes `execution_reason` and
+labels `traderstack_paper_fill_rejections_total{symbol,side,reason}` (#130);
+`exit_sizing_invalid` — an exit intent that carried the held quantity and
+would still oversell — is unreachable by construction and is the alarm.
 
 **Idempotent submission** (`execution/submitter.py`). `IdempotentSubmitter`
 writes the `PLANNED` order to the ledger *before* calling the venue, so a crash

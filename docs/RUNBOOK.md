@@ -1591,6 +1591,16 @@ the block. `traderstack-paper-report` attributes closed round-trips by exit
 reason. A halt still rejects the exit (`kill_switch_enabled`) — the switch
 is an unconditional stop, including flatten.
 
+*Exit sizing (#130).* The exit intent carries `max_quantity` = the held
+quantity from the same portfolio snapshot the risk engine evaluated, and
+`ExecutionPlanner` never plans above it (it takes the minimum of
+notional ÷ execution price and the held quantity, floored to
+`EXECUTION_LOT_STEP`). Adverse `PAPER_SLIPPAGE_BPS`, or the bid-side price on
+the `--submit` path, therefore cannot turn a full stop into a short-sale
+rejection. The sell still fills at the adverse price with `PAPER_FEE_BPS`
+charged on the capped quantity; the cap only ever lowers size and is never
+read by `RiskEngine`.
+
 A cycle with `pipeline.risk_result.decision == "reject"` and one of the risk-engine
 reasons above still counted as `accepted_market_data: true` — market data,
 intelligence and the backtest gate all passed; only the risk engine said no.
@@ -1626,7 +1636,7 @@ Once a proposal clears the risk engine (and, in veto mode, the meta-agent),
 | `uncertain` | The venue's truth for this order is unknown right now (see next section). No retry is permitted until reconciliation resolves it. | See "Resolving `SUBMISSION_UNCERTAIN`" below. |
 | `paper_filled` | In-process paper fill booked at mid ± `PAPER_SLIPPAGE_BPS` with `PAPER_FEE_BPS`. Ledger `FILLED`, cash/positions/NAV updated. Does not require Hummingbot. | None. This is the default paper PnL path (`PAPER_SIMULATE_FILLS=true`). |
 | `paper_fill_duplicate` | This `decision_id` already has a paper fill (restart / replay). Book unchanged. | None; confirms the ledger guard. |
-| `paper_fill_rejected` | Planner or book refused the fill (lot/notional/slippage, or a SELL larger than the held position). | Read `execution_reason`. Persistent slippage rejects: check `PAPER_SLIPPAGE_BPS` ≤ `EXECUTION_MAX_SLIPPAGE_BPS`. |
+| `paper_fill_rejected` | Planner or book refused the fill (lot/notional/slippage, or a SELL larger than the held position). Since #130 `execution_reason` is prefixed with a bounded reason code: `plan_rejected` = lot / min-notional / slippage (venue/data); `short_sale` = a non-exit SELL larger than the book; `exit_sizing_invalid` = an `exit-*` intent carrying the held quantity would *still* exceed the book — should never occur after #130, treat as a bug; `invalid_mid` = non-positive primary mid; `decision_terminal` = the decision already has a terminal (non-filled) ledger order. | Read `execution_reason`. Persistent slippage rejects: check `PAPER_SLIPPAGE_BPS` ≤ `EXECUTION_MAX_SLIPPAGE_BPS`. Any `exit_sizing_invalid`: investigate (`traderstack_paper_fill_rejections_total{reason="exit_sizing_invalid"}`). |
 | `paper_fill_withheld` | Kill switch engaged, reconciliation blocked, or torn durable state. Intent was not filled. | Same as a withheld submission — fix the halt/reconcile/ledger before expecting NAV to move. |
 | `diagnostic_withheld` | `OPPORTUNITY_DIAGNOSTIC_MODE=true`: every upstream control allowed this order (or the kill switch was engaged — `execution_reason` says which) and diagnostic mode withheld the paper fill / venue submission by design. NAV never moves in this mode. | None. Read the opportunity funnel (`--funnel-path` snapshot or `traderstack-opportunity-funnel`) for where the *other* cycles stopped; set the flag back to `false` to resume paper fills. |
 
@@ -1869,6 +1879,7 @@ The app exposes Prometheus metrics on `--metrics-port` (default `9108`,
 | `traderstack_cycles_total{symbol,outcome}` | counter | Completed symbol cycles, labeled `outcome="success"` or `"error"`. Watch the `error` rate per symbol. |
 | `traderstack_last_success_unixtime{symbol}` | gauge | Unix timestamp of that symbol's last successful cycle — `time() - traderstack_last_success_unixtime` is your per-symbol staleness. |
 | `traderstack_runtime_healthy` | gauge | `1` if healthy, `0` once `consecutive_errors` reaches `max_consecutive_errors` (default 5) — the service stops itself when this flips to `0` (`ContinuousPaperService.run`). |
+| `traderstack_paper_fill_rejections_total{symbol,side,reason}` | counter | Paper-fill rejections by bounded reason code (#130): `plan_rejected` / `short_sale` / `invalid_mid` / `decision_terminal` are venue/data or book guards; `exit_sizing_invalid` means a protective exit would still have oversold and should never fire. Defined in `src/traderstack/metrics.py`. |
 
 `ops/prometheus.yml` already scrapes `app:9108` under the `observability` profile
 (owned separately from this document — see `docker-compose.yml`).
@@ -1880,6 +1891,9 @@ Minimal alerting rules worth having from day one:
   gone quiet without the process dying (e.g. wedged on one asset).
 - Sudden drop in `rate(traderstack_cycles_total{outcome="success"}[5m])` to zero
   across all symbols → provider/network outage.
+- `increase(traderstack_paper_fill_rejections_total{reason="exit_sizing_invalid"}[1h]) > 0`
+  → investigate: a protective exit asked to sell more than the book holds,
+  which the #130 planner cap is supposed to make impossible.
 
 ## Upgrading
 
