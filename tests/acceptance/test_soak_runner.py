@@ -30,6 +30,11 @@ from traderstack.acceptance.soak import (
 SCENARIO_DIR = Path(__file__).resolve().parents[2] / "ops" / "soak" / "scenarios"
 
 
+def test_default_soak_kill_switch_is_scoped_to_workdir(tmp_path: Path) -> None:
+    runner = SoakRunner(scenario=SoakScenario(name="unit", cycles=1), workdir=tmp_path)
+    assert Path(runner.settings.kill_switch_file) == tmp_path / "state" / "KILL"
+
+
 def _scenario(tmp_path: Path, **overrides) -> SoakScenario:
     values: dict[str, object] = {
         "name": "unit",
@@ -67,6 +72,20 @@ async def test_a_clean_run_passes_and_reports_everything(tmp_path: Path) -> None
     assert (tmp_path / "state" / "execution_ledger.json").exists()
     assert (tmp_path / "state" / "portfolio.json").exists()
     assert "Soak scenario: unit" in report.render()
+    # --- opportunity funnel (#131): a clean run reaches the last stage every cycle ---
+    funnel = report.opportunity_funnel
+    assert funnel is not None
+    assert funnel.totals.stages["cycle"] == 6
+    assert funnel.totals.stages["filled"] == 6
+    assert funnel.totals.blocked_by_gate == {}
+    assert funnel.totals.categories == {"filled": 6}
+    assert funnel.paper_fills_enabled is True and funnel.submission_enabled is True
+    assert funnel.tick_age_seconds.samples == 6
+    assert funnel.candle_age_seconds.samples == 6, "candle age is recorded from the real runtime"
+    assert funnel.by_strategy["vertical-slice-v1"].stages["filled"] == 6
+    assert funnel.diagnosis.category == "filled"
+    assert "Opportunity funnel" in report.render()
+    assert "opportunity_funnel" in report.model_dump(mode="json")
 
 
 async def test_the_same_seed_reproduces_the_same_run(tmp_path: Path) -> None:
@@ -102,6 +121,13 @@ async def test_a_scheduled_fault_arms_and_disarms_at_the_right_cycles(tmp_path: 
 
     assert report.rejection_reasons["no_independent_reference_price"] == 3
     assert report.outcomes["accepted"] == 6
+    # --- opportunity funnel (#131): the outage is a market-data stop, not a signal gap ---
+    funnel = report.opportunity_funnel
+    assert funnel is not None
+    assert funnel.totals.blocked_by_gate == {"market_data": 3}
+    assert funnel.reasons_by_gate["market_data"] == {"no_independent_reference_price": 3}
+    assert funnel.totals.categories == {"no_opportunity": 3, "filled": 6}
+    assert funnel.diagnosis.dominant_gate == "market_data"
     assert report.faults_fired["coingecko_reference_error"] == 3
     assert report.passed is True, "a fail-closed rejection is a pass, not a failure"
 
@@ -116,6 +142,14 @@ async def test_the_kill_switch_scenario_halts_and_resumes(tmp_path: Path) -> Non
 
     assert report.risk_reasons["kill_switch_enabled"] == 3
     assert report.risk_decisions["reject"] == 3
+    # --- opportunity funnel (#131): a halt is an opportunity *rejected* at the risk gate ---
+    funnel = report.opportunity_funnel
+    assert funnel is not None
+    assert funnel.totals.stages["pretrade_eligible"] == 9
+    assert funnel.totals.stages["risk_allowed"] == 6
+    assert funnel.totals.blocked_by_gate == {"risk": 3}
+    assert funnel.reasons_by_gate["risk"] == {"kill_switch_enabled": 3}
+    assert funnel.diagnosis.category == "opportunity_rejected"
     assert report.risk_decisions["allow"] == 6
     assert report.orders_submitted == 6
     assert report.risk_audit_records == 9, "halted cycles are still audited"

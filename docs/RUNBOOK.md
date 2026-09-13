@@ -44,6 +44,7 @@ without activating the venv.
 | `traderstack-volume-breakout` | Paper-only volume-confirmed breakout: long-only or long/short on the prior N-day high/low **and** a volume gate (N×mult in {20x1.5, 55x1.5, 20x2}; V=20 SMA through t−1), plus a small volume-surge set. Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/volume-breakout.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, Bollinger, calendar, or lead-lag reprint. |
 | `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, `traderstack-calendar-seasonality --candles`, `traderstack-lead-lag --candles`, `traderstack-volume-breakout --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
+| `traderstack-opportunity-funnel` | Zero-trade diagnosis (#131). Rebuilds the per-cycle opportunity funnel (`cycles → valid market data → signal candidate → pre-trade eligible → risk allowed → meta-agent retained → planner accepted → fill`) from a finished run's `audit/runtime.jsonl` (+ optional execution ledger) and names the dominant blocking gate with exact reason counts. Offline, read-only. The same funnel is written live to `--funnel-path` by `traderstack-paper` and into `traderstack-soak`'s `report.json`. See "Zero-trade diagnosis" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
 | `traderstack-polymarket-weather-eval` | Fee-aware evaluation of that weather rule against `always_hold` and `fade_the_mid`. Dual independent prints (non-overlapping dates or disjoint resolution sources) are required before anyone may talk about promotion. Writes `docs/artifacts/strategy-search/polymarket-weather-eval.md`. Never flips `PAPER_PROMOTE_*`. Empty / negative is success. No CLOB orders. |
@@ -425,6 +426,87 @@ treating it as the Epic 10 exit-criterion artefact. The CI job
 report schema stay green — it does **not** satisfy the 24-hour gate.
 `traderstack-paper-report` (below) turns the same files into the performance
 comparison.
+
+## Zero-trade diagnosis (opportunity funnel)
+
+A 24-hour paper window that ends with zero fills is not, by itself, evidence of
+anything: it can mean no valid ticks, a reference provider down, stale candles,
+an ensemble that never agreed, a pre-trade bar that never cleared, a risk
+rejection, a meta-agent veto, a planner refusal, or fills simply not being
+enabled. Loosening a threshold before knowing which of those it was is how a
+safety rejection gets mistaken for a strategy failure. The opportunity funnel
+(`src/traderstack/opportunity_funnel.py`, #131) answers that question first.
+
+Every cycle is reduced to the furthest **stage** it reached and, if it did not
+fill, the single nearest **gate** that stopped it plus the literal reason
+strings that gate emitted (the same strings as "What each rejection reason
+means" below and the execution-status table):
+
+```text
+cycle -> valid_market_data -> signal_candidate -> pretrade_eligible
+      -> risk_allowed -> meta_agent_retained -> planner_accepted -> filled
+gates: market_data | candle_history | universe | intelligence | signal
+       | pretrade | risk | meta_agent | planner | fill
+```
+
+Each gate rolls up into one of three headline categories, which is the first
+thing to read in a zero-fill report:
+
+| Category | Gates | Meaning |
+|---|---|---|
+| `no_opportunity` | `market_data`, `candle_history`, `universe`, `signal` | Nothing tradeable was ever formed — bad/missing data, stale candles, no strategy consensus, or a symbol outside the promote universe. **Not** a safety rejection; also not a reason to relax a threshold. |
+| `opportunity_rejected` | `intelligence`, `pretrade`, `risk`, `meta_agent`, `planner` | A candidate existed and a control withheld it. Read that gate's reason counts (`reasons_by_gate`) before touching anything. |
+| `fill_unavailable` | `fill` | Risk approved an order and nothing could book it: `PAPER_SIMULATE_FILLS=false` with no `--submit` (`execution_not_attempted`), kill switch / reconciliation block / torn ledger (`paper_fill_withheld`), diagnostic mode (`diagnostic_withheld`), venue uncertainty, or a venue order still pending (`venue_fill_pending`). |
+
+The report also carries per-symbol and per-strategy stage counts (strategy is
+only known once a `TradeProposal` exists, so those start at
+`pretrade_eligible`), bounded reason maps (at most 64 distinct keys per gate,
+overflow under `(other)`), first/last observation timestamps, tick-age and
+candle-age statistics, the last/minimum candle count, whether paper fills and
+venue submission were enabled, and a one-line `diagnosis.verdict` naming the
+dominant gate and its top reason.
+
+Where to find it:
+
+- **`traderstack-paper`** rewrites a JSON snapshot to `--funnel-path`
+  (default `var/ops/opportunity_funnel.json`) after every cycle. A write
+  failure is logged and never fails the cycle.
+- **`traderstack-soak`** persists it as `opportunity_funnel` in `report.json`
+  and renders it in the text report, with venue fills joined from the ledger
+  at the end of the window.
+- **`traderstack-opportunity-funnel`** rebuilds it offline from any run's
+  `audit/runtime.jsonl` (+ `state/execution_ledger.json` when present):
+
+  ```bash
+  .venv/bin/traderstack-opportunity-funnel \
+    --audit-path var/audit/runtime.jsonl \
+    --ledger-path var/state/execution_ledger.json \
+    --output var/ops/opportunity_funnel.json
+  ```
+
+  Wall-clock tick age is not in the audit trail, so the offline rebuild leaves
+  `tick_age_seconds` empty; `stale_primary_tick` counts still appear under
+  `market_data`.
+
+**Diagnostic-only mode.** `OPPORTUNITY_DIAGNOSTIC_MODE=true` runs the full
+cycle — kill switch, market-data validation, pre-trade gate, risk engine,
+meta-agent, planner — exactly as normal and audits every decision, but never
+books a paper fill and never submits to a venue: `submission_enabled` and
+`paper_fill_enabled` are both forced false, and an approved order is stamped
+`execution_status=diagnostic_withheld`. Each cycle also logs an
+`opportunity_diagnosis` line with its nearest blocking gate. The flag is not
+a risk-limit input: it is absent from `risk_limits` / `policy_version`, it
+cannot lift a reconciliation or durable-state block, and the kill switch
+remains the first explanation when engaged (`tests/security/
+test_diagnostic_mode_cannot_relax_controls.py`). Use it to characterise a
+zero-trade window without creating positions; set it back to `false` to
+resume paper PnL.
+
+Read the funnel **before** changing any `PRETRADE_*` / `PAPER_PRETRADE_*`
+threshold or promoting a new strategy: a window whose dominant gate is
+`signal` (`no_strategy_consensus`) is a research result, not a tuning
+problem, and a window whose dominant gate is `risk` or `meta_agent` is the
+system doing its job.
 
 ## Paper performance versus baselines
 
@@ -1546,6 +1628,7 @@ Once a proposal clears the risk engine (and, in veto mode, the meta-agent),
 | `paper_fill_duplicate` | This `decision_id` already has a paper fill (restart / replay). Book unchanged. | None; confirms the ledger guard. |
 | `paper_fill_rejected` | Planner or book refused the fill (lot/notional/slippage, or a SELL larger than the held position). | Read `execution_reason`. Persistent slippage rejects: check `PAPER_SLIPPAGE_BPS` ≤ `EXECUTION_MAX_SLIPPAGE_BPS`. |
 | `paper_fill_withheld` | Kill switch engaged, reconciliation blocked, or torn durable state. Intent was not filled. | Same as a withheld submission — fix the halt/reconcile/ledger before expecting NAV to move. |
+| `diagnostic_withheld` | `OPPORTUNITY_DIAGNOSTIC_MODE=true`: every upstream control allowed this order (or the kill switch was engaged — `execution_reason` says which) and diagnostic mode withheld the paper fill / venue submission by design. NAV never moves in this mode. | None. Read the opportunity funnel (`--funnel-path` snapshot or `traderstack-opportunity-funnel`) for where the *other* cycles stopped; set the flag back to `false` to resume paper fills. |
 
 **`OrderLifecycleState`** (`execution/ledger.py`) tracks the order itself once
 submitted: `PLANNED` → `SUBMITTED` → (`SUBMISSION_UNCERTAIN` if uncertain) →

@@ -53,6 +53,7 @@ from traderstack.execution.ledger import ExecutionLedger, OrderLifecycleState
 from traderstack.execution.ledger_store import JsonExecutionLedgerStore
 from traderstack.killswitch import KillSwitch
 from traderstack.market.models import MarketSource, MarketTick
+from traderstack.opportunity_funnel import OpportunityFunnelReport  # --- funnel (#131) ---
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.risk_audit import JsonlRiskAuditTrail, verify_chain
 from traderstack.runtime import RuntimeResult
@@ -203,6 +204,10 @@ class SoakReport(BaseModel):
     runtime_events: int = 0
     policy_version: str = ""
     metrics: dict[str, float] = Field(default_factory=dict)
+    # --- opportunity funnel (#131) ---
+    # Where every cycle stopped and why, so a zero-fill window names its
+    # dominant blocking gate instead of leaving it to inference.
+    opportunity_funnel: OpportunityFunnelReport | None = None
     failures: list[str] = Field(default_factory=list)
     passed: bool = False
 
@@ -274,6 +279,10 @@ class SoakReport(BaseModel):
         lines.append(f"  risk chain verified               {self.audit_chain_verified!s:>6}")
         lines.append(f"  risk audit records                {self.risk_audit_records:>6}")
         lines.append(f"  runtime events                    {self.runtime_events:>6}")
+        # --- opportunity funnel (#131) ---
+        if self.opportunity_funnel is not None:
+            lines.append("")
+            lines.append(self.opportunity_funnel.render())
         lines.append("\nResult")
         lines.append("-" * 60)
         lines.append(f"  passed: {self.passed}")
@@ -297,7 +306,10 @@ class SoakRunner:
     def __post_init__(self) -> None:
         self.workdir = Path(self.workdir)
         self.symbols = tuple(self.scenario.symbols)
-        self.settings = Settings(**{**_BASE_SETTINGS, **self.scenario.settings})
+        settings = {**_BASE_SETTINGS, **self.scenario.settings}
+        # Scope the harness sentinel to its workdir unless explicitly overridden.
+        settings.setdefault("kill_switch_file", str(self.workdir / "state" / "KILL"))
+        self.settings = Settings(**settings)
         self.market = SyntheticMarket(
             symbols=self.symbols,
             seed=self.scenario.seed,
@@ -546,10 +558,19 @@ class SoakRunner:
             runtime_events=runtime_events,
             policy_version=self.service.runtime.pipeline.risk_engine.policy_version,
             metrics=metrics_snapshot(),
+            opportunity_funnel=self._opportunity_funnel(),
         )
         report.failures = evaluate(report, self.ledger)
         report.passed = not report.failures
         return report
+
+    # --- opportunity funnel (#131) ---
+    def _opportunity_funnel(self) -> OpportunityFunnelReport:
+        """The service's live funnel, with venue fills joined from the ledger."""
+
+        funnel = self.service.opportunity_funnel
+        funnel.apply_ledger(self.ledger)
+        return funnel.snapshot()
 
     def _provider_breakers(self) -> dict[str, str]:
         breakers: dict[str, str] = {}

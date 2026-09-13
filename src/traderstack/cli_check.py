@@ -1006,6 +1006,21 @@ def build_report(settings: Settings) -> ConfigReport:
             "historical series. Leave every PAPER_PROMOTE_* false."
         )
 
+    # --- opportunity funnel (#131) ---------------------------------------------------
+    items.append(
+        CheckItem(
+            "Opportunity diagnostic mode",
+            "active (no fills, no submissions)" if settings.opportunity_diagnostic_mode else "off",
+            (
+                "every gate runs and is audited unchanged; paper fills and venue submits "
+                "are withheld (execution_status=diagnostic_withheld); the funnel names "
+                "the nearest blocking gate per cycle. NAV will not move."
+                if settings.opportunity_diagnostic_mode
+                else "fills/submits follow PAPER_SIMULATE_FILLS and --submit"
+            ),
+        )
+    )
+
     # --- polymarket weather research (paper-only, opt-in) ------------------------------
     items.append(
         CheckItem(

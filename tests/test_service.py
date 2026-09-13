@@ -80,7 +80,7 @@ async def test_service_registers_submission_without_treating_it_as_fill() -> Non
 
 
 @pytest.mark.asyncio
-async def test_service_marks_without_execution() -> None:
+async def test_service_does_not_mark_rejected_market_data() -> None:
     tick = MarketTick(
         source=MarketSource.KRAKEN,
         symbol="ETH/USD",
@@ -105,7 +105,7 @@ async def test_service_marks_without_execution() -> None:
 
     await service._run_symbol_safely("ETH/USD")
 
-    assert book.marks_usd["ETH"] == pytest.approx(1_000)
+    assert "ETH" not in book.marks_usd
 
 
 class _ExplodingCollector:
@@ -147,4 +147,4 @@ async def test_edge_collector_failure_does_not_halt_the_paper_cycle() -> None:
 
     await asyncio.gather(service.run(), _stop_soon())
     assert runtime.calls
-    assert book.marks_usd["BTC"] == pytest.approx(20_000)
+    assert "BTC" not in book.marks_usd

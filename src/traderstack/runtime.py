@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -65,6 +66,10 @@ class RuntimeResult(BaseModel):
     # without inferring from the absence of a Hummingbot receipt.
     trading_mode: str = "paper"
     shadow_intent: ShadowIntent | None = None
+    # --- opportunity funnel (#131) ---
+    # Open time of the newest candle the cycle fetched, so the zero-trade
+    # funnel can report candle age offline from the audit trail alone.
+    candle_last_opened_at: datetime | None = None
 
 
 @dataclass
@@ -316,6 +321,8 @@ class PaperRuntime:
                 edge_error=edge_error,
                 trading_mode=self.trading_mode,
                 shadow_intent=shadow_intent,
+                # --- opportunity funnel (#131) ---
+                candle_last_opened_at=history[-1].opened_at if history else None,
             )
 
     async def _next_tick(self, symbol: str) -> MarketTick:
