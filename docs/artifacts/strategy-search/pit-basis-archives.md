@@ -194,3 +194,67 @@ HL mark−index fetcher uses asiletto81 `asset_ctxs` (skip-not-invent;
 cache under `var/ops/basis_cache/asilletto81/`). HTX mark−index is
 clamped to the same freeze. Binance Vision is **not** stitched into
 the HL leg. BitMEX remains excluded.
+
+## Second venue found and wired (#134) — 2026-09-13
+
+Data sources actually reached from this environment (unauthenticated),
+window **2020-01-01 → 2026-09-12** (UTC day opens; today's bar never
+used), produced by `traderstack-download-basis --since 2020-01-01` and
+committed in full at `pit-basis-second-venue.md`:
+
+| venue | symbol | status | first | last | days | gaps | bounded skips | truncated | construction |
+| --- | --- | --- | --- | --- | ---: | ---: | ---: | :---: | --- |
+| OKX | BTC/USD | **ok** | 2020-01-01 | 2026-09-12 | 2447 | 0 | 0 | no | `history-mark-price-candles` (BTC-USDT-SWAP) − `history-index-candles` (BTC-USDT), `bar=1Dutc`, `confirm==1` |
+| OKX | ETH/USD | **ok** | 2020-01-01 | 2026-09-12 | 2447 | 0 | 0 | no | same, ETH-USDT-SWAP / ETH-USDT |
+| Binance Vision | BTC/USD | **ok** | 2020-01-01 | 2026-09-12 | 2429 | 18 | 0 | no | USDT-M `markPriceKlines` − `indexPriceKlines`, 80 monthly + 12 daily zips per kind, sha256 verified, 0 checksum failures, 14 one-sided days skipped |
+| Binance Vision | ETH/USD | **ok** | 2020-01-01 | 2026-09-12 | 2443 | 4 | 0 | no | same, 1 one-sided day skipped |
+
+| pair | symbol | aligned days | dropped OKX-only | dropped Vision-only | ≥720 aligned |
+| --- | --- | ---: | ---: | ---: | :---: |
+| OKX × Binance Vision | BTC/USD | **2429** | 18 | 0 | yes |
+| OKX × Binance Vision | ETH/USD | **2443** | 4 | 0 | yes |
+
+Both are point-in-time **mark−index over index** — the construction
+this memo asked for — on two independent venues, ≥720 aligned daily
+bars each, reaching January 2020. `bar=1D` on OKX is the UTC+8 day
+(rows open 16:00 UTC); only `1Dutc` lines up with the funding tape's
+UTC-day sums, and rows off a UTC midnight are skipped and counted
+(0 here). OKX `1Dutc` reaches 2020-01-01 on **both** BTC and ETH
+(the September-2020 BTC start quoted in #134 was the `1D` bar). The
+Hyperliquid mirror (`asiletto81/hyperliquid`, ends 2026-06-01) stays
+the third tape on the #126 freeze path; the HL-mirror + OKX pair on
+2024-01-01 → 2026-06-01 is a follow-up, not this slice.
+
+Honesty:
+
+- Mark−index only. `premium` / `premiumIndexKlines` / `.XBTUSDPI`
+  (funding-formula premium), `klines` / `market/candles` /
+  `candleSnapshot` (last-trade), `fundingRate` (funding-implied) and
+  trade / book tapes are refused **in code**
+  (`research/basis.py::refuse_forbidden_basis_source`), not by
+  convention.
+- A day missing on either side of a venue is a skip; a bar that fails
+  the finite / positive / `|basis| ≤ 0.10` guard is a counted skip.
+  Nothing was zero-filled. The Binance BTC series has 18 calendar gaps
+  (14 one-sided mark/index days + 4 absent on both sides); they stay
+  gaps.
+- Quote is **USDT** on both venues; these are not a Kraken USD series
+  and are labelled as such wherever they are scored.
+- Cross-venue pairing is stated, not hidden: the frozen rule is
+  **primary funding print (Hyperliquid) × OKX basis; second funding
+  print (HTX) × Binance Vision basis**. In dual-print a lone basis
+  series is not applied; basis is looked up per symbol and never
+  broadcast from one asset to the other.
+- No AWS / Tardis / Dune / Coin Metrics / Gate keys were invented.
+  BitMEX (closure 23 September 2026 04:00 UTC) remains excluded.
+
+Carry re-score with basis: see `funding-carry-basis.md` (§ "Dual basis
+re-score (#134)") and the committed prints `funding-carry-daily.md`
+(10+5 bps) and `funding-carry-daily-tier1-taker.md` (80+5 bps). The
+report field `can_promote` is **true** on both prints because the
+pre-registered conjunction (dual-print + hard gates + PIT basis on both
+prints + paper path + dual-print passer) is now fully evaluated and
+clears; that is a report field, not a Settings change. No
+`PAPER_PROMOTE_*` default changes, no new pin, no live. A pin, if ever
+proposed, is a separate documented default-false flag decided by a
+human.

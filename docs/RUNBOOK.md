@@ -48,6 +48,7 @@ without activating the venv.
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
 | `traderstack-polymarket-weather-eval` | Fee-aware evaluation of that weather rule against `always_hold` and `fade_the_mid`. Dual independent prints (non-overlapping dates or disjoint resolution sources) are required before anyone may talk about promotion. Writes `docs/artifacts/strategy-search/polymarket-weather-eval.md`. Never flips `PAPER_PROMOTE_*`. Empty / negative is success. No CLOB orders. |
+| `traderstack-download-basis` | Second-venue point-in-time basis (#134). Downloads daily **mark close − index close, over index** from OKX (`history-mark-price-candles` − `history-index-candles`, `bar=1Dutc`, `confirm==1` rows only, serial pagination with backoff on 403/429) and Binance Vision (`markPriceKlines` − `indexPriceKlines` monthly + trailing-month daily zips, sha256 `.CHECKSUM` verified per zip, fail closed on mismatch) into `var/research/basis/<venue>/<SYMBOL>_basis_1d.json` (the `[{opened_at, value}]` shape `traderstack-funding-carry --basis-dir` reads) and writes the probe table `docs/artifacts/strategy-search/pit-basis-second-venue.md` (first/last/days/gaps per series; OKX×Vision aligned days). Funding premium, last-trade candles and funding-implied basis are refused in code. A missing day is a skip, never a zero; an unreachable venue is a recorded skip and the command still exits 0. Quote is USDT on both venues. Network only, no credentials. Never flips `PAPER_PROMOTE_*`. |
 
 ## Zero to paper trading
 
@@ -2108,3 +2109,72 @@ not alpha. The eval CLI implements the calculator for gates 1 / 4 / 5 in
 Gates 2 (walk-forward parameter fit) and 3 (a full season of live paper
 A/B) are still not claimed. Do not promote this module toward live CLOB
 trading from paper intents or a single fixture pack.
+
+## Second-venue PIT basis (OKX + Binance Vision) and the basis-aware carry re-score
+
+`carry_hedged_sign` was the only name to finish positive after fees on
+both independent funding tapes (Hyperliquid + HTX) and was blocked only
+on point-in-time basis. #134 wires two independent daily **mark−index**
+tapes that reach 2020 on BTC and ETH, so the live Kraken 720 can be
+scored basis-aware **without moving the window**:
+
+| venue | construction | path | notes |
+| --- | --- | --- | --- |
+| OKX | `history-mark-price-candles` close − `history-index-candles` close, over index | `GET /api/v5/market/history-mark-price-candles?instId=BTC-USDT-SWAP&bar=1Dutc` and `…/history-index-candles?instId=BTC-USDT&bar=1Dutc` (index instId has **no** `-SWAP`) | `bar=1D` is the UTC+8 day (opens 16:00 UTC) — only `1Dutc` lines up with the funding tape's UTC-day sums; rows off a UTC midnight are skipped and counted. 100 rows/page, `after=<ts_ms>` pages older. Rapid pagination has produced HTTP 403 from the WAF: pages are walked serially with a 0.25 s pause and 2/4/8/16/32 s backoff; after five retries the series is recorded truncated/skipped, never filled. The newest row is the uncommitted day (`confirm=="0"`) and is dropped. |
+| Binance Vision | `markPriceKlines` close − `indexPriceKlines` close, over index | `https://data.binance.vision/data/futures/um/{monthly,daily}/{markPriceKlines,indexPriceKlines}/{SYMBOL}/1d/…zip` (+ `.CHECKSUM`) | Reachable via S3 while `fapi.binance.com` REST is HTTP 451 here. Every zip's sha256 is verified before parsing; a mismatch or missing `.CHECKSUM` **fails closed** (that month/day is skipped, not filled from elsewhere). Monthly zips for complete months; a 404 month (not yet published) and the trailing partial month use daily zips up to yesterday UTC; today's bar is never used. Cache under `var/research/binance_vision/` is re-verified on every read. |
+
+Refused in code (`research/basis.py::refuse_forbidden_basis_source`):
+`premium` / `premiumIndexKlines` / `.XBTUSDPI` (funding-formula premium),
+`klines` / `market/candles` / `candleSnapshot` (last-trade), `fundingRate`
+/ `funding-rate-history` (funding-implied), `trade` / `aggTrades` /
+`bookTicker` / `quote` (trade or book tapes). Every emitted value is a
+finite float with `|basis| ≤ 0.10` on a UTC day open; anything else is
+skipped and counted (`tests/security/test_basis_tape_cannot_relax_controls.py`).
+
+Pairing rule, frozen in code before any pull
+(`funding_carry.BASIS_PAIRING_RULE`): **primary funding print ×
+`--basis-venue` (default `okx`); second funding print ×
+`--second-basis-venue` (default `binance_vision`)**. The funding tape
+and the basis tape are different venues — the report states the
+cross-venue pairing (`hyperliquid × okx`, `htx × binance_vision`) rather
+than hiding it. Basis is looked up **per symbol** and never broadcast
+from one asset to the other. A lone basis series (one print only) is
+**not applied alone**: both prints score basis-aware or neither does,
+and `basis_status` stays `skipped`. A per-symbol basis supplied against
+a single (non-per-symbol) funding series is *unpaired* and not applied.
+Basis for day D is the day-D close and enters only the day-D hedged PnL
+(close D−1 → close D); it never touches the harvest decision. A day
+missing on either side is skipped, never zero-filled. Basis-aware
+scoring is daily only (`--interval 1d`). Choosing `--basis-venue
+hyperliquid --second-basis-venue htx` selects the #126 coverage-driven
+freeze (window ending 2026-06-01) instead.
+
+```bash
+# 1. pull both venues from 2020 (≈10 min; OKX walks serially, Vision verifies every zip)
+.venv/bin/traderstack-download-basis --venue okx --venue binance_vision --since 2020-01-01
+# 2. re-score the frozen carry catalog on the live Kraken 720 with dual basis (default costs 10+5 bps)
+.venv/bin/traderstack-funding-carry --live --interval 1d --basis-dir var/research/basis
+# 3. the pilot-tier print: Kraken Pro Tier-1 taker = 80 bps per side (#138 fee realism)
+.venv/bin/traderstack-funding-carry --live --interval 1d --basis-dir var/research/basis \
+  --fee-bps 80 --output-md docs/artifacts/strategy-search/funding-carry-daily-tier1-taker.md \
+  --output-json var/ops/funding_carry_daily_tier1_taker.json
+```
+
+`--fetch-basis` (default on for `--live --interval 1d`) fetches any
+series missing from `--basis-dir` and writes it there; `--no-fetch-basis`
+reads files only. The report header shows `basis_status`,
+`basis_print_kind` (`none` / `single_basis` / `dual_basis`),
+`basis_venue`, `second_basis_venue`, and the basis section carries the
+probe table (print, funding venue, basis venue, symbol, first, last,
+days, aligned-with-funding days, applied / not_applied_alone /
+not_applied_unpaired).
+
+`can_promote` keeps its existing conjunction (dual-print **and** hard
+gates **and** `basis_status=ok` **and** paper path **and** a dual-print
+passer). It is a report field only — nothing outside `research/` reads
+it, no `PAPER_PROMOTE_*` default changes, and no new pin is added by
+this command. See
+`docs/artifacts/strategy-search/pit-basis-second-venue.md` (probe
+table), `funding-carry-daily.md` (dual-basis print at 10+5 bps),
+`funding-carry-daily-tier1-taker.md` (80 bps print),
+`funding-carry-basis.md` and `pit-basis-archives.md` (decision).
