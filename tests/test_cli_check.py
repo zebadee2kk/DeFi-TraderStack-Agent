@@ -640,3 +640,55 @@ def test_main_exits_zero_on_safe_defaults(monkeypatch, capsys) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main()
     assert exc_info.value.code == 0
+
+
+# --- on-chain regime gate (#139) ---
+
+
+def test_onchain_regime_gate_default_is_off_and_safe() -> None:
+    report = build_report(settings())
+    assert report.safe
+    item = next(i for i in report.items if i.label.startswith("  Coin Metrics"))
+    assert item.value == "no"
+    assert "nothing is fetched" in item.detail
+    gate = next(i for i in report.items if "on-chain regime gate" in i.label)
+    assert gate.value == "no"
+
+
+def test_onchain_regime_gate_enabled_is_reported() -> None:
+    report = build_report(settings(onchain_regime_gate_enabled=True))
+    assert report.safe
+    item = next(i for i in report.items if i.label.startswith("  Coin Metrics"))
+    assert item.value == "yes"
+    assert "https://community-api.coinmetrics.io" in item.detail
+    assert "onchain_regime_unavailable" in item.detail
+    assert "0.9" in item.detail
+    gate = next(i for i in report.items if "on-chain regime gate" in i.label)
+    assert gate.value == "yes"
+    assert "never sizes" in gate.detail
+
+
+def test_onchain_regime_noop_percentile_warns() -> None:
+    report = build_report(
+        settings(onchain_regime_gate_enabled=True, onchain_regime_max_percentile=1.0)
+    )
+    assert not report.safe
+    assert any("no-op" in w for w in report.warnings)
+    loose = build_report(
+        settings(onchain_regime_gate_enabled=True, onchain_regime_max_percentile=0.95)
+    )
+    assert any("pre-registered 0.90" in w for w in loose.warnings)
+    tight = build_report(
+        settings(onchain_regime_gate_enabled=True, onchain_regime_max_percentile=0.80)
+    )
+    assert tight.safe
+    off = build_report(settings(onchain_regime_max_percentile=1.0))
+    assert off.safe, "a no-op threshold with the gate off changes nothing"
+
+
+def test_onchain_regime_overlay_is_report_only() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "On-chain regime overlay search")
+    assert item.value == "report-only"
+    assert "traderstack-onchain-regime" in item.detail
+    assert "PAPER_PROMOTE_* unchanged" in item.detail

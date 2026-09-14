@@ -45,6 +45,7 @@ from traderstack.intelligence_orchestrator import (
     IntelligenceCache,
     IntelligenceOrchestrator,
     NewsFetcher,
+    OnChainRegimeFetcher,
 )
 from traderstack.killswitch import KillSwitch, install_signal_handler
 from traderstack.logging_config import configure_logging  # observability (Epic 9)
@@ -56,6 +57,7 @@ from traderstack.market.adapters import (
 )
 from traderstack.market.altfins import AltFinsSignalProvider
 from traderstack.market.book_ticker import BookTickerProvider
+from traderstack.market.coinmetrics import CoinMetricsRegimeProvider  # (#139)
 from traderstack.market.crucix import (
     CrucixIntelProvider,
     crucix_effective_base_url,
@@ -387,7 +389,28 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
         )
     # --- end crucix intel ---
 
-    if onchain is None and social is None and not news and altfins is None and not fail_closed_news:
+    # --- on-chain regime gate (#139) ---
+    # Registered only when the gate is on: a copied .env must not open a
+    # connection to Coin Metrics every cycle. The provider caches one pull
+    # per UTC day; the registry adds timeout / breaker / quota around it.
+    onchain_regime: OnChainRegimeFetcher | None = None
+    if settings.onchain_regime_gate_enabled:
+        onchain_regime = registered_fetcher(
+            CoinMetricsRegimeProvider(
+                base_url=settings.coinmetrics_base_url,
+                source_asset=settings.onchain_regime_source_asset,
+            ).fetch,
+            build_provider_registry(settings, "coinmetrics", calls_per_minute=quota),
+        )
+
+    if (
+        onchain is None
+        and social is None
+        and not news
+        and altfins is None
+        and not fail_closed_news
+        and onchain_regime is None
+    ):
         return None
     return IntelligenceOrchestrator(
         onchain=onchain,
@@ -397,6 +420,8 @@ def build_intelligence(settings: Settings) -> IntelligenceOrchestrator | None:
         require_any_external=settings.intelligence_required,
         altfins=altfins,
         fail_closed_news=tuple(fail_closed_news),
+        # --- on-chain regime gate (#139) ---
+        onchain_regime=onchain_regime,
     )
 
 
@@ -640,6 +665,9 @@ def build_service(
         ),
         block_on_adverse_news=settings.intelligence_block_on_adverse_news,
         require_external_intelligence=settings.intelligence_required,
+        # --- on-chain regime gate (#139) --- threshold from Settings only.
+        onchain_regime_gate=settings.onchain_regime_gate_enabled,
+        onchain_regime_max_percentile=settings.onchain_regime_max_percentile,
     )
     venue: VenueMarketDataProvider
     book: BookSnapshotProvider | None = None

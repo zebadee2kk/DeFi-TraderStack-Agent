@@ -20,6 +20,11 @@ from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side
 from traderstack.pretrade import PreTradeBacktestGate, PreTradeCheck
 from traderstack.risk import RiskEngine
 
+# --- on-chain regime gate (#139) ---
+# Literal rejection reasons (also classified by opportunity_funnel).
+ONCHAIN_REGIME_BLOCKED_REASON = "onchain_regime_blocked"
+ONCHAIN_REGIME_UNAVAILABLE_REASON = "onchain_regime_unavailable"
+
 
 class PaperOrderIntent(BaseModel):
     decision_id: str
@@ -62,6 +67,14 @@ class VerticalSlicePipeline:
     # When set, a cycle with no external intelligence at all is rejected
     # instead of proceeding on market data alone.
     require_external_intelligence: bool = False
+    # --- on-chain regime gate (#139) ---
+    # Opt-in, BUY entries only. Reads OnChainFeatures.mvrv_z_percentile and
+    # ADDS a rejection when it is missing (onchain_regime_unavailable) or
+    # above the threshold (onchain_regime_blocked). The threshold comes from
+    # Settings only (cli.build_service); nothing on the feature vector or
+    # from a provider can move it. Never touches SELL/exits, sizing or side.
+    onchain_regime_gate: bool = False
+    onchain_regime_max_percentile: float = 0.90
 
     def process(
         self,
@@ -132,6 +145,8 @@ class VerticalSlicePipeline:
                 news=intelligence.news,
                 # --- providers (Epic 3): altFINS technical-signal slot --------
                 altfins=intelligence.altfins,
+                # --- on-chain regime gate (#139) ---
+                onchain_regime=intelligence.onchain_regime,
             )
             feature_vector.source_ids = [*source_ids, *feature_vector.source_ids]
         else:
@@ -241,6 +256,22 @@ class VerticalSlicePipeline:
             confidence = pretrade_check.confidence
             thesis = pretrade_check.rationale or thesis
             signal_ids = ["pretrade-backtest-gate-v1"]
+
+        # --- on-chain regime gate (#139) ---
+        # Entries only, BUY only, after the side is fixed and before any
+        # proposal exists. Exits (price/time and thesis) already ran above and
+        # a SELL passes through untouched. Adds a rejection; never sizes or
+        # sides. Missing regime fails closed for this slot; the cycle itself
+        # continues normally (it is a reject, not an error).
+        onchain_regime_reason = self._onchain_regime_rejection(side, feature_vector)
+        if onchain_regime_reason is not None:
+            return PipelineResult(
+                accepted_market_data=True,
+                rejection_reasons=[onchain_regime_reason],
+                feature_vector=feature_vector,
+                pretrade_check=pretrade_check,
+                divergences=divergences,
+            )
 
         requested_notional = portfolio.nav_usd * self.demonstration_notional_pct
         proposal = TradeProposal(
@@ -366,3 +397,19 @@ class VerticalSlicePipeline:
             divergences=divergences,
             exit_reason=signal.reason.value,
         )
+
+    # --- on-chain regime gate (#139) ---
+    def _onchain_regime_rejection(
+        self, side: Side, feature_vector: AssetFeatureVector
+    ) -> str | None:
+        """Withhold-only. ``None`` means "no objection"; a string is the
+        rejection reason. SELL is never gated. Threshold is this frozen
+        dataclass field (from Settings), not anything on the vector."""
+        if not self.onchain_regime_gate or side is not Side.BUY:
+            return None
+        percentile = feature_vector.onchain.mvrv_z_percentile
+        if percentile is None:
+            return ONCHAIN_REGIME_UNAVAILABLE_REASON
+        if percentile > self.onchain_regime_max_percentile:
+            return ONCHAIN_REGIME_BLOCKED_REASON
+        return None
