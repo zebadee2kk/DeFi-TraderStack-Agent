@@ -161,6 +161,11 @@ def _position_decision(
         if signal.side is None:
             return 0.0, regime, []
         weight = 1.0 if signal.side is Side.BUY else -1.0
+        # --- ensemble trend (#137): opt-in fractional weight, |w| <= 1 ---
+        if candidate.weight_from_score:
+            weight *= min(abs(signal.score), 1.0)
+            if weight == 0.0:
+                return 0.0, regime, []
         if candidate.garch_sizing:
             forecast = (
                 forecast_at_window(garch_series, window) if garch_series is not None else None
@@ -203,7 +208,10 @@ def _run_backtest(
         warmup=warmup,
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
-        rebalance_threshold=0.05 if candidate.garch_sizing else 1e-9,
+        # --- ensemble trend (#137): fractional books rebalance like GARCH ---
+        rebalance_threshold=(
+            0.05 if (candidate.garch_sizing or candidate.weight_from_score) else 1e-9
+        ),
     )
 
 
