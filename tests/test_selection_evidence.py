@@ -117,6 +117,20 @@ def noisy_catalog(size: int, *, seed: int, folds: int = 8) -> list[CandidateSear
     ]
 
 
+# Bootstrap precision is a knob, not a property under test. Every assertion in
+# this module is on a field's presence, a gate verdict, a print kind, DSR or
+# PBO — DSR and PBO use no bootstrap at all, and the interval assertions below
+# are on samples whose sign is unambiguous at any resample count. Production
+# defaults (2000 / 400) stay exercised by
+# test_evidence_carries_every_field_the_acceptance_criteria_name, which passes
+# no overrides, so the default path is never left untested.
+#
+# This matters for CI wall-clock rather than runtime: coverage line-tracing
+# through the resample loop costs >6x the untraced time, so a 2000-iteration
+# bootstrap over a 20-candidate catalog dominates the suite under --cov.
+FAST = {"iterations": 200, "floor_iterations": 100}
+
+
 def test_evidence_carries_every_field_the_acceptance_criteria_name() -> None:
     evidence = build_selection_evidence(
         noisy_catalog(12, seed=1),
@@ -146,6 +160,7 @@ def test_an_empty_evidence_passer_set_is_a_normal_outcome() -> None:
         primary_venue="kraken_spot",
         venue_print_available=False,
         configured_min_trades=3,
+        **FAST,
     )
     assert evidence.evidence_passer_ids == []
     assert not evidence.any_evidence_passer
@@ -159,6 +174,7 @@ def test_single_print_alone_withholds_every_candidate() -> None:
         primary_candles=daily(300),
         primary_venue="kraken_spot",
         venue_print_available=False,
+        **FAST,
     )
     assert evidence.print_kind is PrintKind.SINGLE
     assert not evidence.any_evidence_passer
@@ -206,6 +222,7 @@ def test_a_candidate_can_pass_raw_sharpe_and_fail_the_dsr_gate() -> None:
         primary_venue="kraken_spot",
         venue_print_available=True,
         configured_min_trades=3,
+        **FAST,
     )
     row = evidence.for_candidate("winner")
     assert row is not None
@@ -248,6 +265,7 @@ def test_the_same_sharpe_survives_deflation_when_the_search_was_narrow() -> None
         primary_candles=daily(720),
         primary_venue="kraken_spot",
         venue_print_available=True,
+        **FAST,
     )
     row = evidence.for_candidate("winner")
     assert row is not None and row.deflated.computed
@@ -282,10 +300,18 @@ def test_evidence_does_not_touch_the_global_rng() -> None:
 def test_a_different_seed_moves_the_bootstrap_but_not_the_point_estimates() -> None:
     catalog = noisy_catalog(6, seed=6)
     a = build_selection_evidence(
-        catalog, primary_candles=daily(720), primary_venue="kraken_spot", seed=1
+        catalog,
+        primary_candles=daily(720),
+        primary_venue="kraken_spot",
+        seed=1,
+        **FAST,
     )
     b = build_selection_evidence(
-        catalog, primary_candles=daily(720), primary_venue="kraken_spot", seed=2
+        catalog,
+        primary_candles=daily(720),
+        primary_venue="kraken_spot",
+        seed=2,
+        **FAST,
     )
     assert [row.trial_sharpe for row in a.candidates] == [row.trial_sharpe for row in b.candidates]
     assert a.pbo.pbo == b.pbo.pbo, "CSCV is exhaustive and has no seed"
@@ -300,7 +326,10 @@ def test_a_missing_series_is_skipped_rather_than_zero_filled() -> None:
         "btc_only", [0.01, 0.02, -0.01, 0.03, 0.0, 0.01, 0.02, -0.02], assets=("BTC/USD",)
     )
     evidence = build_selection_evidence(
-        [present, absent], primary_candles=daily(720), primary_venue="kraken_spot"
+        [present, absent],
+        primary_candles=daily(720),
+        primary_venue="kraken_spot",
+        **FAST,
     )
     with_eth = evidence.for_candidate("has_eth")
     without = evidence.for_candidate("btc_only")
@@ -323,6 +352,7 @@ def test_a_trial_with_no_walkforward_is_a_skip_with_a_reason() -> None:
         [empty, *noisy_catalog(4, seed=7)],
         primary_candles=daily(720),
         primary_venue="kraken_spot",
+        **FAST,
     )
     row = evidence.for_candidate("no_data")
     assert row is not None
@@ -338,6 +368,7 @@ def test_pbo_is_reported_so_zero_passers_and_a_weak_passer_differ() -> None:
         primary_candles=daily(720),
         primary_venue="kraken_spot",
         venue_print_available=True,
+        **FAST,
     )
     assert evidence.pbo.computed
     assert evidence.pbo.pbo is not None
@@ -352,6 +383,7 @@ def test_render_evidence_lines_names_print_kind_trials_pbo_and_eras() -> None:
         primary_candles=daily(720),
         primary_venue="kraken_spot",
         venue_print_available=True,
+        **FAST,
     )
     text = "\n".join(render_evidence_lines(evidence, highlight_candidate_ids=["trial_00"]))
     assert "Print kind" in text
@@ -375,6 +407,7 @@ def test_the_bootstrap_floor_never_lowers_the_configured_minimum(min_trades: int
         primary_candles=daily(720),
         primary_venue="kraken_spot",
         configured_min_trades=min_trades,
+        **FAST,
     )
     for row in evidence.candidates:
         assert row.trade_floor.configured_min_trades == min_trades

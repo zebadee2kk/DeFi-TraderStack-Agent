@@ -267,12 +267,18 @@ def test_bootstrap_trade_floor_only_ever_raises_the_configured_minimum() -> None
 def test_bootstrap_trade_floor_scales_by_trades_per_observation() -> None:
     rng = random.Random(23)
     sample = [rng.gauss(0.004, 0.02) for _ in range(60)]
-    one = bootstrap_trade_floor(sample, observed_trades=60, trades_per_observation=1.0)
+    # The assertion is a *scaling* relationship between two calls made with
+    # identical settings, so it holds at any resample count; 100 keeps the
+    # coverage-traced inner loop cheap without weakening what is proved.
+    one = bootstrap_trade_floor(
+        sample, observed_trades=60, trades_per_observation=1.0, iterations=100
+    )
     five = bootstrap_trade_floor(
         sample,
         observed_trades=300,
         observation_unit="walk_forward_fold",
         trades_per_observation=5.0,
+        iterations=100,
     )
     assert one.required_observations == five.required_observations
     assert one.required_trades is not None and five.required_trades is not None
