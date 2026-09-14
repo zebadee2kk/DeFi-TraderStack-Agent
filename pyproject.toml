@@ -153,6 +153,11 @@ traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"
 # independent prints required before anyone may talk about promotion.
 # Never flips PAPER_PROMOTE_*. Empty / negative is success. No CLOB orders.
 traderstack-polymarket-weather-eval = "traderstack.polymarket.eval_cli:main"
+# On-chain regime overlay (#139): frozen MVRV-Z percentile / NUPL overlays
+# (Coin Metrics community, BTC series) on the frozen TSMOM catalog; two
+# prints (Kraken 720 + Binance.US older-720); skip-not-invent; never flips
+# PAPER_PROMOTE_*; empty overlay set is success; no live.
+traderstack-onchain-regime = "traderstack.research.onchain_regime_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

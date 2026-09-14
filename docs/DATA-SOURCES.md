@@ -299,6 +299,7 @@ still backtests on the base asset's Kraken USD candles.
 | Glassnode [S] | BTC/ETH metrics | No free API | — |
 | Santiment [S] | On-chain/social/dev metrics | 1000 calls/mo | `sanpy` |
 | Token Terminal [V] | Fundamentals | API is custom tier only | — |
+| Coin Metrics community v4 [V 2026-09-13/14] | `GET /v4/timeseries/asset-metrics` — 31 daily BTC/ETH metrics incl. `CapMVRVCur`, `CapMrktCurUSD`, `FlowInExUSD`/`FlowOutExUSD`, `AdrActCnt`, `HashRate`, `ReferenceRateUSD`; BTC from 2010-07-18 (5902 rows in one `page_size=10000` page; `next_page_url` when paged); ETH `CapMVRVCur` from 2015-08; SOL has no MVRV | Yes, no key; documented 10 req / 6 s (headers advertise a larger `download` budget — not relied on) | `CapRealUSD`, `SplyAct1d` → HTTP 403 "not available with supplied credentials" (skip, never invented); realised cap = `CapMrktCurUSD / CapMVRVCur` and NUPL = 1 − 1/MVRV by identity; adapter `market/coinmetrics.py` (#139), one pull per UTC day, today's row dropped as uncommitted |
 
 ## Python libraries (status at research time)
 

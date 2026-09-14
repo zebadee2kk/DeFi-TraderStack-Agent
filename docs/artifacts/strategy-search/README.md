@@ -832,3 +832,33 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `volume-breakout.md`.
 
+## On-chain regime overlay (`traderstack-onchain-regime`)
+
+Committed output of `traderstack-onchain-regime --live` (2026-09-14, #139):
+the frozen TSMOM catalog (8 names + control) scored ungated and gated by
+three pre-registered Coin Metrics community overlays on the same two
+prints as `tsmom.md`.
+
+- Data reached: Kraken public Spot daily 720 (BTC/ETH/SOL, 2024-09-24 →
+  2026-09-13) **ok**; Binance.US older-720 (2022-10-05 → 2024-09-23,
+  `api.binance.com` HTTP 451) **ok**; Coin Metrics community
+  `CapMVRVCur`+`CapMrktCurUSD` BTC daily (5902 rows, 2010-07-18 →
+  2026-09-13, no key) **ok**; `CapRealUSD` / `SplyAct1d` **skipped**
+  (HTTP 403 on the community plan; realised cap and NUPL derived by
+  identity instead).
+- Costs 10+5 bps (gate C 20+10); daily bars, fill at next-bar open.
+- Overlays: `mvrvz_p90` blocked 53 Kraken / 3 Binance.US bars;
+  `mvrvz_p80` 201 / 110; `nupl_075` 0 / 0 (NUPL never exceeded 0.75 on
+  either print).
+- Verdicts (gated − ungated mean HO **and** WF total, both prints):
+  `mvrvz_p90` → `mixed_fail` on all 8 names (Kraken WF cut ~−1.3 pp,
+  Binance.US WF lifted ~+1.1 pp, holdout unchanged); `mvrvz_p80` →
+  `hurts` on 6 names, `mixed_fail` on `tsmom_lo_63` / `tsmom_ls_63`
+  (Binance.US holdout +2–3 pp while WF fell 5–7 pp on both prints);
+  `nupl_075` → `neutral` on all 8.
+- Base (ungated) dual-print passers: **0** (unchanged from `tsmom.md`).
+- Overlay passers: **0**. No new `PAPER_PROMOTE_*` pin;
+  `ONCHAIN_REGIME_GATE_ENABLED` stays false.
+
+See `onchain-regime.md`.
+

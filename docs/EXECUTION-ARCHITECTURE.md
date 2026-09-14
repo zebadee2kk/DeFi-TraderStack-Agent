@@ -39,6 +39,18 @@ then applies three deterministic rules before any proposal exists:
 - `INTELLIGENCE_REQUIRED=true`: a cycle with no external intelligence at all
   is rejected with `no_external_intelligence` rather than trading on market
   data alone.
+- `ONCHAIN_REGIME_GATE_ENABLED=true` (#139, default off): the Coin Metrics
+  community on-chain regime slot (`IntelligenceOrchestrator.onchain_regime`,
+  BTC `CapMVRVCur`/`CapMrktCurUSD` reduced to a bounded `onchain-regime-v1`
+  MVRV-Z percentile) gates **BUY entries only**, and only after the
+  pre-trade side is fixed: percentile > `ONCHAIN_REGIME_MAX_PERCENTILE`
+  rejects with `onchain_regime_blocked`; a missing snapshot (provider
+  outage, short history, stale row) rejects with
+  `onchain_regime_unavailable`. Fail-closed for this slot only — SELLs,
+  exits and the rest of the cycle are untouched, and the slot does not
+  count toward `INTELLIGENCE_REQUIRED`. The threshold is read from
+  `Settings` only; nothing on the feature vector or from the provider can
+  move it, size, or side.
 
 These gates run **after** deterministic position exits, so a Crucix outage
 or adverse-news flag cannot freeze a stop-loss.
@@ -210,7 +222,9 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
              that path so the #95–#100 window is fetched, not the 1h 400)
         iv.  best-effort candle persistence (--persistent-events; failure never fails the cycle)
         v.   fetch external intelligence (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS,
-             concurrent, isolated failures, cached)
+             concurrent, isolated failures, cached; plus the Coin Metrics on-chain
+             regime slot when ONCHAIN_REGIME_GATE_ENABLED — opt-in, #139 — one
+             HTTP pull per UTC day per process, failure isolated to "no snapshot")
         vi.  fetch order-book snapshot (Kraken only, opt-in, informational -- not consumed
              by the pipeline or risk engine today)
         vi-b. read paper-research edge snapshots (Binance USDT-M liquidations and/or
@@ -240,6 +254,12 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
              - optional thesis-invalidation exit (if `EXIT_ON_THESIS_INVALIDATION`
                and the ensemble confirms the opposite side, or TRENDING_DOWN
                after a momentum entry)
+             - on-chain regime gate (#139; opt-in; entries only, BUY only; runs
+               after the side is fixed and before any proposal exists; rejects
+               with `onchain_regime_blocked` / `onchain_regime_unavailable`;
+               never sizes or sides; the exits above already ran; with the
+               pre-trade gate disabled the default BUY path is gated too —
+               intended, it is gate-only)
              - TradeProposal construction (discretionary, if no exit fired)
              - RiskEngine.evaluate(...)          -- Zone C. Kill switch is check #1 here,
                                                      checked on *every* evaluated proposal,
@@ -364,6 +384,15 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
    Exit settings (`EXIT_STOP_LOSS_PCT`, `EXIT_TAKE_PROFIT_PCT`,
    `EXIT_TRAILING_STOP_PCT`, `EXIT_TIME_STOP_BARS`,
    `EXIT_ON_THESIS_INVALIDATION`) are folded into `RISK_LIMIT_FIELDS`.
+6. The on-chain regime gate (#139) lives strictly ahead of Zone C and adds
+   nothing to it: `RiskEngine.evaluate`, `policy_version` and
+   `risk_limits` are identical with the gate on or off
+   (`tests/security/test_onchain_regime_cannot_relax_risk.py`). Its
+   threshold (`ONCHAIN_REGIME_MAX_PERCENTILE`) is read from `Settings`
+   only — the feature vector carries the percentile, never the threshold —
+   so no provider payload, LLM output or tool result can loosen it. A
+   passing regime yields exactly the notional and side the gate-off path
+   yields; a failing or missing regime only adds a rejection reason.
 
 ## Responsibilities
 

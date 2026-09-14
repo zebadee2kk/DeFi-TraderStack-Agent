@@ -1425,3 +1425,15 @@ multi-year data (Coinbase, Binance Vision, OKX mark/index, Kraken archive),
 the dual-print PIT basis that is now reachable, the DSR/PBO harness gates,
 fee realism, and the Polymarket tape collector. Nothing in that program
 relaxes a gate or flips a `PAPER_PROMOTE_*` default.
+
+## Addendum 2026-09-14 — on-chain regime overlay (#139)
+
+`traderstack-onchain-regime` scored the frozen TSMOM catalog ungated and
+gated by three pre-registered Coin Metrics community overlays (`mvrvz_p90`,
+`mvrvz_p80`, `nupl_075`; BTC series, rows strictly before the decision bar)
+on the same two prints. **Overlay passers: 0.** `mvrvz_p90` and the two
+`*_63__mvrvz_p80` names are `mixed_fail` (a print/metric helped, another
+hurt); the other `mvrvz_p80` names `hurts`; `nupl_075` never bound (NUPL
+never exceeded 0.75 on either print → `neutral`). No new pin. The runtime
+gate (`ONCHAIN_REGIME_GATE_ENABLED`) stays off by default and can only
+withhold new longs. See `onchain-regime.md`.
