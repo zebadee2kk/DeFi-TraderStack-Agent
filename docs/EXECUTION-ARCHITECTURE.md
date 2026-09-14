@@ -281,7 +281,8 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
         paper-fill:<client_order_id>), apply_fill charging the PAPER_FEE_TIER
         taker bps (#138; default kraken_pro_spot_t1 = 80 bps; PAPER_FEE_BPS only
         when PAPER_FEE_TIER=modelled) (fee_source=modelled), set
-        execution_status=paper_filled. Does not call a venue. Compose app.command has no --submit; this is how NAV moves.
+        execution_status=paper_filled. Does not call a venue. Compose
+        app.command has no --submit; this is how NAV moves.
         A kill switch, reconciliation block, or torn ledger withholds.
         OPPORTUNITY_DIAGNOSTIC_MODE=true (#131) withholds here too, AFTER every
         upstream control has had its say (execution_status=diagnostic_withheld;
@@ -450,8 +451,8 @@ bps (default Kraken Pro Tier 1 = 80 bps; `PAPER_FEE_BPS` only when
 `PAPER_FEE_TIER=modelled`; #138). A paper fill is always a *taker* fill — the
 simulator fills at mid plus adverse slippage — so maker fees are never charged
 on a paper fill; the maker path is #73's post-only order type, which does not
-exist yet. No venue API. `--submit` + Hummingbot remains an optional alternate; a Hummingbot
-receipt is still not a fill (`_reconcile_trades` is). When the local paper
+exist yet. No venue API. `--submit` + Hummingbot remains an optional
+alternate; a Hummingbot receipt is still not a fill (`_reconcile_trades` is). When the local paper
 fill is the book of record, Hummingbot NAV reconcile is not wired (it would
 drift) and venue trade rows for an already-`FILLED` modelled order are
 ignored so they cannot double-apply.

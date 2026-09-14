@@ -2154,6 +2154,11 @@ What the tier changes:
   `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)`, read
   `max(PRETRADE_FEE_BPS, PAPER_FEE_TIER taker)`. Gate C stays 2× the
   tier (160+10 bps per leg at Tier 1).
+  `traderstack-funding-carry` is the one research CLI without
+  `--fee-tier` yet: `research/funding_carry_cli.py` is owned by #134
+  (basis-aware carry) in this wave, so it still scores at
+  `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` and prints no `fee_tier`
+  block; it gains the flag once #134 lands.
 - **Every report and `report.json` names the tier**: a `fee_tier` block
   (`tier_id`, `maker_bps`, `taker_bps`, `role=taker`, `fee_bps_used`,
   `source`, `read_on`) and a markdown line directly under the costs
