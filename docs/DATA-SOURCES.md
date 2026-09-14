@@ -142,6 +142,20 @@ it is relied upon.
   is not substituted. A venue without usable base volume fails
   closed for volume names. Fill at t+1 open. No exogenous
   series. Input to `traderstack-volume-breakout`.
+- **Ensemble trend (research only, #137):** Kraken
+  `GET /0/public/OHLC` interval 1440 for each frozen
+  `CANDIDATE_UNIVERSE` USD pair (720-bar cap; one request per
+  symbol, sequential, ~1 req/s to respect the public counter; an
+  unknown pair, HTTP error or empty result is a per-symbol skip
+  note, never an abort or a zero-filled series) and Binance.US
+  older-720 for BTC/ETH/SOL (`api.binance.us` when
+  `api.binance.com` is HTTP 451; 403 / 451 is a skip and the
+  second print fails closed). Universe membership is derived
+  point-in-time from close × volume of the same bars; no exogenous
+  series. Kraken REST serves only currently-listed pairs, so the
+  window is survivorship-biased and the report says so. Coinbase /
+  Binance Vision / Kraken OHLCVT multi-year prints arrive via #133
+  as `--candles` JSON. Input to `traderstack-ensemble-trend`.
 
 ## Robinhood Chain
 

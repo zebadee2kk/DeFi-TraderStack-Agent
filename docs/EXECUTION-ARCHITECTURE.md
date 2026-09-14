@@ -152,6 +152,24 @@ Kraken Spot 1h OHLC (mild drift, range, or a single-regime signal) produced
 asked. See `docs/RUNBOOK.md`, "Paper research mode and strategy consensus"
 and "Paper pre-trade thresholds on Spot OHLC".
 
+**Ensemble-trend layering (#137).** No cycle-order change. The
+`traderstack-ensemble-trend` research book is a monthly point-in-time
+top-20 universe, but the paper path cycles only
+`Settings.effective_cycle_symbols` (`MVP_ASSETS`, or
+`PAPER_PROMOTE_UNIVERSE` when a daily pin is active) and every proposal
+still passes `asset_not_allowlisted` and `max_positions_reached`
+(`RISK_MAX_OPEN_POSITIONS`, default 5). Those limits are **not** widened
+for a 20-name book; a name outside the cycle list is simply never
+proposed. `EnsembleTrendVoter` (`ens_trend_9lb_vt25`) is long-only and
+carries its weight in [0, 1] only as `StrategySignal.score` /
+`confidence`; `RiskEngine` sizes from `Settings` and can only reduce —
+`tests/security/test_ensemble_trend_cannot_relax_risk.py` asserts the
+approved notional does not rise with the score and that the kill switch
+still withholds. The strategy's trailing stop is a research construct;
+runtime exits remain the `EXIT_*` rules and thesis invalidation. No
+`PAPER_PROMOTE_*` pin exists for this family;
+`build_ensemble_trend_paper_ensemble` is not referenced from `cli.py`.
+
 ### Paper reference-price resilience (paper path only)
 
 `TRADING_MODE=paper` wires reference providers with

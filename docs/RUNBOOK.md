@@ -42,12 +42,13 @@ without activating the venv.
 | `traderstack-calendar-seasonality` | Paper-only UTC calendar seasonality: day-of-week long-only (Mon / Fri / Mon+Fri), skip-weekend (long Mon–Fri, flat Sat/Sun), month-of-year (Q4 / Jan / Nov+Dec), and turn-of-month last 3 / first 3 UTC calendar days. Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/calendar-seasonality.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, or Bollinger reprint. |
 | `traderstack-lead-lag` | Paper-only BTC→ETH lead-lag: ETH follows or fades lagged BTC L-day return (L in {1,2,3,5} follow-lo; {1,2,3} follow-ls / fade-lo; BTC-follows-ETH mirror lo {1,2}). Not same-bar residual z-score (#116). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): both BTC and ETH legs; other leg is **flat**. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/lead-lag.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, Bollinger, or calendar reprint. |
 | `traderstack-volume-breakout` | Paper-only volume-confirmed breakout: long-only or long/short on the prior N-day high/low **and** a volume gate (N×mult in {20x1.5, 55x1.5, 20x2}; V=20 SMA through t−1), plus a small volume-surge set. Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/volume-breakout.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, Bollinger, calendar, or lead-lag reprint. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, `traderstack-calendar-seasonality --candles`, `traderstack-lead-lag --candles`, `traderstack-volume-breakout --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, `traderstack-calendar-seasonality --candles`, `traderstack-lead-lag --candles`, `traderstack-volume-breakout --candles`, `traderstack-ensemble-trend --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-opportunity-funnel` | Zero-trade diagnosis (#131). Rebuilds the per-cycle opportunity funnel (`cycles → valid market data → signal candidate → pre-trade eligible → risk allowed → meta-agent retained → planner accepted → fill`) from a finished run's `audit/runtime.jsonl` (+ optional execution ledger) and names the dominant blocking gate with exact reason counts. Offline, read-only. The same funnel is written live to `--funnel-path` by `traderstack-paper` and into `traderstack-soak`'s `report.json`. See "Zero-trade diagnosis" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
 | `traderstack-polymarket-weather-eval` | Fee-aware evaluation of that weather rule against `always_hold` and `fade_the_mid`. Dual independent prints (non-overlapping dates or disjoint resolution sources) are required before anyone may talk about promotion. Writes `docs/artifacts/strategy-search/polymarket-weather-eval.md`. Never flips `PAPER_PROMOTE_*`. Empty / negative is success. No CLOB orders. |
+| `traderstack-ensemble-trend` | Paper-only ensemble trend (#137): long-only multi-lookback Donchian-on-close (N in {5, 10, 20, 30, 60, 90, 150, 250, 360}; bar t never sets its own level) with a trailing stop at max(prior stop, prior close-channel midpoint), equal-weight across open lookbacks, 25% annualised vol target on 90-day realised vol, capped at 1.0 (no leverage), on a frozen `CANDIDATE_UNIVERSE` of Kraken USD pairs with a monthly point-in-time top-20 snapshot (≥ 365 prior bars or 720-cap, median 30-day close×volume ≥ $2M; non-members forced flat). Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Fees from the frozen Kraken Pro tier table (`--kraken-tier`, default tier 1 = 80 bps taker per side) unless `--fee-bps` is explicit. Reports gross attribution by asset and by lookback. `era_prints_available=false` / `dsr_pbo_available=false` until #133 / #135 land (not invented). Accepts `traderstack-download-candles` JSON via `--candles`. Writes `docs/artifacts/strategy-search/ensemble-trend.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field. Empty dual-print set is success. |
 
 ## Zero to paper trading
 
@@ -2108,3 +2109,81 @@ not alpha. The eval CLI implements the calculator for gates 1 / 4 / 5 in
 Gates 2 (walk-forward parameter fit) and 3 (a full season of live paper
 A/B) are still not claimed. Do not promote this module toward live CLOB
 trading from paper intents or a single fixture pack.
+
+## Ensemble trend (multi-lookback Donchian, trailing stop, vol target)
+
+#137 pre-registers the Zarattini / Pagani / Barbon "Catching Crypto
+Trends" rules (SSRN 5209907) as a dual-print family. It is **not** a
+#118 Donchian N retune: #118 scored single high/low channels on two
+assets; this family votes nine close-only lookbacks, trails a stop,
+targets volatility and forces non-members of a monthly point-in-time
+universe flat.
+
+- Treatment (frozen): for each lookback N in {5, 10, 20, 30, 60, 90,
+  150, 250, 360}, that lookback opens long when `close[t] > max close
+  of bars [t-N, t)` (bar t never sets its own level). On entry the stop
+  is the midpoint of that prior N-bar close channel; on every later bar
+  the stop is `max(prior stop, current midpoint)` and never ratchets
+  down; exit to flat when `close[t] < stop`; re-entry needs a fresh
+  breakout on a later bar.
+- Ensemble weight = (open lookbacks / total) × min(0.25 / annualised
+  90-day realised vol through close[t], 1.0), long-only, capped at 1.0
+  (paper spot has no leverage). Decision at close[t]; fill at t+1 open.
+- Universe snapshot policy (frozen): on the first bar of each UTC month,
+  using only bars strictly before that month, a `CANDIDATE_UNIVERSE`
+  name is a member when it has ≥ 365 prior daily bars (or its Kraken
+  series hits the 720-bar public cap, which implies the listing
+  predates the window) and its median 30-day close×volume is ≥ $2M
+  (Kraken-local volume — stricter than the paper's aggregate); the
+  top-20 by that median are members for the whole month. Fewer than 20
+  qualifiers is a smaller book, never a relaxed bar.
+- Survivorship caveat: Kraken REST serves only currently-listed pairs
+  and at most 720 daily bars, so this window is survivorship-biased
+  (unlike the paper). The point-in-time snapshot removes look-ahead in
+  membership only. Every report header states this.
+- Warmup: the nine-lookback book needs 361 bars before its first
+  assignment (~359 decision bars on the 720 cap), so early folds are
+  all-flat and `min_trades` may fail — reported as warmup-limited, never
+  invented. `ens_trend_6lb_vt25` ({5..90}) is in the same frozen catalog
+  for that reason; it is not a post-hoc retune.
+- Fee tier (frozen Kraken Pro schedule, bps maker/taker): tier 1 =
+  40/80 (default; the pilot's tier), 2 = 30/60, 3 = 22/38, 8 = 8/20,
+  12 = 0/10. The taker leg is charged per side; gate C doubles. The
+  shared harness charges fees on full equity at every rebalance, so
+  fractional weights are cost-overstated (conservative). `--fee-bps`
+  overrides the tier when explicit. Post-only maker realism is #138.
+- Frozen ids: `ens_trend_9lb_vt25`, `ens_trend_6lb_vt25`,
+  `ens_trend_9lb_unit` (informational contrast), plus the control
+  `ma_cross_10_30` (cannot enter the passer set).
+- Scoring: same #96+A+B+C combined bar on Kraken public Spot daily 720
+  **and** the #102 Binance.US older-720. BTC and ETH gate; SOL reported.
+  Ranking key: Kraken BTC+ETH mean holdout excess among dual-print
+  passers. Era prints (#133) and DSR / PBO (#135) are reported as
+  `era_prints_available=false` / `dsr_pbo_available=false` until they
+  land; re-run and re-commit the report then.
+- Attribution by asset and by lookback is gross close-to-close
+  (informational; the lookback columns sum to the asset total).
+- Paper path: `EnsembleTrendVoter` (`strategy_id=ens_trend_9lb_vt25`)
+  emits BUY with `score` in (0, 1] or `side=None`, never SELL, and
+  recomputes on decision-time candles when no precomputed series is
+  registered, so the existing pre-trade gate can re-confirm it.
+  RiskEngine is untouched and sizes from Settings, so it can only
+  reduce. The 20-name research book does **not** widen
+  `RISK_MAX_OPEN_POSITIONS`, `MVP_ASSETS` or `PAPER_PROMOTE_UNIVERSE`
+  — see `docs/EXECUTION-ARCHITECTURE.md`, "Ensemble-trend layering".
+- This command never flips `PAPER_PROMOTE_*`, adds no Settings field,
+  and does not add a new pin. A committed dual-print passer would get
+  its own flag PR, default false. Empty dual-print set is success.
+
+```bash
+.venv/bin/traderstack-ensemble-trend --live
+.venv/bin/traderstack-ensemble-trend --live --no-binance
+.venv/bin/traderstack-ensemble-trend --live --kraken-tier 3
+```
+
+`--live` pulls every `CANDIDATE_UNIVERSE` pair sequentially from Kraken
+public OHLC (about one request per second; an unknown pair or HTTP error
+is a per-symbol skip note, never an abort) and then Binance Spot daily
+BTC/ETH/SOL (`api.binance.us` when `api.binance.com` is HTTP 451; 403 /
+451 is a skip and the second print fails closed). See
+`docs/artifacts/strategy-search/ensemble-trend.md`.
