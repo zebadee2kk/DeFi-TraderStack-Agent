@@ -153,6 +153,12 @@ traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"
 # independent prints required before anyone may talk about promotion.
 # Never flips PAPER_PROMOTE_*. Empty / negative is success. No CLOB orders.
 traderstack-polymarket-weather-eval = "traderstack.polymarket.eval_cli:main"
+# Long-only top-k cross-sectional momentum on the point-in-time Kraken USD
+# spot universe (#140): N in {21,63,126}, 7-day skip, k in {3,5}, ew/iv,
+# weekly. Portfolio bar with era prints; turnover and fee drag at research
+# and pilot-tier costs; ew_bh_universe control cannot promote. Never flips
+# PAPER_PROMOTE_*. Empty dual-print set is success. No live.
+traderstack-xs-topk = "traderstack.research.xs_topk_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]
