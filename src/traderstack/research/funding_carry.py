@@ -38,6 +38,18 @@ Investigation (do not invent a series):
   archive end date.
   Hedged carry PnL is funding income minus two-leg fees unless a PIT
   basis series is supplied (skip-not-invent when missing).
+* Second-venue PIT basis (#134): OKX ``history-mark-price-candles`` −
+  ``history-index-candles`` and Binance Vision ``markPriceKlines`` −
+  ``indexPriceKlines`` (sha256-verified zips) are daily mark−index tapes
+  reaching 2020 on BTC and ETH, so the live Kraken 720 can be scored
+  basis-aware without moving the window. Pairing rule (frozen before
+  the pull): primary funding print × ``--basis-venue`` (default OKX),
+  second funding print × ``--second-basis-venue`` (default Binance
+  Vision). The cross-venue pairing is stated in the report, never
+  hidden. In dual-print a lone basis series is **not applied** —
+  ``basis_status`` stays ``skipped`` unless both prints have a usable
+  BTC+ETH basis. Basis is looked up per symbol; one asset's series is
+  never broadcast to the other. Quote is USDT on both basis venues.
 * A 4h / hourly funding tape is **not** a daily hard-gate window.
   Daily evaluation resamples by summing UTC-day settlements and omits
   days with no print (never zero-filled).
@@ -166,7 +178,11 @@ FUNDING_CARRY_RULES = (
     "resample). Daily evaluation sums settlements per UTC day and omits "
     "empty days — never zero-filled. Perp-spot basis is skipped unless a "
     "PIT mark−index / perp-mid−spot-mid series is supplied; funding "
-    "premium and last-trade are not basis. A paper hedge+funding soak "
+    "premium and last-trade are not basis. Second-venue PIT basis is "
+    "OKX + Binance Vision daily mark−index (paired primary×OKX, "
+    "second×Binance Vision, frozen before the pull; a lone series is "
+    "not applied in dual-print; basis is per symbol, never broadcast). "
+    "A paper hedge+funding soak "
     "path is cycle-wired (PAPER_CARRY_PATH_READY=true when PAPER_PERP_HEDGE "
     "fetches an explicit HL midPx or HTX bid/ask mid and applies same-venue "
     "funding; BitMEX is not required; "
@@ -181,7 +197,10 @@ FUNDING_CARRY_RULES = (
 BASIS_SKIP_NOTE = (
     "Perp-spot basis skipped, not invented. No PIT mark−index (or perp "
     "mid − spot mid) series was supplied on both dual-print venues for "
-    "the scored window. Live probes: Hyperliquid public REST is current "
+    "the scored window. Second-venue path: traderstack-download-basis "
+    "(OKX history-mark-price-candles − history-index-candles; Binance "
+    "Vision markPriceKlines − indexPriceKlines) then --basis-dir; a lone "
+    "series is not applied alone. Live probes: Hyperliquid public REST is current "
     "markPx/oraclePx/midPx only; asiletto81/hyperliquid asset_ctxs is "
     "≥720d but ends 2026-06-01 (~617d on the current Kraken 720). HTX "
     "daily mark−index exists on one venue and is not applied alone. "
@@ -265,6 +284,97 @@ def venue_mean_points(
     assert funding_by_symbol is not None
     lengths = [len(_lookup_series(funding_by_symbol, symbol) or ()) for symbol in required]
     return int(sum(lengths) / len(lengths)) if lengths else 0
+
+
+# --- second-venue PIT basis (#134) ---
+BasisPrintKind = Literal["none", "single_basis", "dual_basis"]
+BASIS_PRINT_NONE: Literal["none"] = "none"
+BASIS_PRINT_SINGLE: Literal["single_basis"] = "single_basis"
+BASIS_PRINT_DUAL: Literal["dual_basis"] = "dual_basis"
+BASIS_PAIRING_RULE = (
+    "Pairing rule (frozen before any pull): primary funding print × "
+    "--basis-venue; second funding print × --second-basis-venue. The "
+    "funding tape and the basis tape need not be the same venue — the "
+    "cross-venue pairing is stated here, not hidden. In dual-print a "
+    "lone basis series is not applied; basis is looked up per symbol "
+    "and never broadcast from one asset to the other; a day missing on "
+    "either side is skipped, never zero-filled."
+)
+
+
+def basis_usable(
+    basis: tuple[tuple[datetime, float], ...] | None = None,
+    basis_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
+    *,
+    required: tuple[str, ...] = REQUIRED_SYMBOLS,
+    per_symbol_funding: bool = True,
+) -> bool:
+    """True when a PIT basis exists for every required symbol (or one shared series).
+
+    A per-symbol basis map can only be paired with a per-symbol funding
+    map (carry is scored per asset); against a single funding series it
+    is unpaired and therefore not usable — never broadcast, never guessed.
+    """
+    if basis_by_symbol is not None:
+        if not per_symbol_funding:
+            return False
+        return all(bool(_lookup_series(basis_by_symbol, symbol)) for symbol in required)
+    return bool(basis)
+
+
+def _basis_for(
+    symbol: str,
+    *,
+    basis: tuple[tuple[datetime, float], ...] | None,
+    basis_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None,
+) -> tuple[tuple[datetime, float], ...] | None:
+    """Per-symbol basis; a per-symbol map is never broadcast across assets."""
+    if basis_by_symbol is not None:
+        return _lookup_series(basis_by_symbol, symbol) if symbol != "ALL" else None
+    return basis
+
+
+def _basis_probe_rows(
+    label: str,
+    venue: str | None,
+    basis: tuple[tuple[datetime, float], ...] | None,
+    basis_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None,
+    funding_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None,
+    funding: tuple[tuple[datetime, float], ...] | None,
+    *,
+    applied: bool,
+    not_applied_status: str = "not_applied_alone",
+    required: tuple[str, ...] = REQUIRED_SYMBOLS,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    symbols = required if (basis_by_symbol or funding_by_symbol) else ("ALL",)
+    for symbol in symbols:
+        if basis_by_symbol is not None:
+            series = _lookup_series(basis_by_symbol, symbol) if symbol != "ALL" else None
+        else:
+            series = basis
+        if not series:
+            continue
+        funding_series = (
+            (_lookup_series(funding_by_symbol, symbol) if funding_by_symbol else funding)
+            if symbol != "ALL"
+            else funding
+        ) or ()
+        basis_days = {utc_day_open(ts) for ts, _v in series}
+        aligned = sum(1 for ts, _v in funding_series if utc_day_open(ts) in basis_days)
+        rows.append(
+            {
+                "print": label,
+                "venue": venue or "file",
+                "symbol": symbol,
+                "first": series[0][0].date().isoformat(),
+                "last": series[-1][0].date().isoformat(),
+                "days": str(len(series)),
+                "aligned_with_funding": str(aligned),
+                "status": "applied" if applied else not_applied_status,
+            }
+        )
+    return rows
 
 
 def choose_walkforward(
@@ -796,6 +906,7 @@ def evaluate_carry_hard_gates(
     z_threshold: float | None = None,
     basis: tuple[tuple[datetime, float], ...] | None = None,
     required: tuple[str, ...] = REQUIRED_SYMBOLS,
+    basis_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
 ) -> CarryHardGates:
     """#96+A+B+C analog on a daily resampled carry tape. Fail closed."""
     if not funding_usable(funding_by_symbol=funding_by_symbol, required=required):
@@ -823,6 +934,7 @@ def evaluate_carry_hard_gates(
         series = _lookup_series(funding_by_symbol, symbol)
         if series is None:
             continue
+        symbol_basis = _basis_for(symbol, basis=basis, basis_by_symbol=basis_by_symbol)
         per_asset_base[symbol] = score_hedged_carry(
             series,
             abs_threshold=abs_threshold,
@@ -830,7 +942,7 @@ def evaluate_carry_hard_gates(
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
             holdout_fraction=holdout_fraction,
-            basis=basis,
+            basis=symbol_basis,
         )
         per_asset_stress[symbol] = score_hedged_carry(
             series,
@@ -839,7 +951,7 @@ def evaluate_carry_hard_gates(
             fee_bps=fee_bps * FEE_STRESS_MULTIPLIER,
             slippage_bps=slippage_bps * FEE_STRESS_MULTIPLIER,
             holdout_fraction=holdout_fraction,
-            basis=basis,
+            basis=symbol_basis,
         )
         prints, _flips, _basis_days = _hedged_carry_per_print(
             series,
@@ -847,7 +959,7 @@ def evaluate_carry_hard_gates(
             z_threshold=z_threshold,
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
-            basis=basis,
+            basis=symbol_basis,
         )
         per_print_by_symbol[symbol] = prints
 
@@ -974,6 +1086,12 @@ class FundingCarryReport(BaseModel):
     fee_bps: float
     slippage_bps: float
     carry_legs: int = CARRY_LEGS
+    # --- second-venue PIT basis (#134) ---
+    basis_venue: str | None = None
+    second_basis_venue: str | None = None
+    basis_print_kind: BasisPrintKind = BASIS_PRINT_NONE
+    basis_probe: list[dict[str, str]] = Field(default_factory=list)
+    basis_pairing_note: str = BASIS_PAIRING_RULE
 
 
 def _clear_promotion(report: StrategySearchReport) -> StrategySearchReport:
@@ -1014,6 +1132,7 @@ def _score_carry_catalog(
     min_trades: int,
     required: tuple[str, ...] = REQUIRED_SYMBOLS,
     basis: tuple[tuple[datetime, float], ...] | None = None,
+    basis_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
 ) -> list[CarryCandidateResult]:
     rows: list[CarryCandidateResult] = []
     for candidate_id, label, abs_threshold, z_threshold in CARRY_CATALOG:
@@ -1023,6 +1142,7 @@ def _score_carry_catalog(
             series = _lookup_series(funding_by_symbol, symbol) if symbol != "ALL" else funding
             if series is None:
                 continue
+            symbol_basis = _basis_for(symbol, basis=basis, basis_by_symbol=basis_by_symbol)
             per_asset[symbol] = score_hedged_carry(
                 series,
                 abs_threshold=abs_threshold,
@@ -1034,7 +1154,7 @@ def _score_carry_catalog(
                 test_size=test_size,
                 step_size=step_size,
                 min_trades=min_trades,
-                basis=basis,
+                basis=symbol_basis,
             )
         wf_total: list[float] = []
         ho_total: list[float] = []
@@ -1073,7 +1193,7 @@ def _score_carry_catalog(
                 rankable=mean_wf is not None,
                 eligible=not reasons,
                 ineligible_reasons=reasons,
-                basis_modeled=bool(basis)
+                basis_modeled=bool(basis or basis_by_symbol)
                 and any(metrics.get("basis_modeled") is True for metrics in per_asset.values()),
             )
         )
@@ -1105,6 +1225,11 @@ def run_funding_carry(
     now: datetime | None = None,
     basis: tuple[tuple[datetime, float], ...] | None = None,
     second_basis: tuple[tuple[datetime, float], ...] | None = None,
+    # --- second-venue PIT basis (#134) ---
+    basis_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
+    second_basis_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
+    basis_venue: str | None = None,
+    second_basis_venue: str | None = None,
 ) -> FundingCarryReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -1181,6 +1306,59 @@ def run_funding_carry(
     elif have_primary:
         wf_adapted = True
 
+    # --- second-venue PIT basis (#134): decide applicability before scoring ---
+    primary_per_symbol = funding_by_symbol is not None
+    second_per_symbol = second_funding_by_symbol is not None
+    have_primary_basis = basis_usable(basis, basis_by_symbol, per_symbol_funding=primary_per_symbol)
+    have_second_basis = (
+        basis_usable(second_basis, second_basis_by_symbol, per_symbol_funding=second_per_symbol)
+        if print_kind == PRINT_DUAL
+        else have_primary_basis
+    )
+    primary_unpaired = basis_by_symbol is not None and not primary_per_symbol
+    second_unpaired = (
+        print_kind == PRINT_DUAL and second_basis_by_symbol is not None and not second_per_symbol
+    )
+    basis_status: Literal["ok", "skipped"]
+    if print_kind == PRINT_DUAL:
+        basis_status = "ok" if have_primary_basis and have_second_basis else "skipped"
+    else:
+        basis_status = "ok" if have_primary_basis else "skipped"
+    basis_applied = basis_status == "ok"
+    # A lone series is never applied: both prints score basis-aware or neither does.
+    eff_basis = basis if basis_applied else None
+    eff_basis_by_symbol = basis_by_symbol if basis_applied else None
+    eff_second_basis = second_basis if basis_applied else None
+    eff_second_basis_by_symbol = second_basis_by_symbol if basis_applied else None
+    basis_probe = _basis_probe_rows(
+        "primary",
+        basis_venue,
+        basis,
+        basis_by_symbol,
+        funding_by_symbol,
+        funding,
+        applied=basis_applied,
+        not_applied_status="not_applied_unpaired" if primary_unpaired else "not_applied_alone",
+    )
+    if print_kind == PRINT_DUAL:
+        basis_probe.extend(
+            _basis_probe_rows(
+                "second",
+                second_basis_venue,
+                second_basis,
+                second_basis_by_symbol,
+                second_funding_by_symbol,
+                second_funding,
+                applied=basis_applied,
+                not_applied_status=(
+                    "not_applied_unpaired" if second_unpaired else "not_applied_alone"
+                ),
+            )
+        )
+    basis_print_kind: BasisPrintKind = BASIS_PRINT_NONE
+    if basis_applied:
+        basis_print_kind = BASIS_PRINT_DUAL if print_kind == PRINT_DUAL else BASIS_PRINT_SINGLE
+
     catalog = spot_candidates(funding=funding, funding_by_symbol=funding_by_symbol)
     scored_ids = [item.candidate_id for item in catalog]
     if have_primary:
@@ -1222,7 +1400,8 @@ def run_funding_carry(
             test_size=use_test,
             step_size=use_step,
             min_trades=min_trades,
-            basis=basis,
+            basis=eff_basis,
+            basis_by_symbol=eff_basis_by_symbol,
         )
         if have_primary
         else []
@@ -1268,7 +1447,8 @@ def run_funding_carry(
             test_size=use_test,
             step_size=use_step,
             min_trades=min_trades,
-            basis=second_basis if second_basis is not None else basis,
+            basis=eff_second_basis,
+            basis_by_symbol=eff_second_basis_by_symbol,
         )
         primary_eligible = {
             row.candidate_id
@@ -1288,25 +1468,36 @@ def run_funding_carry(
         funding=funding if have_primary else None,
         funding_by_symbol=funding_by_symbol if have_primary else None,
     )
-    have_primary_basis = bool(basis)
-    have_second_basis = bool(second_basis) if print_kind == PRINT_DUAL else have_primary_basis
-    if print_kind == PRINT_DUAL:
-        basis_status: Literal["ok", "skipped"] = (
-            "ok" if have_primary_basis and have_second_basis else "skipped"
-        )
-    else:
-        basis_status = "ok" if have_primary_basis else "skipped"
     if basis_status == "ok":
+        pairing = (
+            f"primary funding print ({primary_venue or 'file'}) × basis ({basis_venue or 'file'})"
+        )
+        if print_kind == PRINT_DUAL:
+            pairing += (
+                f"; second funding print ({second_venue or 'file'}) × basis "
+                f"({second_basis_venue or 'file'})"
+            )
         basis_note = (
-            "PIT basis series supplied per dual-print venue and applied only "
-            "on days where both the current and previous print have a value "
-            "(missing days skipped). Window frozen at/before "
-            "BASIS_AWARE_WINDOW_END_UTC when using asiletto81+HTX."
+            f"PIT mark−index basis applied per symbol on {basis_print_kind}: {pairing}. "
+            "Basis PnL enters only on days where both the current and previous "
+            "print have a value (missing days skipped, never zero-filled); the "
+            "harvest decision never sees basis. "
+            "Window frozen at/before BASIS_AWARE_WINDOW_END_UTC when using "
+            "asiletto81+HTX; OKX / Binance Vision cover the live Kraken 720 "
+            "without moving it."
+        )
+    elif primary_unpaired or second_unpaired:
+        basis_note = (
+            "Per-symbol PIT basis was supplied against a single (non-per-symbol) "
+            "funding series — carry is scored per asset only when funding is per "
+            "asset, so the basis is UNPAIRED and was NOT applied (never broadcast). "
+            + BASIS_SKIP_NOTE
         )
     elif print_kind == PRINT_DUAL and (have_primary_basis ^ have_second_basis):
         basis_note = (
             "PIT basis present on only one dual-print venue — dual-print "
-            "basis requires both. " + BASIS_SKIP_NOTE
+            "basis requires both, so the lone series was NOT applied alone "
+            "(both prints stay basis-unaware). " + BASIS_SKIP_NOTE
         )
     else:
         basis_note = BASIS_SKIP_NOTE
@@ -1326,7 +1517,8 @@ def run_funding_carry(
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
             holdout_fraction=holdout_fraction,
-            basis=basis,
+            basis=eff_basis,
+            basis_by_symbol=eff_basis_by_symbol,
         )
         if have_primary and interval == "1d"
         else None
@@ -1337,7 +1529,8 @@ def run_funding_carry(
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
             holdout_fraction=holdout_fraction,
-            basis=second_basis if second_basis is not None else basis,
+            basis=eff_second_basis,
+            basis_by_symbol=eff_second_basis_by_symbol,
         )
         if have_second and interval == "1d"
         else None
@@ -1377,6 +1570,18 @@ def run_funding_carry(
         honesty += f" Second carry hard gates: {second_carry_gates.note}."
     if basis_status == "skipped":
         honesty += " Basis skipped (no PIT series)."
+        if primary_unpaired or second_unpaired:
+            honesty += (
+                " A per-symbol basis map was unpaired (single funding series) and was not applied."
+            )
+        elif print_kind == PRINT_DUAL and (have_primary_basis ^ have_second_basis):
+            honesty += " A lone basis series on one print was not applied alone."
+    else:
+        honesty += (
+            f" Basis applied ({basis_print_kind}): primary×{basis_venue or 'file'}"
+            + (f", second×{second_basis_venue or 'file'}" if print_kind == PRINT_DUAL else "")
+            + "; USDT-quoted mark−index, per symbol, missing days skipped."
+        )
     if not paper_path_ready:
         honesty += " Paper-executable path is not ready. Do not add a Settings pin."
     else:
@@ -1462,6 +1667,13 @@ def run_funding_carry(
         recommended_promote_flag=None,
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
+        basis_venue=basis_venue if have_primary_basis else None,
+        second_basis_venue=(
+            second_basis_venue if print_kind == PRINT_DUAL and have_second_basis else None
+        ),
+        basis_print_kind=basis_print_kind,
+        basis_probe=basis_probe,
+        basis_pairing_note=BASIS_PAIRING_RULE,
     )
 
 
@@ -1469,6 +1681,27 @@ def _pct(value: float | None) -> str:
     if value is None:
         return "n/a"
     return f"{value:+.2%}"
+
+
+def _basis_probe_table(report: FundingCarryReport) -> list[str]:
+    lines = [
+        (
+            "| print | funding venue | basis venue | symbol | first | last | days | "
+            "aligned with funding | status |"
+        ),
+        "| --- | --- | --- | --- | --- | --- | ---: | ---: | --- |",
+    ]
+    if not report.basis_probe:
+        lines.append("| *(no basis series supplied)* |  |  |  |  |  |  |  |  |")
+        return lines
+    for row in report.basis_probe:
+        funding_venue = report.primary_venue if row["print"] == "primary" else report.second_venue
+        lines.append(
+            f"| {row['print']} | {funding_venue or 'file'} | {row['venue']} | "
+            f"{row['symbol']} | {row['first']} | {row['last']} | {row['days']} | "
+            f"{row['aligned_with_funding']} | {row['status']} |"
+        )
+    return lines
 
 
 def _row_by_id(report: StrategySearchReport, candidate_id: str) -> CandidateSearchResult | None:
@@ -1491,6 +1724,9 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
             f"hard_gates_available=`{str(report.hard_gates_available).lower()}`; "
             f"can_promote=`{str(report.can_promote).lower()}`; "
             f"basis_status=`{report.basis_status}`; "
+            f"basis_print_kind=`{report.basis_print_kind}`; "
+            f"basis_venue=`{report.basis_venue or 'none'}`; "
+            f"second_basis_venue=`{report.second_basis_venue or 'none'}`; "
             f"paper_path_ready=`{str(report.paper_path_ready).lower()}`; "
             f"`keep_flag_false={str(report.keep_flag_false).lower()}`."
         ),
@@ -1546,8 +1782,12 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
         "",
         "## Basis (skip-not-invent)",
         "",
-        f"Status: **{report.basis_status}**.",
+        f"Status: **{report.basis_status}** (print kind `{report.basis_print_kind}`).",
         report.basis_note,
+        "",
+        f"Pairing: {report.basis_pairing_note}",
+        "",
+        *_basis_probe_table(report),
         "",
         "## Paper-executable path",
         "",
@@ -1809,8 +2049,21 @@ def render_funding_carry_markdown(report: FundingCarryReport) -> str:
                 f"hard_gates_available=`{str(report.hard_gates_available).lower()}`; "
                 f"can_promote=`{str(report.can_promote).lower()}`; "
                 "recommended_promote_flag=`none`. "
-                "Leave every `PAPER_PROMOTE_*` false. Do not add a new pin. "
-                "Do not enable live."
+                + (
+                    "The pre-registered bar (dual-print + hard gates + PIT basis on "
+                    "both prints + paper path + a dual-print passer) was reached in "
+                    "this report. That is a report field, not a Settings change: this "
+                    "command writes no pin, every `PAPER_PROMOTE_*` default stays "
+                    "false, and hedged carry is still not paper-spot executable. A "
+                    "pin, if ever proposed, is a separate documented default-false "
+                    "flag reviewed by a human — never flipped by a research run. "
+                    "Do not enable live."
+                    if report.can_promote
+                    else (
+                        "Leave every `PAPER_PROMOTE_*` false. Do not add a new pin. "
+                        "Do not enable live."
+                    )
+                )
             ),
         ]
     )

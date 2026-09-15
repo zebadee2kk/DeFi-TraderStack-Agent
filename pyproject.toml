@@ -157,6 +157,19 @@ traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"
 # independent prints required before anyone may talk about promotion.
 # Never flips PAPER_PROMOTE_*. Empty / negative is success. No CLOB orders.
 traderstack-polymarket-weather-eval = "traderstack.polymarket.eval_cli:main"
+# Ensemble trend (#137): multi-lookback Donchian-on-close {5..360} +
+# trailing midpoint stop + 25% vol target on a frozen top-20 PIT
+# Kraken universe. Same #96+A+B+C dual-print bar as #104 (Kraken 720
+# + Binance.US older-720). SOL reported, not a gate. Kraken Pro tier
+# fees. Era prints / DSR / PBO reported unavailable until #133/#135.
+# Paper spot executable (long-only). Never flips PAPER_PROMOTE_*.
+# Empty dual-print is success. Not a #118 Donchian N retune.
+traderstack-ensemble-trend = "traderstack.research.ensemble_trend_cli:main"
+# Second-venue PIT basis (#134): OKX history-mark-price-candles − history-index-candles
+# and Binance Vision markPriceKlines − indexPriceKlines (sha256-verified) daily
+# mark−index into [{opened_at, value}] JSON for traderstack-funding-carry --basis-dir.
+# Skip-not-invent; premium / last-trade / funding-implied refused; empty is success. No live.
+traderstack-download-basis = "traderstack.research.basis_cli:main"
 # Point-in-time Polymarket weather tape (#141). Observations only: the
 # collector appends decision-time book + as-issued forecast, the resolver
 # pairs them with an official station high. No intents, no CLOB orders.
