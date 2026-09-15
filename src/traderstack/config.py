@@ -508,6 +508,21 @@ class Settings(BaseSettings):
         "modelled",
     ] = "kraken_pro_spot_t1"
 
+    # --- polymarket crypto-threshold vs Deribit wedge tape (#142; paper-only, opt-in) ---
+    # Read-only research tooling for traderstack-polymarket-crypto-collect: public
+    # Gamma/CLOB GETs plus two public Deribit option endpoints. There is no
+    # credential, signing or promote field here, and none of these values reaches
+    # RiskEngine, the pipeline or the execution path.
+    polymarket_crypto_tape_enabled: bool = False
+    polymarket_crypto_assets: str = "BTC,ETH"
+    polymarket_crypto_tape_path: str = "var/audit/polymarket_crypto_wedge_tape.jsonl"
+    polymarket_crypto_lookahead_days: int = Field(default=2, ge=0, le=7)
+    polymarket_crypto_max_staleness_seconds: float = Field(default=120.0, gt=0)
+    polymarket_crypto_max_expiry_gap_hours: float = Field(default=24.0, gt=0)
+    polymarket_crypto_calls_per_minute: int | None = Field(default=90, gt=0)
+    polymarket_crypto_cache_seconds: float = Field(default=0.0, ge=0)
+    deribit_base_url: str = "https://www.deribit.com/api/v2"
+
     @property
     def assets(self) -> tuple[str, ...]:
         return tuple(x.strip().upper() for x in self.mvp_assets.split(",") if x.strip())
@@ -761,6 +776,13 @@ class Settings(BaseSettings):
         from traderstack.fee_tiers import effective_taker_bps
 
         return effective_taker_bps(self.paper_fee_tier, paper_fee_bps=self.paper_fee_bps)
+
+    # --- paper-only Polymarket crypto wedge tape (#142) ---
+    @property
+    def polymarket_crypto_asset_list(self) -> tuple[str, ...]:
+        return tuple(
+            x.strip().upper() for x in self.polymarket_crypto_assets.split(",") if x.strip()
+        )
 
 
 # Modes the continuous service may actually run. `live` is accepted by Settings

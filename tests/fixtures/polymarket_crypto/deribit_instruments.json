@@ -1,0 +1,206 @@
+{
+ "BTC": [
+  {
+   "instrument_name": "BTC-14SEP26-70000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 70000.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-14SEP26-74000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 74000.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-14SEP26-78000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 78000.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-14SEP26-82000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 82000.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-14SEP26-86000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 86000.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-15SEP26-70000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 70000.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-15SEP26-74000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 74000.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-15SEP26-78000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 78000.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-15SEP26-82000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 82000.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "BTC-15SEP26-86000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 86000.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  }
+ ],
+ "ETH": [
+  {
+   "instrument_name": "ETH-14SEP26-2600-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 2600.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-14SEP26-2800-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 2800.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-14SEP26-3000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 3000.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-14SEP26-3200-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 3200.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-14SEP26-3400-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 3400.0,
+   "expiration_timestamp": 1789372800000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-15SEP26-2600-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 2600.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-15SEP26-2800-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 2800.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-15SEP26-3000-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 3000.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-15SEP26-3200-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 3200.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  },
+  {
+   "instrument_name": "ETH-15SEP26-3400-C",
+   "kind": "option",
+   "option_type": "call",
+   "strike": 3400.0,
+   "expiration_timestamp": 1789459200000,
+   "creation_timestamp": 1788220800000,
+   "is_active": true,
+   "settlement_period": "day"
+  }
+ ]
+}

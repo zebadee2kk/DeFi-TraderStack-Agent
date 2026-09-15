@@ -1,0 +1,124 @@
+{
+ "bitcoin-above-on-september-14-2026": [
+  {
+   "id": "994001",
+   "slug": "bitcoin-above-on-september-14-2026",
+   "title": "Bitcoin above ___ on September 14?",
+   "endDate": "2026-09-14T16:00:00Z",
+   "active": true,
+   "closed": false,
+   "markets": [
+    {
+     "id": "4412001",
+     "conditionId": "0x4412001",
+     "question": "Will the price of Bitcoin be above $74,000 on September 14?",
+     "description": "This market will resolve to \"Yes\" if the Binance 1 minute candle for BTC/USDT 12:00 in the ET timezone (noon) on the date specified in the title has a final \"Close\" price higher than the price specified in the title. Otherwise, this market will resolve to \"No\".",
+     "clobTokenIds": "[\"btc-74k-yes\", \"btc-74k-no\"]",
+     "endDate": "2026-09-14T16:00:00Z",
+     "active": true,
+     "closed": false,
+     "acceptingOrders": true,
+     "enableOrderBook": true,
+     "orderPriceMinTickSize": 0.001,
+     "takerBaseFee": 1000
+    },
+    {
+     "id": "4412002",
+     "conditionId": "0x4412002",
+     "question": "Will the price of Bitcoin be above $78,000 on September 14?",
+     "description": "This market will resolve to \"Yes\" if the Binance 1 minute candle for BTC/USDT 12:00 in the ET timezone (noon) on the date specified in the title has a final \"Close\" price higher than the price specified in the title. Otherwise, this market will resolve to \"No\".",
+     "clobTokenIds": "[\"btc-78k-yes\", \"btc-78k-no\"]",
+     "endDate": "2026-09-14T16:00:00Z",
+     "active": true,
+     "closed": false,
+     "acceptingOrders": true,
+     "enableOrderBook": true,
+     "orderPriceMinTickSize": 0.001,
+     "takerBaseFee": 1000
+    },
+    {
+     "id": "4412003",
+     "conditionId": "0x4412003",
+     "question": "Will the price of Bitcoin be above $999,000 on September 14?",
+     "description": "This market will resolve to \"Yes\" if the Binance 1 minute candle for BTC/USDT 12:00 in the ET timezone (noon) on the date specified in the title has a final \"Close\" price higher than the price specified in the title. Otherwise, this market will resolve to \"No\".",
+     "clobTokenIds": "[\"btc-999k-yes\", \"btc-999k-no\"]",
+     "endDate": "2026-09-14T16:00:00Z",
+     "active": true,
+     "closed": false,
+     "acceptingOrders": true,
+     "enableOrderBook": true,
+     "orderPriceMinTickSize": 0.001,
+     "takerBaseFee": 1000
+    },
+    {
+     "id": "4412004",
+     "conditionId": "0x4412004",
+     "question": "Will Bitcoin dip to $60,000 in September?",
+     "description": "This market will resolve to \"Yes\" if the Binance 1 minute candle for BTC/USDT 12:00 in the ET timezone (noon) on the date specified in the title has a final \"Close\" price higher than the price specified in the title. Otherwise, this market will resolve to \"No\".",
+     "clobTokenIds": "[\"btc-dip-yes\", \"btc-dip-no\"]",
+     "endDate": "2026-09-14T16:00:00Z",
+     "active": true,
+     "closed": false,
+     "acceptingOrders": true,
+     "enableOrderBook": true,
+     "orderPriceMinTickSize": 0.001,
+     "takerBaseFee": 1000
+    },
+    {
+     "id": "4412005",
+     "conditionId": "0x4412005",
+     "question": "Will the price of Bitcoin be above $70,000 on September 14?",
+     "description": "This market will resolve to \"Yes\" if the Binance 1 minute candle for BTC/USDT 12:00 in the ET timezone (noon) on the date specified in the title has a final \"Close\" price higher than the price specified in the title. Otherwise, this market will resolve to \"No\".",
+     "clobTokenIds": "[\"btc-70k-yes\", \"btc-70k-no\"]",
+     "endDate": "2026-09-14T16:00:00Z",
+     "active": true,
+     "closed": true,
+     "acceptingOrders": true,
+     "enableOrderBook": true,
+     "orderPriceMinTickSize": 0.001,
+     "takerBaseFee": 1000
+    },
+    {
+     "id": "4412006",
+     "conditionId": "0x4412006",
+     "question": "Will the price of Bitcoin be above $72,000 on September 14?",
+     "description": "",
+     "clobTokenIds": "[\"btc-72k-yes\", \"btc-72k-no\"]",
+     "endDate": "2026-09-14T16:00:00Z",
+     "active": true,
+     "closed": false,
+     "acceptingOrders": true,
+     "enableOrderBook": true,
+     "orderPriceMinTickSize": 0.001,
+     "takerBaseFee": 1000
+    }
+   ]
+  }
+ ],
+ "ethereum-above-on-september-14-2026": [
+  {
+   "id": "994002",
+   "slug": "ethereum-above-on-september-14-2026",
+   "title": "Ethereum above ___ on September 14?",
+   "endDate": "2026-09-14T16:00:00Z",
+   "active": true,
+   "closed": false,
+   "markets": [
+    {
+     "id": "4412101",
+     "conditionId": "0x4412101",
+     "question": "Will the price of Ethereum be above $3,000 on September 14?",
+     "description": "This market will resolve to \"Yes\" if the Binance 1 minute candle for ETH/USDT 12:00 in the ET timezone (noon) on the date specified in the title has a final \"Close\" price higher than the price specified in the title. Otherwise, this market will resolve to \"No\".",
+     "clobTokenIds": "[\"eth-3000-yes\", \"eth-3000-no\"]",
+     "endDate": "2026-09-14T16:00:00Z",
+     "active": true,
+     "closed": false,
+     "acceptingOrders": true,
+     "enableOrderBook": true,
+     "orderPriceMinTickSize": 0.001,
+     "takerBaseFee": 1000
+    }
+   ]
+  }
+ ]
+}

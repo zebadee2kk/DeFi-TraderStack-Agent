@@ -1160,6 +1160,74 @@ def build_report(settings: Settings) -> ConfigReport:
             f"PAPER_FEE_TIER={PILOT_FEE_TIER_ID} for a pilot-sized account."
         )
 
+    # --- polymarket crypto-threshold vs Deribit wedge tape (#142; paper-only, opt-in) ---
+    items.append(
+        CheckItem(
+            "Polymarket crypto wedge tape",
+            "enabled" if settings.polymarket_crypto_tape_enabled else "disabled (opt-in)",
+            "traderstack-polymarket-crypto-collect; read-only tape of CLOB mid vs "
+            "Deribit option-implied probability; no CLOB orders, no signing",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  Deribit read-only (no private endpoints)",
+            _flag(True),
+            f"{settings.deribit_base_url} public/get_instruments + "
+            "public/get_book_summary_by_currency, GET only",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  assets / lookahead / freshness / expiry gap",
+            f"{settings.polymarket_crypto_assets or '(none)'} / "
+            f"{settings.polymarket_crypto_lookahead_days}d / "
+            f"{settings.polymarket_crypto_max_staleness_seconds:g}s / "
+            f"{settings.polymarket_crypto_max_expiry_gap_hours:g}h",
+            "a stale or one-sided read is recorded with a non-ok status, never as a zero",
+        )
+    )
+    items.append(CheckItem("  wedge tape path", settings.polymarket_crypto_tape_path))
+    crypto_crucix_on = crucix_should_register(
+        enabled=settings.crucix_enabled,
+        base_url=settings.crucix_base_url,
+        api_key=settings.crucix_api_key.get_secret_value() if settings.crucix_api_key else None,
+    )
+    items.append(
+        CheckItem(
+            "  Crucix stand-aside gate",
+            "configured (withhold-only)"
+            if crypto_crucix_on
+            else "not configured: every row records not_configured; gated mask will be empty",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  evaluator",
+            "slice 2: traderstack-polymarket-crypto-eval not yet shipped",
+            "no PAPER_PROMOTE_POLYMARKET_CRYPTO_WEDGE pin exists and none is planned here",
+        )
+    )
+    if settings.polymarket_crypto_tape_enabled and settings.trading_mode != "paper":
+        warnings.append(
+            "POLYMARKET_CRYPTO_TAPE_ENABLED=true with TRADING_MODE="
+            f"{settings.trading_mode}: the collector refuses to run outside paper mode."
+        )
+    if settings.polymarket_crypto_tape_enabled and not settings.polymarket_crypto_asset_list:
+        warnings.append(
+            "POLYMARKET_CRYPTO_TAPE_ENABLED=true with an empty POLYMARKET_CRYPTO_ASSETS: "
+            "no event slug can be discovered and the tape will stay empty."
+        )
+    unknown_crypto_assets = [
+        asset for asset in settings.polymarket_crypto_asset_list if asset not in {"BTC", "ETH"}
+    ]
+    if unknown_crypto_assets:
+        warnings.append(
+            "POLYMARKET_CRYPTO_ASSETS contains "
+            f"{', '.join(unknown_crypto_assets)}: only BTC and ETH have both a daily "
+            "Polymarket threshold event and a Deribit option chain; they are skipped."
+        )
+
     return ConfigReport(items=items, warnings=warnings)
 
 

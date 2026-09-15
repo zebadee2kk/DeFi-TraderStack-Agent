@@ -1,0 +1,85 @@
+{
+ "btc-74k-yes": {
+  "market": "0xfixture",
+  "timestamp": "1789365570000",
+  "bids": [
+   {
+    "price": "0.600",
+    "size": "1000"
+   },
+   {
+    "price": "0.640",
+    "size": "1000"
+   }
+  ],
+  "asks": [
+   {
+    "price": "0.660",
+    "size": "1000"
+   },
+   {
+    "price": "0.700",
+    "size": "1000"
+   }
+  ],
+  "tick_size": "0.001"
+ },
+ "btc-78k-yes": {
+  "market": "0xfixture",
+  "timestamp": "1789365570000",
+  "bids": [
+   {
+    "price": "0.200",
+    "size": "1000"
+   },
+   {
+    "price": "0.240",
+    "size": "1000"
+   }
+  ],
+  "asks": [],
+  "tick_size": "0.001"
+ },
+ "btc-999k-yes": {
+  "market": "0xfixture",
+  "timestamp": "1789365570000",
+  "bids": [
+   {
+    "price": "0.001",
+    "size": "1000"
+   }
+  ],
+  "asks": [
+   {
+    "price": "0.004",
+    "size": "1000"
+   }
+  ],
+  "tick_size": "0.001"
+ },
+ "eth-3000-yes": {
+  "market": "0xfixture",
+  "timestamp": "1789365570000",
+  "bids": [
+   {
+    "price": "0.480",
+    "size": "1000"
+   },
+   {
+    "price": "0.500",
+    "size": "1000"
+   }
+  ],
+  "asks": [
+   {
+    "price": "0.520",
+    "size": "1000"
+   },
+   {
+    "price": "0.560",
+    "size": "1000"
+   }
+  ],
+  "tick_size": "0.001"
+ }
+}
