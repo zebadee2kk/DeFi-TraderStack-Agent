@@ -157,6 +157,11 @@ traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"
 # independent prints required before anyone may talk about promotion.
 # Never flips PAPER_PROMOTE_*. Empty / negative is success. No CLOB orders.
 traderstack-polymarket-weather-eval = "traderstack.polymarket.eval_cli:main"
+# Point-in-time Polymarket weather tape (#141). Observations only: the
+# collector appends decision-time book + as-issued forecast, the resolver
+# pairs them with an official station high. No intents, no CLOB orders.
+traderstack-polymarket-weather-collect = "traderstack.polymarket.collect_cli:main"
+traderstack-polymarket-weather-resolve = "traderstack.polymarket.resolve_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

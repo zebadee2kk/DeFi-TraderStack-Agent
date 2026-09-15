@@ -508,6 +508,20 @@ class Settings(BaseSettings):
         "modelled",
     ] = "kraken_pro_spot_t1"
 
+    # --- polymarket weather PIT tape (#141) ---
+    # Research tapes for the paper-only weather collector/resolver. Plain
+    # JSONL evidence files, isolated from the crypto audit trail: the paper
+    # loop, the risk engine and the meta-agent never read them, and nothing
+    # here can move a limit, a side or a size. IEM / NCEI are read-only
+    # public station-high sources (no credentials exist for either).
+    polymarket_weather_tape_path: str = "var/audit/polymarket_weather_tape.jsonl"
+    polymarket_weather_resolved_path: str = "var/audit/polymarket_weather_resolved.jsonl"
+    polymarket_weather_iem_base_url: str = "https://mesonet.agron.iastate.edu"
+    polymarket_weather_ghcn_base_url: str = "https://www.ncei.noaa.gov"
+    # Hours after a market's local close before the resolver looks for the
+    # official high. NCEI publishes with a lag; resolving too early is a skip.
+    polymarket_weather_settle_lag_hours: float = Field(default=24.0, ge=0)
+
     @property
     def assets(self) -> tuple[str, ...]:
         return tuple(x.strip().upper() for x in self.mvp_assets.split(",") if x.strip())
