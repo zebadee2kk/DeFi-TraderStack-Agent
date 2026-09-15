@@ -674,3 +674,29 @@ def test_weight_from_score_caps_at_one_and_keeps_side() -> None:
     # |weight| never exceeds 1 regardless of score magnitude or sign.
     for score in (-5.0, -1.0, -0.5, 0.5, 1.0, 5.0):
         assert abs(_decide(candidate(Side.BUY, score), candles)) <= 1.0
+
+
+def test_miles_search_surfaces_the_selection_evidence_block() -> None:
+    """#135 reaches this CLI: K is the frozen catalog length, not a guess.
+
+    `miles_search` could not carry the block before because
+    `selection_evidence` imported `CandidateSearchResult` from here and
+    `series_for_asset` from `daily_robustness` (which imports here) — a cycle.
+    Both are now deferred, so this asserts the block actually lands.
+    """
+
+    report = _search(
+        {
+            "BTC/USD@1d": downtrend(360, symbol="BTC/USD"),
+            "ETH/USD@1d": downtrend(360, symbol="ETH/USD"),
+        }
+    )
+    evidence = report.selection_evidence
+    assert evidence is not None
+    # The deflation term must equal the catalog size this report publishes.
+    assert evidence.trial_count == report.multiple_testing["n_candidates"]
+    # One venue scored here, so the print is single and withholds.
+    assert evidence.print_kind.value == "single"
+    rendered = render_miles_markdown(report)
+    assert "## Selection evidence (#135)" in rendered
+    assert "**Trials scored (K):**" in rendered
