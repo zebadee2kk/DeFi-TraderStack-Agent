@@ -198,6 +198,24 @@ verification record.
   is not substituted. A venue without usable base volume fails
   closed for volume names. Fill at t+1 open. No exogenous
   series. Input to `traderstack-volume-breakout`.
+- **Wide-universe top-k cross-sectional momentum (research only,
+  #140):** universe from Kraken public `GET /0/public/AssetPairs`
+  (no auth; a *current* listing, so delisted names are absent —
+  survivorship stated in the report header; frozen exclusion list
+  for stablecoins / fiat / commodities / wrapped duplicates), then
+  one Kraken `GET /0/public/OHLC` `interval=1440` pull per pair
+  (720-bar cap, ~1 request/s with a 1 s sleep between pairs; HTTP
+  429 or an error is a per-pair skip). Dollar volume for the
+  monthly liquidity filter is `close × base volume` from that OHLC
+  print only (the charts-spot `PI_*` path reports zero volume and
+  is never used). Second-venue prints enter as JSON through
+  `traderstack-xs-topk --candles-dir` from the #133 fetchers
+  (Coinbase Exchange `/products/{id}/candles?granularity=86400`,
+  300 candles/request, reachable; `data.binance.vision` daily spot
+  klines, reachable via S3 while `api.binance.com` is HTTP 451 and
+  Bybit REST is HTTP 403 — neither REST host is called). A missing
+  or short series is a skip, never a zero. Input to
+  `traderstack-xs-topk`.
 - **Ensemble trend (research only, #137):** Kraken
   `GET /0/public/OHLC` interval 1440 for each frozen
   `CANDIDATE_UNIVERSE` USD pair (720-bar cap; one request per
