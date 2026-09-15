@@ -52,7 +52,10 @@ def test_real_question_shape_parses() -> None:
 
 def test_ethereum_maps_to_eth() -> None:
     market = parse_crypto_threshold_market(
-        payload(question="Will the price of Ethereum be above $3,000 on October 2?")
+        payload(
+            question="Will the price of Ethereum be above $3,000 on October 2?",
+            endDate="2026-10-02T16:00:00Z",
+        )
     )
     assert market is not None
     assert market.asset is CryptoAsset.ETH
@@ -91,6 +94,16 @@ def test_non_threshold_questions_are_skipped(question: str) -> None:
 )
 def test_unusable_markets_are_skipped_not_guessed(override: dict[str, object]) -> None:
     assert parse_crypto_threshold_market(payload(**override)) is None
+
+
+def test_a_title_date_that_contradicts_end_date_is_skipped() -> None:
+    assert (
+        parse_crypto_threshold_market(
+            payload(question="Will the price of Bitcoin be above $80,000 on September 19?")
+        )
+        is None
+    )
+    assert parse_crypto_threshold_market(payload()) is not None
 
 
 def test_event_slugs_cover_the_lookahead_window_in_order() -> None:

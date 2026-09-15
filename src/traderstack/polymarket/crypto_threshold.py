@@ -8,7 +8,7 @@ contracts and are dropped rather than guessed at.
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from traderstack.polymarket.crypto_models import CryptoAsset, ParsedCryptoThresholdMarket
@@ -52,6 +52,23 @@ def _resolution_text_ok(payload: dict[str, Any]) -> bool:
     return all(needle in lowered for needle in _RESOLUTION_NEEDLES)
 
 
+def _title_date_matches(when: str, resolves_at: datetime) -> bool:
+    """Does the "<Month D>" in the question agree with ``endDate``?
+
+    An unreadable month name is treated as a mismatch: the title is untrusted
+    text, and a market whose two statements of its own settlement date disagree
+    is not one this tape can honestly record.
+    """
+
+    month_name, _, day_text = when.strip().partition(" ")
+    try:
+        month = _MONTH_NAMES.index(month_name.lower()) + 1
+        day = int(day_text)
+    except ValueError:
+        return False
+    return (month, day) == (resolves_at.month, resolves_at.day)
+
+
 def parse_crypto_threshold_market(
     payload: dict[str, Any],
     *,
@@ -86,6 +103,11 @@ def parse_crypto_threshold_market(
 
     resolves_at = _parse_datetime(payload.get("endDate") or payload.get("end_date_iso"))
     if resolves_at is None:
+        return None
+
+    if not _title_date_matches(match.group("when"), resolves_at):
+        # The title says one date and endDate says another: two different
+        # claims about when this settles. Skip rather than pick one.
         return None
 
     token_ids = _json_list(payload.get("clobTokenIds") or payload.get("clob_token_ids"))
