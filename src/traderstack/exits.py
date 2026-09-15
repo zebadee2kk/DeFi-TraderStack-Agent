@@ -66,6 +66,34 @@ def bar_seconds_for(settings: Settings, interval: str | None = None) -> float:
     return interval_to_seconds(label)
 
 
+# --- protective-exit sizing (#130) ---
+def exit_sizing_price_usd(settings: Settings, mark_price_usd: float) -> float:
+    """Worst-case execution price a protective exit is sized against.
+
+    ``ExecutionPlanner.plan`` converts an approved notional into a quantity
+    with ``notional_usd / execution_price_usd``, and the paper fill executes a
+    SELL at ``mid * (1 - PAPER_SLIPPAGE_BPS / 10_000)`` — *below* the mark. A
+    notional sized at the mark therefore converts into more quantity than is
+    held and the fill is refused as a short sale, so a stop-loss fails closed
+    instead of reducing risk (#130). Sizing at the lowest price the fill can
+    print keeps that conversion at or below the held quantity. The BUY/cover
+    leg fills *above* the mid, so the same haircut is conservative there too.
+
+    Zone C: the haircut comes from ``Settings`` only.
+    """
+
+    if mark_price_usd <= 0:
+        return mark_price_usd
+    haircut = max(0.0, settings.paper_slippage_bps) / 10_000.0
+    price = mark_price_usd * (1.0 - haircut)
+    if price <= 0:
+        # Absurd slippage configuration (>= 100%). Never size a protective
+        # exit to zero — that would silently drop it. The reducing-only clamp
+        # at the planner/fill boundary is the invariant backstop.
+        return mark_price_usd
+    return price
+
+
 def evaluate_position_exits(
     *,
     settings: Settings,
@@ -88,12 +116,15 @@ def evaluate_position_exits(
         return None
     if mark_price_usd <= 0 or position.quantity <= 0:
         return None
-    # Size at the live mark so the planner's notional/price conversion
-    # cannot invent more quantity than is held.
+    # --- protective-exit sizing (#130) ---
+    # Size against the worst-case execution price, not the live mark: the
+    # planner divides the approved notional by the (lower) adverse sell price,
+    # so a mark-priced notional asks for more quantity than is held.
     exposure = position.quantity * mark_price_usd
     side = reducing_side(exposure)
     if side is None or exposure <= 0:
         return None
+    requested_notional = position.quantity * exit_sizing_price_usd(settings, mark_price_usd)
 
     entry = position.average_cost_usd
     if entry <= 0:
@@ -116,7 +147,7 @@ def evaluate_position_exits(
         reason=reason,
         asset=asset.upper(),
         side=side,
-        requested_notional_usd=exposure,
+        requested_notional_usd=requested_notional,
         mark_price_usd=mark_price_usd,
         entry_price_usd=entry,
     )

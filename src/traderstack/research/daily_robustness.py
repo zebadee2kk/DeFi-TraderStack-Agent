@@ -96,6 +96,28 @@ def series_for_asset(
     return None
 
 
+# --- era prints / DSR / PBO (#135) ---
+# Moved down from harder_gates: it sits with its siblings
+# (series_for_asset, is_yahoo_symbol) so miles_search can reuse the one
+# implementation instead of importing a higher layer or copying it.
+def kraken_daily_candles(
+    histories: dict[str, tuple[Candle, ...]],
+    asset: str,
+    *,
+    interval: str = "1d",
+) -> tuple[Candle, ...] | None:
+    wanted = asset.upper()
+    for candles in histories.values():
+        if (
+            candles
+            and candles[0].interval == interval
+            and candles[0].symbol.upper() == wanted
+            and not is_yahoo_symbol(candles[0].symbol)
+        ):
+            return candles
+    return None
+
+
 def _holdout_excess(row: SeriesCandidateMetrics | None) -> float | None:
     if row is None or row.holdout is None:
         return None

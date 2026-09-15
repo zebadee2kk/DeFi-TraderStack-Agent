@@ -34,7 +34,7 @@ from traderstack.metrics import (  # --- observability (Epic 9) ---
     timed_provider_call,
 )
 from traderstack.models import PortfolioSnapshot, Side
-from traderstack.pipeline import PipelineResult, VerticalSlicePipeline
+from traderstack.pipeline import PaperOrderIntent, PipelineResult, VerticalSlicePipeline
 from traderstack.tracing import traced_call, traced_span  # observability (Epic 9)
 
 
@@ -70,6 +70,23 @@ class RuntimeResult(BaseModel):
     # Open time of the newest candle the cycle fetched, so the zero-trade
     # funnel can report candle age offline from the audit trail alone.
     candle_last_opened_at: datetime | None = None
+
+
+# --- protective-exit sizing (#130) ---
+def reduce_only_quantity(portfolio: PortfolioSnapshot, intent: PaperOrderIntent) -> float | None:
+    """Held quantity a reducing-only intent may not exceed, or ``None``.
+
+    Read from the same ``PortfolioSnapshot`` the risk engine and the exit rules
+    already used for this cycle, so the submitted order is bounded by the book
+    the decision was made against rather than a separately fetched view. Returns
+    ``None`` for every intent that is not a protective exit, so the planner's
+    clamp stays unavailable to entries.
+    """
+
+    if not intent.reduce_only:
+        return None
+    held = portfolio.held_positions.get(intent.asset.upper())
+    return held.quantity if held is not None else 0.0
 
 
 @dataclass
@@ -287,6 +304,8 @@ class PaperRuntime:
                         # against the pipeline's validated last trade by the planner.
                         execution_price_usd=tick.ask if intent.side is Side.BUY else tick.bid,
                         reference_price_usd=tick.last,
+                        # --- protective-exit sizing (#130) ---
+                        max_quantity=reduce_only_quantity(portfolio, intent),
                     )
                     receipt = outcome.receipt
                     execution_status = outcome.status.value
