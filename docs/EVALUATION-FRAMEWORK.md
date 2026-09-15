@@ -438,9 +438,27 @@ returning rows only. It now returns both, and
 `test_second_print_surfaces_the_selection_evidence_block` pins that, as
 `test_honesty_pack_surfaces_the_selection_evidence_block` does for the pack.
 
+`traderstack-miles-search` carries it as of #135's follow-up. It could not
+before for a structural reason worth recording: `selection_evidence` imported
+`CandidateSearchResult` from `miles_search` and `series_for_asset` from
+`daily_robustness` (which itself imports `miles_search`), so any search module
+wanting an evidence block closed an import cycle. Both imports are now
+deferred — the first to `TYPE_CHECKING` (annotation-only under
+`from __future__ import annotations`), the second to call time — and
+`kraken_daily_candles` moved down from `harder_gates` to sit with
+`series_for_asset`, so the one implementation is reused rather than copied.
+K is the frozen catalog length the report already publishes as
+`multiple_testing["n_candidates"]`, so the deflation term is not a guess.
+
 **Not carrying the block:** `traderstack-strategy-search`,
-`traderstack-miles-search`, `traderstack-daily-robustness`,
-`traderstack-liq-regime-search` and `traderstack-funding-carry`. These build
+`traderstack-daily-robustness`, `traderstack-liq-regime-search` and
+`traderstack-funding-carry`.
+
+`traderstack-daily-robustness` is deliberately excluded rather than blocked:
+`run_daily_robustness` is called twice inside `run_harder_gates` (baseline and
+fee-stressed) and again by `honesty_pack`, each of which already computes or
+inherits its own block, so computing it there would trip the bootstrap three
+times per harder-gates run for one reported result. These build
 their reports on `research.search` / `research.miles_search` /
 `research.daily_robustness` and never call `run_harder_gates`, so — contrary
 to what this section previously claimed — extending the block to them is

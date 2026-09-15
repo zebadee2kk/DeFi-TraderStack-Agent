@@ -48,11 +48,12 @@ from traderstack.research.daily_candidates import (
     default_daily_robustness_candidates,
     default_expanded_harder_gates_candidates,
 )
-from traderstack.research.daily_robustness import (
+from traderstack.research.daily_robustness import (  # kraken_daily_candles moved here (#135)
     KRAKEN_DAILY_CAP_NOTE,
     DailyRobustnessReport,
     _holdout_excess,
     is_yahoo_symbol,
+    kraken_daily_candles,
     run_daily_robustness,
     series_for_asset,
 )
@@ -149,24 +150,6 @@ def evaluate_magnitude_gate(
     elif ratio < min_ratio:
         reasons.append("holdout_magnitude_ratio_below_minimum")
     return (not reasons, ratio, reasons)
-
-
-def kraken_daily_candles(
-    histories: dict[str, tuple[Candle, ...]],
-    asset: str,
-    *,
-    interval: str = "1d",
-) -> tuple[Candle, ...] | None:
-    wanted = asset.upper()
-    for candles in histories.values():
-        if (
-            candles
-            and candles[0].interval == interval
-            and candles[0].symbol.upper() == wanted
-            and not is_yahoo_symbol(candles[0].symbol)
-        ):
-            return candles
-    return None
 
 
 def split_contiguous_windows(

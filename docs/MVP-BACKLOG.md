@@ -57,9 +57,11 @@
       no new dependency. Wired through the shared `run_harder_gates` path, so
       the eleven dual-print families carry it, as do `-second-print` and
       `-honesty-pack` (both score through `run_harder_gates`; second-print had
-      been computing the block and discarding it). `traderstack-strategy-search`,
-      `-miles-search`, `-daily-robustness`, `-liq-regime-search` and
-      `-funding-carry` do **not** carry it and are **not** wiring: they never
+      been computing the block and discarding it), and `-miles-search` (K is
+      the frozen catalog length it already publishes; an import cycle through
+      `selection_evidence` had to be broken first).
+      `traderstack-strategy-search`, `-daily-robustness`, `-liq-regime-search`
+      and `-funding-carry` do **not** carry it and are **not** wiring: they never
       call `run_harder_gates`, so each needs a decision about what its trial
       set is, and a wrong trial count silently weakens the DSR rather than
       failing loudly. Additional withholding gate: it can only remove a

@@ -41,12 +41,12 @@ skipped, never zero-filled.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
 from traderstack.candles import periods_per_year as candle_periods_per_year
-from traderstack.research.daily_robustness import series_for_asset
 from traderstack.research.era_prints import (
     ERA_PRINT_RULE,
     EraCoverage,
@@ -55,7 +55,6 @@ from traderstack.research.era_prints import (
     describe_print_kind,
     era_coverage,
 )
-from traderstack.research.miles_search import CandidateSearchResult
 from traderstack.research.overfitting import (
     DEFAULT_BOOTSTRAP_ITERATIONS,
     DEFAULT_BOOTSTRAP_SEED,
@@ -75,6 +74,14 @@ from traderstack.research.overfitting import (
     power_table,
     sharpe_ratio,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    # Annotation-only: `from __future__ import annotations` keeps these as
+    # strings at runtime, so importing them here would only serve to create an
+    # import cycle (miles_search -> selection_evidence -> miles_search) the
+    # moment a search module wants to carry an evidence block (#135).
+    from traderstack.research.miles_search import CandidateSearchResult
+
 
 # --- era prints / DSR / PBO (#135): pre-registered gate thresholds ---
 # Frozen in version control, deliberately not Settings fields: a
@@ -179,6 +186,13 @@ def _fold_returns(
     return but no expectancy observation, because a fold that did not
     trade has no per-trade expectancy to observe.
     """
+    # Imported at call time, not module scope: `daily_robustness` imports
+    # `miles_search`, so a module-level import here would close the same cycle
+    # described above. By the time this runs both modules are loaded, and
+    # Python serves the lookup from sys.modules. Deliberately the one shared
+    # implementation rather than a second copy that could drift from it.
+    from traderstack.research.daily_robustness import series_for_asset
+
     returns: list[float] = []
     expectancies: list[float] = []
     trades = 0
