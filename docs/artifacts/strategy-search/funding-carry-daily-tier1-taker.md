@@ -1,9 +1,9 @@
 # Funding / carry strategy search
 
-Generated: 2026-09-13T23:32:17.504249+00:00
+Generated: 2026-09-13T23:35:44.317088+00:00
 Print kind: **dual_print**. interval=`1d`; primary_venue=`hyperliquid`; second_venue=`htx`; hard_gates_available=`true`; can_promote=`true`; basis_status=`ok`; basis_print_kind=`dual_basis`; basis_venue=`okx`; second_basis_venue=`binance_vision`; paper_path_ready=`true`; `keep_flag_false=true`.
 Core K=13; scored ids=13; ranking_key=`informational_wf_excess_single_print_cannot_promote` (informational).
-Costs: fee=10 bps + slippage=5 bps (spot overlays); hedged carry pays 2 legs × (fee+slip) on each flip. PIT basis is modeled (skip missing days).
+Costs: fee=80 bps + slippage=5 bps (spot overlays); hedged carry pays 2 legs × (fee+slip) on each flip. PIT basis is modeled (skip missing days).
 Walk-forward: train=180 test=60 step=60 warmup=31.
 Hard gates: available.
 Funding resample: UTC `1d` sums; empty days omitted.
@@ -88,15 +88,15 @@ Informational. Eligible under a fee-aware sign check does not mean promoted. Con
 
 | rank | id | family | WF excess | WF total | holdout excess | eligible | control |
 | ---: | --- | --- | ---: | ---: | ---: | :---: | :---: |
-| 1 | `ma_cross_10_30` | ma_cross | -7.63% | +7.82% | +3.39% | no | yes |
-| 2 | `funding_z_follow_1_0` | funding_z | -11.05% | +4.39% | -27.81% | no | no |
-| 3 | `funding_z_follow_1_5` | funding_z | -11.23% | +4.21% | -24.24% | no | no |
-| 4 | `funding_z_follow_2_0` | funding_z | -12.35% | +3.09% | -23.59% | no | no |
-| 5 | `ema_9_21_funding_agree` | funding_z | -14.55% | +0.89% | -7.27% | no | no |
-| 6 | `momentum_12_funding_agree` | funding_z | -14.95% | +0.50% | -12.23% | no | no |
-| 7 | `funding_z_fade_2_0` | funding_z | -19.25% | -3.81% | -5.34% | no | no |
-| 8 | `funding_z_fade_1_5` | funding_z | -20.55% | -5.11% | -7.91% | no | no |
-| 9 | `funding_z_fade_1_0` | funding_z | -22.06% | -6.62% | -8.93% | no | no |
+| 1 | `ma_cross_10_30` | ma_cross | -10.38% | +5.07% | -2.70% | no | yes |
+| 2 | `funding_z_follow_2_0` | funding_z | -14.27% | +1.18% | -32.53% | no | no |
+| 3 | `funding_z_follow_1_5` | funding_z | -14.37% | +1.08% | -38.54% | no | no |
+| 4 | `momentum_12_funding_agree` | funding_z | -16.11% | -0.66% | -17.08% | no | no |
+| 5 | `ema_9_21_funding_agree` | funding_z | -16.43% | -0.98% | -18.16% | no | no |
+| 6 | `funding_z_follow_1_0` | funding_z | -17.44% | -2.00% | -45.93% | no | no |
+| 7 | `funding_z_fade_2_0` | funding_z | -21.00% | -5.56% | -16.00% | no | no |
+| 8 | `funding_z_fade_1_5` | funding_z | -23.36% | -7.91% | -24.62% | no | no |
+| 9 | `funding_z_fade_1_0` | funding_z | -27.51% | -12.06% | -30.80% | no | no |
 
 ## Hedged carry (modeled; basis not invented)
 
@@ -104,10 +104,10 @@ PnL = received |funding| while harvesting, minus two-leg (fee+slippage) on each 
 
 | id | WF total | holdout total | full-sample | eligible |
 | --- | ---: | ---: | ---: | :---: |
-| `carry_hedged_sign` | +1.71% | +3.33% | +27.76% | yes |
-| `carry_hedged_abs_1bp` | -1.43% | -8.15% | -18.57% | no |
-| `carry_hedged_abs_3bp` | -2.43% | -4.68% | -21.46% | no |
-| `carry_hedged_z_1_5` | -2.87% | -8.83% | -32.92% | no |
+| `carry_hedged_sign` | +1.71% | +3.33% | +25.96% | yes |
+| `carry_hedged_abs_1bp` | -14.01% | -46.13% | -88.97% | no |
+| `carry_hedged_abs_3bp` | -16.94% | -27.59% | -88.02% | no |
+| `carry_hedged_z_1_5` | -16.45% | -42.32% | -91.60% | no |
 
 ## Second funding print (`htx`)
 
@@ -115,22 +115,22 @@ Independent tape. Not averaged with the primary. A name must clear the fee-aware
 
 | rank | id | family | WF excess | WF total | holdout excess | eligible |
 | ---: | --- | --- | ---: | ---: | ---: | :---: |
-| 1 | `ma_cross_10_30` | ma_cross | -7.63% | +7.82% | +3.39% | no |
-| 2 | `funding_z_fade_1_5` | funding_z | -14.22% | +1.22% | -8.50% | no |
-| 3 | `ema_9_21_funding_agree` | funding_z | -14.27% | +1.17% | -7.12% | no |
-| 4 | `momentum_12_funding_agree` | funding_z | -14.50% | +0.95% | -8.99% | no |
-| 5 | `funding_z_fade_2_0` | funding_z | -15.18% | +0.26% | -2.60% | no |
-| 6 | `funding_z_follow_1_0` | funding_z | -15.85% | -0.41% | -21.41% | no |
-| 7 | `funding_z_follow_2_0` | funding_z | -16.91% | -1.46% | -24.63% | no |
-| 8 | `funding_z_fade_1_0` | funding_z | -18.25% | -2.81% | -13.10% | no |
-| 9 | `funding_z_follow_1_5` | funding_z | -18.30% | -2.85% | -22.37% | no |
+| 1 | `ma_cross_10_30` | ma_cross | -10.38% | +5.07% | -2.70% | no |
+| 2 | `ema_9_21_funding_agree` | funding_z | -16.26% | -0.81% | -19.41% | no |
+| 3 | `momentum_12_funding_agree` | funding_z | -16.72% | -1.27% | -17.18% | no |
+| 4 | `funding_z_fade_2_0` | funding_z | -17.82% | -2.38% | -10.08% | no |
+| 5 | `funding_z_fade_1_5` | funding_z | -17.92% | -2.48% | -22.66% | no |
+| 6 | `funding_z_follow_2_0` | funding_z | -19.52% | -4.07% | -30.49% | no |
+| 7 | `funding_z_follow_1_5` | funding_z | -21.83% | -6.38% | -34.83% | no |
+| 8 | `funding_z_follow_1_0` | funding_z | -22.27% | -6.82% | -44.16% | no |
+| 9 | `funding_z_fade_1_0` | funding_z | -24.38% | -8.93% | -36.91% | no |
 
 | id | WF total | holdout total | full-sample | eligible |
 | --- | ---: | ---: | ---: | :---: |
-| `carry_hedged_sign` | +1.49% | +3.30% | +21.26% | yes |
-| `carry_hedged_abs_1bp` | -1.71% | -11.99% | -32.24% | no |
-| `carry_hedged_abs_3bp` | -3.66% | -9.94% | -35.77% | no |
-| `carry_hedged_z_1_5` | -3.00% | -9.76% | -34.21% | no |
+| `carry_hedged_sign` | +1.49% | +3.30% | +19.56% | yes |
+| `carry_hedged_abs_1bp` | -14.46% | -57.10% | -95.04% | no |
+| `carry_hedged_abs_3bp` | -22.24% | -48.04% | -95.30% | no |
+| `carry_hedged_z_1_5` | -16.65% | -45.73% | -91.89% | no |
 
 ## Carry hard gates (#96+A+B+C analog on daily funding)
 
@@ -146,4 +146,4 @@ Names that cleared the fee-aware bar on both funding venues (informational; no S
 ## Promotion decision
 
 **No candidate is promoted.** print_kind=`dual_print`; hard_gates_available=`true`; can_promote=`true`; recommended_promote_flag=`none`. The pre-registered bar (dual-print + hard gates + PIT basis on both prints + paper path + a dual-print passer) was reached in this report. That is a report field, not a Settings change: this command writes no pin, every `PAPER_PROMOTE_*` default stays false, and hedged carry is still not paper-spot executable. A pin, if ever proposed, is a separate documented default-false flag reviewed by a human — never flipped by a research run. Do not enable live.
-Informational spot-signal top-1 by WF excess was `ma_cross_10_30` (WF excess=-7.63%, WF total=+7.82%, holdout excess=+3.39%; eligible=False).
+Informational spot-signal top-1 by WF excess was `ma_cross_10_30` (WF excess=-10.38%, WF total=+5.07%, holdout excess=-2.70%; eligible=False).

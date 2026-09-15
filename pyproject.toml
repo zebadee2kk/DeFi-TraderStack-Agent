@@ -165,6 +165,11 @@ traderstack-polymarket-weather-eval = "traderstack.polymarket.eval_cli:main"
 # Paper spot executable (long-only). Never flips PAPER_PROMOTE_*.
 # Empty dual-print is success. Not a #118 Donchian N retune.
 traderstack-ensemble-trend = "traderstack.research.ensemble_trend_cli:main"
+# Second-venue PIT basis (#134): OKX history-mark-price-candles − history-index-candles
+# and Binance Vision markPriceKlines − indexPriceKlines (sha256-verified) daily
+# mark−index into [{opened_at, value}] JSON for traderstack-funding-carry --basis-dir.
+# Skip-not-invent; premium / last-trade / funding-implied refused; empty is success. No live.
+traderstack-download-basis = "traderstack.research.basis_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]

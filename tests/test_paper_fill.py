@@ -159,3 +159,31 @@ def test_live_mode_is_refused() -> None:
     simulator = PaperFillSimulator(trading_mode="live")
     with pytest.raises(ExecutionSafetyError, match="outside paper mode"):
         simulator.apply(_intent(), mid_usd=20_000.0, ledger=ExecutionLedger(), portfolio=_book())
+
+
+# --- fee realism (#138) ---
+def test_tier_taker_fee_is_charged_on_a_paper_fill() -> None:
+    mid = 20_000.0
+    modelled_book, tier_book = _book(), _book()
+    modelled = PaperFillSimulator(paper_fee_bps=10.0, paper_slippage_bps=0.0)
+    tier_one = PaperFillSimulator(paper_fee_bps=80.0, paper_slippage_bps=0.0)
+
+    modelled_out = modelled.apply(
+        _intent(decision_id="modelled"),
+        mid_usd=mid,
+        ledger=ExecutionLedger(),
+        portfolio=modelled_book,
+    )
+    tier_ledger = ExecutionLedger()
+    tier_out = tier_one.apply(
+        _intent(decision_id="tier"), mid_usd=mid, ledger=tier_ledger, portfolio=tier_book
+    )
+
+    # 1,000 USD at 10 bps is ~1 USD; at Kraken Pro Tier 1 taker it is ~8 USD.
+    assert modelled_out.fee_usd == pytest.approx(1.0, rel=1e-6)
+    assert tier_out.fee_usd == pytest.approx(8.0, rel=1e-6)
+    assert tier_book.nav_usd == pytest.approx(10_000 - 8.0)
+    assert tier_book.nav_usd < modelled_book.nav_usd
+    order = next(iter(tier_ledger.orders.values()))
+    assert order.fee_source is FeeSource.MODELLED
+    assert order.state is OrderLifecycleState.FILLED

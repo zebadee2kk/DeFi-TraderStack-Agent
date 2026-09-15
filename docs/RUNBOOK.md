@@ -49,6 +49,7 @@ without activating the venv.
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
 | `traderstack-polymarket-weather-eval` | Fee-aware evaluation of that weather rule against `always_hold` and `fade_the_mid`. Dual independent prints (non-overlapping dates or disjoint resolution sources) are required before anyone may talk about promotion. Writes `docs/artifacts/strategy-search/polymarket-weather-eval.md`. Never flips `PAPER_PROMOTE_*`. Empty / negative is success. No CLOB orders. |
 | `traderstack-ensemble-trend` | Paper-only ensemble trend (#137): long-only multi-lookback Donchian-on-close (N in {5, 10, 20, 30, 60, 90, 150, 250, 360}; bar t never sets its own level) with a trailing stop at max(prior stop, prior close-channel midpoint), equal-weight across open lookbacks, 25% annualised vol target on 90-day realised vol, capped at 1.0 (no leverage), on a frozen `CANDIDATE_UNIVERSE` of Kraken USD pairs with a monthly point-in-time top-20 snapshot (≥ 365 prior bars or 720-cap, median 30-day close×volume ≥ $2M; non-members forced flat). Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Fees from the frozen Kraken Pro tier table (`--kraken-tier`, default tier 1 = 80 bps taker per side) unless `--fee-bps` is explicit. Reports gross attribution by asset and by lookback. `era_prints_available=false` / `dsr_pbo_available=false` until #133 / #135 land (not invented). Accepts `traderstack-download-candles` JSON via `--candles`. Writes `docs/artifacts/strategy-search/ensemble-trend.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field. Empty dual-print set is success. |
+| `traderstack-download-basis` | Second-venue point-in-time basis (#134). Downloads daily **mark close − index close, over index** from OKX (`history-mark-price-candles` − `history-index-candles`, `bar=1Dutc`, `confirm==1` rows only, serial pagination with backoff on 403/429) and Binance Vision (`markPriceKlines` − `indexPriceKlines` monthly + trailing-month daily zips, sha256 `.CHECKSUM` verified per zip, fail closed on mismatch) into `var/research/basis/<venue>/<SYMBOL>_basis_1d.json` (the `[{opened_at, value}]` shape `traderstack-funding-carry --basis-dir` reads) and writes the probe table `docs/artifacts/strategy-search/pit-basis-second-venue.md` (first/last/days/gaps per series; OKX×Vision aligned days). Funding premium, last-trade candles and funding-implied basis are refused in code. A missing day is a skip, never a zero; an unreachable venue is a recorded skip and the command still exits 0. Quote is USDT on both venues. Network only, no credentials. Never flips `PAPER_PROMOTE_*`. |
 
 ## Zero to paper trading
 
@@ -2330,3 +2331,155 @@ is a per-symbol skip note, never an abort) and then Binance Spot daily
 BTC/ETH/SOL (`api.binance.us` when `api.binance.com` is HTTP 451; 403 /
 451 is a skip and the second print fails closed). See
 `docs/artifacts/strategy-search/ensemble-trend.md`.
+## Second-venue PIT basis (OKX + Binance Vision) and the basis-aware carry re-score
+
+`carry_hedged_sign` was the only name to finish positive after fees on
+both independent funding tapes (Hyperliquid + HTX) and was blocked only
+on point-in-time basis. #134 wires two independent daily **mark−index**
+tapes that reach 2020 on BTC and ETH, so the live Kraken 720 can be
+scored basis-aware **without moving the window**:
+
+| venue | construction | path | notes |
+| --- | --- | --- | --- |
+| OKX | `history-mark-price-candles` close − `history-index-candles` close, over index | `GET /api/v5/market/history-mark-price-candles?instId=BTC-USDT-SWAP&bar=1Dutc` and `…/history-index-candles?instId=BTC-USDT&bar=1Dutc` (index instId has **no** `-SWAP`) | `bar=1D` is the UTC+8 day (opens 16:00 UTC) — only `1Dutc` lines up with the funding tape's UTC-day sums; rows off a UTC midnight are skipped and counted. 100 rows/page, `after=<ts_ms>` pages older. Rapid pagination has produced HTTP 403 from the WAF: pages are walked serially with a 0.25 s pause and 2/4/8/16/32 s backoff; after five retries the series is recorded truncated/skipped, never filled. The newest row is the uncommitted day (`confirm=="0"`) and is dropped. |
+| Binance Vision | `markPriceKlines` close − `indexPriceKlines` close, over index | `https://data.binance.vision/data/futures/um/{monthly,daily}/{markPriceKlines,indexPriceKlines}/{SYMBOL}/1d/…zip` (+ `.CHECKSUM`) | Reachable via S3 while `fapi.binance.com` REST is HTTP 451 here. Every zip's sha256 is verified before parsing; a mismatch or missing `.CHECKSUM` **fails closed** (that month/day is skipped, not filled from elsewhere). Monthly zips for complete months; a 404 month (not yet published) and the trailing partial month use daily zips up to yesterday UTC; today's bar is never used. Cache under `var/research/binance_vision/` is re-verified on every read. |
+
+Refused in code (`research/basis.py::refuse_forbidden_basis_source`):
+`premium` / `premiumIndexKlines` / `.XBTUSDPI` (funding-formula premium),
+`klines` / `market/candles` / `candleSnapshot` (last-trade), `fundingRate`
+/ `funding-rate-history` (funding-implied), `trade` / `aggTrades` /
+`bookTicker` / `quote` (trade or book tapes). Every emitted value is a
+finite float with `|basis| ≤ 0.10` on a UTC day open; anything else is
+skipped and counted (`tests/security/test_basis_tape_cannot_relax_controls.py`).
+
+Pairing rule, frozen in code before any pull
+(`funding_carry.BASIS_PAIRING_RULE`): **primary funding print ×
+`--basis-venue` (default `okx`); second funding print ×
+`--second-basis-venue` (default `binance_vision`)**. The funding tape
+and the basis tape are different venues — the report states the
+cross-venue pairing (`hyperliquid × okx`, `htx × binance_vision`) rather
+than hiding it. Basis is looked up **per symbol** and never broadcast
+from one asset to the other. A lone basis series (one print only) is
+**not applied alone**: both prints score basis-aware or neither does,
+and `basis_status` stays `skipped`. A per-symbol basis supplied against
+a single (non-per-symbol) funding series is *unpaired* and not applied.
+Basis for day D is the day-D close and enters only the day-D hedged PnL
+(close D−1 → close D); it never touches the harvest decision. A day
+missing on either side is skipped, never zero-filled. Basis-aware
+scoring is daily only (`--interval 1d`). Choosing `--basis-venue
+hyperliquid --second-basis-venue htx` selects the #126 coverage-driven
+freeze (window ending 2026-06-01) instead.
+
+```bash
+# 1. pull both venues from 2020 (≈10 min; OKX walks serially, Vision verifies every zip)
+.venv/bin/traderstack-download-basis --venue okx --venue binance_vision --since 2020-01-01
+# 2. re-score the frozen carry catalog on the live Kraken 720 with dual basis (default costs 10+5 bps)
+.venv/bin/traderstack-funding-carry --live --interval 1d --basis-dir var/research/basis
+# 3. the pilot-tier print: Kraken Pro Tier-1 taker = 80 bps per side (#138 fee realism)
+.venv/bin/traderstack-funding-carry --live --interval 1d --basis-dir var/research/basis \
+  --fee-bps 80 --output-md docs/artifacts/strategy-search/funding-carry-daily-tier1-taker.md \
+  --output-json var/ops/funding_carry_daily_tier1_taker.json
+```
+
+`--fetch-basis` (default on for `--live --interval 1d`) fetches any
+series missing from `--basis-dir` and writes it there; `--no-fetch-basis`
+reads files only. The report header shows `basis_status`,
+`basis_print_kind` (`none` / `single_basis` / `dual_basis`),
+`basis_venue`, `second_basis_venue`, and the basis section carries the
+probe table (print, funding venue, basis venue, symbol, first, last,
+days, aligned-with-funding days, applied / not_applied_alone /
+not_applied_unpaired).
+
+`can_promote` keeps its existing conjunction (dual-print **and** hard
+gates **and** `basis_status=ok` **and** paper path **and** a dual-print
+passer). It is a report field only — nothing outside `research/` reads
+it, no `PAPER_PROMOTE_*` default changes, and no new pin is added by
+this command. See
+`docs/artifacts/strategy-search/pit-basis-second-venue.md` (probe
+table), `funding-carry-daily.md` (dual-basis print at 10+5 bps),
+`funding-carry-daily-tier1-taker.md` (80 bps print),
+`funding-carry-basis.md` and `pit-basis-archives.md` (decision).
+## Fee realism (Kraken Pro tier) (#138)
+
+Research used to score every candidate at `PRETRADE_FEE_BPS=10` +
+`PRETRADE_SLIPPAGE_BPS=5` per leg (gate C at 20+10), and paper fills
+charged `PAPER_FEE_BPS=10`. Kraken's published Pro spot schedule
+(kraken.com/features/fee-schedule, read 2026-09-13, frozen in
+`src/traderstack/fee_tiers.py`) starts far above that:
+
+| `PAPER_FEE_TIER` | 30-day volume | maker bps | taker bps | round trip taker |
+| --- | --- | ---: | ---: | ---: |
+| `kraken_pro_spot_t1` (default, pilot) | $0+ | 40 | 80 | 160 |
+| `kraken_pro_spot_t2` | $2.5K+ | 30 | 60 | 120 |
+| `kraken_pro_spot_t3` | $10K+ | 22 | 38 | 76 |
+| `kraken_pro_spot_t8` | ~$500K+ | 8 | 20 | 40 |
+| `kraken_pro_spot_t12` | $10M+ | 0 | 10 | 20 |
+| `modelled` | n/a | `PAPER_FEE_BPS` | `PAPER_FEE_BPS` | 2× `PAPER_FEE_BPS` |
+
+What the tier changes:
+
+- **Paper fills** (`execution_status=paper_filled`), the no-venue-fee
+  fallback in `HummingbotExecutionReconciler`, and the paper pre-trade
+  backtest gate all charge the tier's **taker** leg
+  (`Settings.effective_paper_fee_bps`). Default Tier 1 = 80 bps per leg.
+  Wherever an earlier section of this runbook says "`PAPER_FEE_BPS`"
+  for a paper fill or a `fee_source=modelled` ledger fee, read
+  "`PAPER_FEE_TIER` taker (`PAPER_FEE_BPS` only when
+  `PAPER_FEE_TIER=modelled`)". `PAPER_FEE_BPS` still applies to the
+  paper perp stub (`PAPER_PERP_HEDGE`): a Kraken spot tier would be an
+  invented perp fee.
+- **Every research CLI** (`traderstack-research`,
+  `traderstack-strategy-search`, `traderstack-miles-search`,
+  `traderstack-daily-robustness`, `traderstack-harder-gates`,
+  `traderstack-honesty-pack`, `traderstack-second-print`,
+  `traderstack-dual-print-search`, `traderstack-liq-regime-search`,
+  `traderstack-intraday-dual-print`, `traderstack-relative-value`,
+  `traderstack-xs-momentum`, `traderstack-donchian-breakout`,
+  `traderstack-tsmom`, `traderstack-bollinger-fade`,
+  `traderstack-calendar-seasonality`, `traderstack-lead-lag`,
+  `traderstack-volume-breakout`) takes `--fee-tier <id>` and scores at
+  `max(PRETRADE_FEE_BPS, tier taker)` + `PRETRADE_SLIPPAGE_BPS`.
+  Precedence: explicit `--fee-bps N` (report stamped `explicit`) >
+  `--fee-tier` > `PAPER_FEE_TIER`. Wherever an earlier section says
+  `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)`, read
+  `max(PRETRADE_FEE_BPS, PAPER_FEE_TIER taker)`. Gate C stays 2× the
+  tier (160+10 bps per leg at Tier 1).
+  `traderstack-funding-carry` is the one research CLI without
+  `--fee-tier` yet: `research/funding_carry_cli.py` is owned by #134
+  (basis-aware carry) in this wave, so it still scores at
+  `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` and prints no `fee_tier`
+  block; it gains the flag once #134 lands.
+- **Every report and `report.json` names the tier**: a `fee_tier` block
+  (`tier_id`, `maker_bps`, `taker_bps`, `role=taker`, `fee_bps_used`,
+  `source`, `read_on`) and a markdown line directly under the costs
+  line, e.g. `Fee tier: Tier 1 ($0+ 30d) maker 40 / taker 80 bps
+  (kraken_pro_spot_t1); scored at taker 80 bps. Maker bps shown for
+  information only, not assumed: no paper post-only fill-rate evidence
+  exists yet.` Reports generated before #138 have no `fee_tier` block
+  and were scored at 10+5; they still load.
+- **Maker fees are never assumed.** There is no `--fee-role`, no
+  `PAPER_MAKER_FEE_BPS`, and `FeeTierStamp.role` can only be `taker`.
+  Post-only limit orders are #73's planner design; one month of paper
+  fill-rate data must exist before any report may score at maker bps.
+- `traderstack-check-config` prints a `Paper fee tier` line and warns
+  when `PAPER_FEE_TIER=modelled` (four to eight times optimistic versus
+  Tier 1). `modelled` is the documented way back to pre-#138 numbers,
+  not a recommendation.
+
+What the tier does **not** change: it is not a risk limit
+(`RiskEngine` never reads it; it is not in `RISK_LIMIT_FIELDS` and does
+not move `policy_version`), it cannot size a trade upward or pick a
+side, and it never flips a `PAPER_PROMOTE_*` flag. A higher fee only
+debits NAV, which the daily-loss and drawdown breakers already read, so
+it can only withhold. Expect the #131 funnel to show `pretrade` as the
+dominant blocking gate at Tier 1 and near-zero paper fills — that is
+honest. An empty catalog at Tier 1 is a successful research result; the
+committed pre-#138 catalogs are re-scored on the new default by #136,
+not regenerated here.
+
+```bash
+.venv/bin/traderstack-tsmom --live                                   # Tier 1 taker (default)
+.venv/bin/traderstack-tsmom --live --fee-tier kraken_pro_spot_t3     # $10K+ 30d account
+.venv/bin/traderstack-tsmom --live --fee-bps 10                      # stamped "explicit"
+PAPER_FEE_TIER=modelled .venv/bin/traderstack-check-config           # warns
+```

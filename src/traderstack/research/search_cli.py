@@ -18,6 +18,7 @@ import httpx
 
 from traderstack.candles import Candle
 from traderstack.config import Settings
+from traderstack.fee_tiers import add_fee_tier_argument, resolve_research_costs
 from traderstack.market.kraken_candles import KrakenCandleProvider
 from traderstack.research.candidates import expanded_price_candidates
 from traderstack.research.cli import load_candles_from_json
@@ -29,7 +30,6 @@ from traderstack.research.kraken_charts import (
 )
 from traderstack.research.search import (
     render_search_markdown,
-    research_fee_bps,
     run_search,
 )
 
@@ -149,6 +149,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--starting-equity", type=float, default=None)
     parser.add_argument("--fee-bps", type=float, default=None, help="override conservative fee")
+    # --- fee realism (#138) ---
+    add_fee_tier_argument(parser)
     parser.add_argument("--slippage-bps", type=float, default=None)
     parser.add_argument("--warmup", type=int, default=31)
     parser.add_argument("--train-size", type=int, default=None)
@@ -261,14 +263,17 @@ def _load_histories(
 def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Path, Path]:
     settings = settings or Settings()
     histories, history_notes = _load_histories(args)
-    fee_bps = (
-        args.fee_bps
-        if args.fee_bps is not None
-        else research_fee_bps(settings.pretrade_fee_bps, settings.paper_fee_bps)
+    # --- fee realism (#138) ---
+    # Precedence: --fee-bps (stamped "explicit") > --fee-tier > PAPER_FEE_TIER;
+    # the tier fee is max(PRETRADE_FEE_BPS, tier taker). Taker leg only.
+    costs = resolve_research_costs(
+        fee_bps=args.fee_bps,
+        fee_tier=args.fee_tier,
+        settings=settings,
+        slippage_bps=args.slippage_bps,
     )
-    slippage_bps = (
-        args.slippage_bps if args.slippage_bps is not None else settings.pretrade_slippage_bps
-    )
+    fee_bps = costs.fee_bps
+    slippage_bps = costs.slippage_bps
     train_default, test_default, step_default = _default_windows(args.count)
     fetch_edge = args.fetch_edge_series if args.fetch_edge_series is not None else bool(args.symbol)
 
@@ -296,6 +301,7 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
         # (funding_carry, liq_regime_search) leave it off.
         include_selection_evidence=True,
         fee_bps=fee_bps,
+        fee_tier=costs.stamp,
         slippage_bps=slippage_bps,
         starting_equity=args.starting_equity or settings.paper_starting_nav_usd,
         warmup=args.warmup,

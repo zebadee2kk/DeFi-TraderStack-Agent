@@ -832,3 +832,30 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `volume-breakout.md`.
 
+
+## Second-venue PIT basis (`traderstack-download-basis`, #134)
+
+`pit-basis-second-venue.md` is the committed probe table from
+`traderstack-download-basis`: OKX `history-mark-price-candles` −
+`history-index-candles` (`1Dutc`) and Binance Vision `markPriceKlines`
+− `indexPriceKlines` (sha256-verified zips), daily mark−index per
+symbol with first/last/days/gaps and the OKX×Vision aligned-day count.
+`funding-carry-daily.md` is the live dual-basis re-score of the frozen
+carry catalog (10+5 bps) and `funding-carry-daily-tier1-taker.md` the
+same at the Kraken Pro Tier-1 taker print (80 bps per side). Pairing
+(frozen before the pull): primary funding print × OKX basis, second ×
+Binance Vision basis. A lone series is not applied. No `PAPER_PROMOTE_*`
+default changes.
+## Fee tier of the committed reports (#138)
+
+Every report in this directory generated **before** #138 was scored at
+`max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)=10` + `PRETRADE_SLIPPAGE_BPS=5` per
+leg (gate C at 20+10) and carries **no** `fee_tier` block in its JSON.
+Reports generated **after** #138 carry a `fee_tier` block and a
+`Fee tier: ...` line under the costs line, and default to Kraken Pro
+Tier 1 taker (80 bps per leg; gate C at 160+10) via `PAPER_FEE_TIER`.
+The committed artifacts were **not** regenerated in #138: re-scoring the
+twelve frozen catalogs on the pilot tier (four eras, two venues) is #136's
+job, so it runs once on the new default rather than twice. A name that
+passed at 10 bps and fails at Tier 1 taker lost to fees, and the new
+report line says so.
