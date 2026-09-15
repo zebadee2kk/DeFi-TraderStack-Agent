@@ -190,6 +190,21 @@ NON_POLICY_FIELDS: tuple[str, ...] = (
     # tests/security/test_fee_tier_cannot_relax_costs.py::test_fee_tier_is_not_risk_engine_policy,
     # which pins that every tier id yields an identical policy_version.
     "paper_fee_tier",
+    # --- polymarket crypto-threshold vs Deribit wedge tape (#142) ---
+    # A separate read-only research process with its own JSONL tape. It builds
+    # no order, sizes nothing and never reaches RiskEngine.evaluate: these
+    # fields only say which public endpoints are read, how fresh a quote must be
+    # to be recorded, and where the tape is written. Pinned by
+    # tests/security/test_polymarket_crypto_wedge_boundary.py.
+    "deribit_base_url",
+    "polymarket_crypto_assets",
+    "polymarket_crypto_cache_seconds",
+    "polymarket_crypto_calls_per_minute",
+    "polymarket_crypto_lookahead_days",
+    "polymarket_crypto_max_expiry_gap_hours",
+    "polymarket_crypto_max_staleness_seconds",
+    "polymarket_crypto_tape_enabled",
+    "polymarket_crypto_tape_path",
     # --- polymarket weather PIT tape (#141) ---
     # Paths and base URLs for the paper-only Polymarket weather research
     # tapes, plus how long the resolver waits after a market's local close

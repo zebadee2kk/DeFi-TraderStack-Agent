@@ -109,6 +109,32 @@ class GammaClient:
                 next_cursor = raw
         return events, next_cursor
 
+    # --- crypto-threshold wedge tape (#142) ---
+    async def list_events_by_slug(self, *, slug: str) -> tuple[dict[str, Any], ...]:
+        """Fetch one event by its deterministic slug. GET only.
+
+        An empty list is a normal result (the daily event does not exist yet),
+        not an error: a missing event is a skip, never a fabricated row.
+        """
+
+        if self.registry is not None:
+            return await self.registry.call(
+                self._list_events_by_slug,
+                slug=slug,
+                cache_key=("gamma", "events_slug", slug),
+            )
+        return await self._list_events_by_slug(slug=slug)
+
+    async def _list_events_by_slug(self, *, slug: str) -> tuple[dict[str, Any], ...]:
+        payload = await self._get("/events", params={"slug": slug})
+        if isinstance(payload, list):
+            return tuple(row for row in payload if isinstance(row, dict))
+        if isinstance(payload, dict):
+            rows = payload.get("events") or payload.get("data") or payload.get("results")
+            if isinstance(rows, list):
+                return tuple(row for row in rows if isinstance(row, dict))
+        raise TypeError("unexpected Gamma events payload")
+
     async def _get(self, path: str, params: Mapping[str, str]) -> Any:
         _require_get_path(path)
         if self.client is not None:

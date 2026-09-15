@@ -1,0 +1,15 @@
+{
+ "BTC": {
+  "alerts": []
+ },
+ "ETH": {
+  "alerts": [
+   {
+    "asset": "ETH",
+    "tier": "high",
+    "adverse": false,
+    "headline": "fixture high-tier alert"
+   }
+  ]
+ }
+}

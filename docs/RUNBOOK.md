@@ -52,6 +52,7 @@ without activating the venv.
 | `traderstack-xs-topk` | Paper-only **long-only top-k cross-sectional momentum on the point-in-time Kraken USD spot universe** (#140). Universe: the current Kraken `AssetPairs` listing (online, USD-quoted, frozen exclusion list for stablecoins / fiat / commodities / wrapped duplicates; survivorship caveat stated), then monthly top-20 by trailing 30-day median dollar volume using only bars before each snapshot. Frozen grid: N in {21, 63, 126} with a 7-day skip, k in {3, 5}, equal or inverse-vol weights, weekly Monday-UTC rebalance (decide on close t, fill next open). Portfolio bar on era prints (local era constant pending #135; DSR/PBO printed as not computed); turnover and fee drag at research 10+5 bps **and** the Kraken tier-1 pilot taker cost (80+5 bps); `ew_bh_universe` control cannot promote. Dual print needs two independent covered cells (venues or eras) — a Kraken-only 720-day print is one venue × one era and cannot promote by construction. `--live` pulls Kraken; `--candles-dir VENUE DIR` scores any daily candle JSON (the `traderstack-download-candles` format, or #133 fetcher output) as a second print. Writes `docs/artifacts/strategy-search/xs-topk.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field; `RiskEngine` limits are documented, not widened. Empty dual-print set is success. Not a #117 top-1 reprint. |
 | `traderstack-ensemble-trend` | Paper-only ensemble trend (#137): long-only multi-lookback Donchian-on-close (N in {5, 10, 20, 30, 60, 90, 150, 250, 360}; bar t never sets its own level) with a trailing stop at max(prior stop, prior close-channel midpoint), equal-weight across open lookbacks, 25% annualised vol target on 90-day realised vol, capped at 1.0 (no leverage), on a frozen `CANDIDATE_UNIVERSE` of Kraken USD pairs with a monthly point-in-time top-20 snapshot (≥ 365 prior bars or 720-cap, median 30-day close×volume ≥ $2M; non-members forced flat). Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Fees from the frozen Kraken Pro tier table (`--kraken-tier`, default tier 1 = 80 bps taker per side) unless `--fee-bps` is explicit. Reports gross attribution by asset and by lookback. `era_prints_available=false` / `dsr_pbo_available=false` until #133 / #135 land (not invented). Accepts `traderstack-download-candles` JSON via `--candles`. Writes `docs/artifacts/strategy-search/ensemble-trend.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field. Empty dual-print set is success. |
 | `traderstack-download-basis` | Second-venue point-in-time basis (#134). Downloads daily **mark close − index close, over index** from OKX (`history-mark-price-candles` − `history-index-candles`, `bar=1Dutc`, `confirm==1` rows only, serial pagination with backoff on 403/429) and Binance Vision (`markPriceKlines` − `indexPriceKlines` monthly + trailing-month daily zips, sha256 `.CHECKSUM` verified per zip, fail closed on mismatch) into `var/research/basis/<venue>/<SYMBOL>_basis_1d.json` (the `[{opened_at, value}]` shape `traderstack-funding-carry --basis-dir` reads) and writes the probe table `docs/artifacts/strategy-search/pit-basis-second-venue.md` (first/last/days/gaps per series; OKX×Vision aligned days). Funding premium, last-trade candles and funding-implied basis are refused in code. A missing day is a skip, never a zero; an unreachable venue is a recorded skip and the command still exits 0. Quote is USDT on both venues. Network only, no credentials. Never flips `PAPER_PROMOTE_*`. |
+| `traderstack-polymarket-crypto-collect` | **Opt-in, paper-only** point-in-time tape (#142): per open Polymarket BTC/ETH "above $K on &lt;date&gt;" market, the CLOB mid against a Deribit option-implied `P(S_T > K)`, with both venue timestamps. GET-only Gamma / CLOB / Deribit public endpoints; no Deribit private endpoints, no signing, no CLOB orders, no size and no side. Crucix high-tier alerts are recorded as a withhold-only stand-aside. Requires `TRADING_MODE=paper`. Never flips `PAPER_PROMOTE_*`; an empty tape is success. See "Crypto-threshold wedge tape (#142)" below. |
 | `traderstack-polymarket-weather-collect` | **Paper-only** point-in-time tape collector (#141). Every 30-60 min it appends the decision-time CLOB top of book (`/book`, GET) plus the as-issued Open-Meteo high for each open, allowlisted, Fahrenheit-resolved temperature market to `POLYMARKET_WEATHER_TAPE_PATH`. Emits **observations, not intents**: nothing is sized, sided or submitted, so it consults no kill switch and writes no paper ledger. Gamma paging is offset-based with `/events/keyset` available. Requires `TRADING_MODE=paper`. |
 | `traderstack-polymarket-weather-resolve` | **Paper-only** daily resolver (#141). Pairs each tape market past `close_at + POLYMARKET_WEATHER_SETTLE_LAG_HOURS` with the official station high (IEM ASOS primary, NCEI GHCN-Daily cross-check), appends `POLYMARKET_WEATHER_RESOLVED_PATH`, and emits one `ResolvedWeatherRow` JSON array per calendar month for `traderstack-polymarket-weather-eval --resolved`. Writes `var/ops/polymarket_weather_tape.md` (pass `--output-md docs/artifacts/strategy-search/polymarket-weather-tape.md` deliberately when refreshing the committed snapshot, which carries hand-written evidence below the generated tables). Computes no PnL, writes no `PAPER_PROMOTE_*` pin; an empty tape is a successful run. |
 
@@ -1380,6 +1381,7 @@ specifically:
 | `--audit-path` (default `var/audit/runtime.jsonl`) | `JsonlAuditSink` | One line per symbol cycle: the full `RuntimeResult` — tick, references, pipeline result (including the pre-trade backtest/walk-forward check), risk result, meta-agent review, execution receipt/status. The complete, replayable decision trail. | No — plain JSONL, easy to `jq`, not hash-chained. |
 | `--risk-audit-path` (default `var/audit/risk_decisions.jsonl`) | `JsonlRiskAuditTrail` | One line per risk decision *that actually reached the risk engine* (no line at all for cycles rejected upstream by market-data/intelligence/pre-trade gates): the full `TradeProposal`, the full `RiskResult`, the risk limits in force (inline and hashed), the meta-agent review and execution outcome from the *same* cycle, plus a SHA-256 hash chained to the previous record. | **Yes** — this is the record built specifically to survive an "did the agent secretly relax risk" audit. |
 | `POLYMARKET_WEATHER_LEDGER_PATH` (default `var/audit/polymarket_weather_paper.jsonl`) | `PolymarketWeatherPaperLedger` | One line per weather-market observation or would-trade intent from `traderstack-polymarket-weather-paper`. Always `venue_submitted=false`. Isolated from the crypto audit files so a weather run cannot rewrite crypto risk history. | No — plain JSONL research ledger. |
+| `POLYMARKET_CRYPTO_TAPE_PATH` (default `var/audit/polymarket_crypto_wedge_tape.jsonl`) | `CryptoWedgeTape` (#142) | One line per observed Polymarket BTC/ETH threshold market per cycle: mid, best bid/ask, option-implied probability, model version, both venue timestamps, Crucix stand-aside status, row status. Always `venue_submitted=false` / `execution=paper_tape_only`; no size, side or notional field exists. Isolated from the crypto audit files. | No — plain JSONL research tape. |
 | `POLYMARKET_WEATHER_TAPE_PATH` / `POLYMARKET_WEATHER_RESOLVED_PATH` (defaults `var/audit/polymarket_weather_tape.jsonl`, `var/audit/polymarket_weather_resolved.jsonl`) | `PolymarketWeatherTape` / `PolymarketWeatherResolvedTape` (#141) | One line per point-in-time observation (decision-time book + as-issued forecast + local `close_at`) and one line per resolved market (official station high + cross-check + mismatch). Always `venue_submitted=false`, always `trading_mode=paper`. Research evidence, isolated from the crypto audit files; the paper loop, the risk engine and the meta-agent never read them. | No — plain JSONL research tapes, not hash-chained. |
 
 ```bash
@@ -2701,6 +2703,118 @@ not regenerated here.
 PAPER_FEE_TIER=modelled .venv/bin/traderstack-check-config           # warns
 ```
 
+## Crypto-threshold wedge tape (#142)
+
+`traderstack-polymarket-crypto-collect` is a second, separate opt-in research
+process (like the weather collector above): it never enters
+`ContinuousPaperService`, never reaches `RiskEngine`, and emits no intent, size
+or side. It only *observes*.
+
+One invocation does exactly this:
+
+1. Build the deterministic daily event slugs for `POLYMARKET_CRYPTO_ASSETS`
+   over today plus `POLYMARKET_CRYPTO_LOOKAHEAD_DAYS`
+   (`bitcoin-above-on-september-16-2026`, `ethereum-above-on-…`).
+2. `GET /events?slug=…` on Gamma. A slug that does not exist yet returns `[]`
+   and is counted as `events_missing` — a skip, never an invented row. A Gamma
+   that does not *answer* is counted separately as `events_error`, so an outage
+   never reads as "there was nothing listed".
+3. Parse each market: only `Will the price of <Bitcoin|Ethereum> be above $K on
+   <Month D>?` with an `endDate`, two CLOB token ids, an open book and a
+   description naming the Binance 1-minute candle is accepted. Anything else
+   (weekly ranges, "dip to", "reach", closed markets, a different settlement
+   source) is counted as `unparsed` and dropped.
+4. `GET /book?token_id=<yes token>` for the best bid/ask, the mid and the venue
+   `timestamp`.
+5. One `public/get_instruments` + one `public/get_book_summary_by_currency` per
+   currency on Deribit, reduced to typed rows, then the frozen model
+   `bs_n_d2_markiv_interp_v1`: mark IV interpolated in strike inside each
+   bracketing expiry, total variance interpolated in time to the Polymarket
+   resolution instant, `P = N(d2)` with the forward from `underlying_price` and
+   `r = 0`.
+6. Apply the freshness bound `POLYMARKET_CRYPTO_MAX_STALENESS_SECONDS`
+   *independently* to the CLOB book timestamp and to the oldest Deribit quote
+   used, then append one row per market to `POLYMARKET_CRYPTO_TAPE_PATH`.
+
+Two deliberate conservatisms in step 6. Polymarket's `/book` `timestamp` is the
+*last book update*, not the response time, so a quiet market can be recorded
+`stale_polymarket` even though its quote is current — the bound would rather
+drop a good row than score a mid nobody has refreshed in minutes. And because a
+live cycle is ~66 CLOB GETs, each row is stamped with its own read time and the
+Deribit chain is re-read once the snapshot is half the bound old, instead of one
+option snapshot silently ageing across the cycle. A failed re-read keeps the
+previous snapshot, whose quotes then age out into `stale_deribit` on their own.
+
+Hard constraints (all covered by
+`tests/security/test_polymarket_crypto_wedge_boundary.py`):
+
+- `TRADING_MODE` must be `paper`; the CLI refuses to start otherwise.
+- `POLYMARKET_CRYPTO_TAPE_ENABLED` is declarative, exactly like
+  `POLYMARKET_WEATHER_ENABLED`: running the dedicated CLI *is* the opt-in, and
+  the flag is what `traderstack-check-config` reports (and warns on) so an
+  operator's intent is visible in one place. Nothing in `traderstack-paper`
+  reads it.
+- Deribit is read-only: two allowlisted public paths, and any path containing
+  `private`, `auth`, `buy`, `sell`, `edit`, `cancel` or `withdraw` is refused
+  before a request is built. There is no POST anywhere in this path.
+- No signing, no private key, no CLOB order placement.
+- Rows carry no size, side, notional or limit field. Nothing in the tape can be
+  read as an instruction.
+- The Crucix status is withhold-only: only a positively known `clear` leaves a
+  row eligible for a future trade mask; `adverse`, `unavailable` and
+  `not_configured` all stand aside.
+- The kill switch is refreshed and printed, but collection is *not* skipped when
+  it is engaged: an engaged switch has nothing to withhold here, and skipping
+  would silently punch a hole in the tape.
+
+Operator cron (every 15 minutes, from the operator host):
+
+```bash
+*/15 * * * * KILL_SWITCH=false TRADING_MODE=paper .venv/bin/traderstack-polymarket-crypto-collect --once
+```
+
+Offline, no network, from the committed fixture pack:
+
+```bash
+TRADING_MODE=paper .venv/bin/traderstack-polymarket-crypto-collect \
+  --fixtures-dir tests/fixtures/polymarket_crypto \
+  --tape-path var/audit/polymarket_crypto_wedge_tape.jsonl --json
+.venv/bin/traderstack-polymarket-crypto-collect --print-rules   # frozen pre-registration
+```
+
+Row statuses:
+
+| `status` | Meaning |
+|---|---|
+| `ok` | Both venues answered inside the freshness bound; `wedge = poly_mid − deribit_prob` is recorded. |
+| `stale_polymarket` | The CLOB book timestamp is missing or older than `POLYMARKET_CRYPTO_MAX_STALENESS_SECONDS`. Recorded, never scored. |
+| `stale_deribit` | The oldest Deribit quote used is older than the same bound. Recorded, never scored. |
+| `no_two_sided_book` | The book was one-sided, unreadable or unavailable, so there is no mid. Never a zero. |
+| `no_option_probability` | The chain could not price this strike: no bracketing expiry inside `POLYMARKET_CRYPTO_MAX_EXPIRY_GAP_HOURS`, a sparse chain (all listed strikes on one side of K), a resolution already past, or an unreachable Deribit. The named reason is in `reasons`. |
+
+Markets that do not parse are counted in the cycle report (`unparsed`) rather
+than taped: without a typed asset and strike there is nothing honest to record.
+
+### What this does not claim
+
+- No PnL. No promotion. There is no `PAPER_PROMOTE_POLYMARKET_CRYPTO_WEDGE`
+  setting and this slice ships no path to one.
+- The evaluator and the settlement resolver are the next slice; until they
+  exist the tape is evidence only.
+- Sign convention: `wedge = poly_mid − deribit_prob`. Positive means Polymarket
+  is pricing the threshold higher than the option chain implies.
+- A Polymarket daily resolves at 16:00 UTC on the Binance 1-minute close while
+  Deribit dailies expire 08:00 UTC on the Deribit index. Every row records
+  `expiry_gap_hours` and the forward used: this is a *comparable* probability,
+  not an identical payoff, and no arbitrage is implied.
+- A quota refusal or open circuit breaker shows up as `no_two_sided_book` /
+  `no_option_probability` counts and a chain-error line, not as a crash and not
+  as a zero.
+
+The day-zero shakedown (two live cycles, what each venue answered, and the first
+wedge sample) is committed at
+`docs/artifacts/strategy-search/polymarket-crypto-wedge-collector.md`. It is a
+reachability record, not a print.
 ## Polymarket weather point-in-time tape (collector / resolver) (#141)
 
 The `#44` evaluator has never scored a row, because scoring needs something
