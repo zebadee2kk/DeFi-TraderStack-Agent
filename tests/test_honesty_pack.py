@@ -299,3 +299,21 @@ def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     text = written_md.read_text()
     assert "Keep `PAPER_PROMOTE_EMA_9_21_ADX15=false`" in text
     assert settings().paper_promote_ema_9_21_adx15 is False
+
+
+def test_honesty_pack_surfaces_the_selection_evidence_block() -> None:
+    """#135 reached this CLI too: `run_harder_gates` computed it, the report
+    dropped it. Pinned so the gap cannot silently reopen."""
+
+    report = _pack(
+        {
+            "BTC/USD@1d": downtrend(720, symbol="BTC/USD"),
+            "ETH/USD@1d": downtrend(720, symbol="ETH/USD"),
+            "SOL/USD@1d": downtrend(720, symbol="SOL/USD"),
+        }
+    )
+    assert report.selection_evidence is not None
+    assert report.selection_evidence.trial_count > 0
+    rendered = render_honesty_pack_markdown(report)
+    assert "## Selection evidence (#135)" in rendered
+    assert "**Print kind:**" in rendered

@@ -422,3 +422,49 @@ def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     assert "can promote | **no**" in text
     assert settings().paper_promote_ema_9_21_adx15 is False
     assert SECOND_PRINT_BARS == 720
+
+
+def test_second_print_surfaces_the_selection_evidence_block() -> None:
+    """#135 reached this CLI: the evidence was computed but discarded.
+
+    `_score_histories` already ran it through `run_harder_gates`; it just
+    dropped the report and returned rows. These assertions pin that the
+    catalog block and the per-row scalars now reach `SecondPrintReport` and
+    its markdown, so the gap cannot silently reopen.
+    """
+
+    primary = datetime(2024, 9, 22, tzinfo=UTC)
+    older = datetime(2022, 10, 3, tzinfo=UTC)
+    report = _print(
+        {
+            "BTC/USD@1d": downtrend(720, symbol="BTC/USD", start=primary),
+            "ETH/USD@1d": downtrend(720, symbol="ETH/USD", start=primary),
+        },
+        {
+            "BTCUSDT@1d": downtrend(720, symbol="BTCUSDT", start=older),
+            "ETHUSDT@1d": downtrend(720, symbol="ETHUSDT", start=older),
+        },
+        binance_source="binance_us_spot",
+    )
+
+    evidence = report.selection_evidence
+    assert evidence is not None, "the Kraken prefix slice must carry the evidence block"
+    assert evidence.trial_count == len(SECOND_PRINT_CANDIDATE_IDS)
+    assert evidence.print_kind is not None
+
+    # Every prefix row carries the denormalised scalars, same spelling as
+    # DualPrintRow so the two reports read as one vocabulary.
+    assert report.kraken_prefix_rows
+    for row in report.kraken_prefix_rows:
+        assert row.print_kind == evidence.print_kind.value
+        assert row.trial_count == evidence.trial_count
+        assert isinstance(row.evidence_gate_pass, bool)
+
+    # The evidence gate is additive: it never promotes anything here.
+    assert all(row.can_promote is False for row in report.kraken_prefix_rows)
+
+    rendered = render_second_print_markdown(report)
+    assert "## Selection evidence (#135)" in rendered
+    assert "**Print kind:**" in rendered
+    assert "**PBO (CSCV):**" in rendered
+    assert "**Trials scored (K):**" in rendered

@@ -557,6 +557,35 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
 
+    # --- multi-year candle archives (#133) ---
+    archive_path = settings.research_kraken_archive_path.strip()
+    items.append(
+        CheckItem(
+            "Multi-year candle archives",
+            "research-only",
+            "traderstack-download-candles --venue coinbase|binance_vision|"
+            "kraken_archive; longer history than Kraken's 720-bar REST cap. "
+            "Offline research input only: never on the trading cycle, never "
+            "read by the RiskEngine, and no PAPER_PROMOTE_* effect. Coinbase "
+            "is paced inside its 10 req/s public limit and treats HTTP 429 as "
+            "a skip; Binance Vision zips are sha256-verified against the "
+            "published .CHECKSUM and fail closed; missing bars stay gaps",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  Kraken OHLCVT archive path",
+            archive_path or "(unset)",
+            (
+                "manual download (support article 360047124832), ACTIVE PAIRS "
+                "ONLY — survivorship-biased; a partial or unparsable file is "
+                "refused outright"
+            )
+            if archive_path
+            else "unset: --venue kraken_archive skips unless --archive-path is given",
+        )
+    )
+
     # --- Pre-trade self-check (backtest gate) -----------------------------------------
     items.append(
         CheckItem(
@@ -858,6 +887,38 @@ def build_report(settings: Settings) -> ConfigReport:
             "settings flag, sentinel file, Redis key (if enabled), SIGUSR1 — any one halts",
         )
     )
+
+    # --- audit anchoring (#68) ---
+    if settings.audit_anchor_enabled:
+        channels = "local file"
+        if settings.audit_anchor_redis_enabled:
+            channels += f", Redis ({settings.audit_anchor_redis_key})"
+        items.append(
+            CheckItem(
+                "Audit anchoring",
+                "on",
+                f"every {settings.audit_anchor_every} records + shutdown -> {channels}",
+            )
+        )
+        if not settings.audit_anchor_redis_enabled:
+            items.append(
+                CheckItem(
+                    "  root of trust",
+                    "local file only",
+                    "same host as the trail it protects; enable AUDIT_ANCHOR_REDIS_ENABLED "
+                    "with an insert-only ACL to move it off-process",
+                )
+            )
+        items.append(CheckItem("  verify with", "traderstack-verify-audit"))
+    else:
+        items.append(
+            CheckItem(
+                "Audit anchoring",
+                "off",
+                "verify_chain alone cannot detect a whole-file rewrite of the "
+                "risk audit trail (#68)",
+            )
+        )
 
     # --- position management (#58) ---
     if settings.position_exits_active:

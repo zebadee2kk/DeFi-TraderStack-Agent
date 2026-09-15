@@ -47,6 +47,10 @@ from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side
 # Settings fields that constitute risk policy. Any change to one of these
 # changes the derived policy version, so every audit record shows exactly which
 # limits were in force when a decision was made.
+#
+# The set is split in two for legibility in an audit diff, and hashed as one
+# union (see POLICY_FIELDS): RISK_LIMIT_FIELDS is what RiskEngine.evaluate
+# itself enforces, CONTROL_PLANE_FIELDS is what is enforced *around* it.
 RISK_LIMIT_FIELDS: tuple[str, ...] = (
     "mvp_assets",
     "max_position_pct",
@@ -59,7 +63,6 @@ RISK_LIMIT_FIELDS: tuple[str, ...] = (
     "risk_max_spread_bps",
     "volatility_sizing_enabled",
     "target_volatility",
-    # --- miles-inspired GARCH sizing (paper research) ---
     "paper_garch_size",
     "paper_garch_target_vol",
     "strategy_max_consecutive_losses",
@@ -70,12 +73,15 @@ RISK_LIMIT_FIELDS: tuple[str, ...] = (
     "kill_switch_file",
     "kill_switch_redis_key",
     "kill_switch_redis_enabled",
-    # --- SEC-2026-09-18: gates enforced *around* RiskEngine.evaluate ----------
-    # Pre-trade, market-data, execution-planner and chain-policy settings can
-    # change whether an order is built or submitted without the engine itself
-    # seeing a different proposal. Folding them into policy_version means two
-    # audit records with the same version cannot come from a run with the
-    # pre-trade gate on and a run with it off.
+)
+
+# --- policy-version coverage (#69 / SEC-2026-09-18) ------------------------
+# Deterministic gates enforced around RiskEngine.evaluate. They can change
+# whether an order is built, sized or submitted without the engine ever seeing
+# a different proposal, so two audit records with the same policy_version must
+# not be able to come from a run with the pre-trade gate on and a run with it
+# off, or with the meta-agent in veto versus off.
+CONTROL_PLANE_FIELDS: tuple[str, ...] = (
     "pretrade_backtest_enabled",
     "pretrade_candle_interval",
     "pretrade_candle_count",
@@ -98,19 +104,32 @@ RISK_LIMIT_FIELDS: tuple[str, ...] = (
     "robinhood_chain_max_notional_usd",
     "robinhood_chain_max_gas_limit",
     "robinhood_chain_max_gas_price_gwei",
-    # --- position management (#58) ---
     "exit_stop_loss_pct",
     "exit_take_profit_pct",
     "exit_trailing_stop_pct",
     "exit_time_stop_bars",
     "exit_on_thesis_invalidation",
+    "intelligence_required",
+    "intelligence_block_on_adverse_news",
+    "meta_agent_mode",
+    "reconcile_interval_seconds",
+    "execution_submit_timeout_seconds",
+    "execution_max_retries",
+    "robinhood_chain_allowed_routers",
+    "robinhood_chain_allowed_tokens",
+    "trading_mode",
+    "paper_simulate_fills",
+    "paper_slippage_bps",
 )
+
+# The union actually hashed into policy_version.
+POLICY_FIELDS: tuple[str, ...] = RISK_LIMIT_FIELDS + CONTROL_PLANE_FIELDS
 
 
 def risk_limits(settings: Settings) -> dict[str, Any]:
     """The risk-relevant settings in force, as a plain serialisable mapping."""
 
-    return {name: getattr(settings, name) for name in RISK_LIMIT_FIELDS}
+    return {name: getattr(settings, name) for name in POLICY_FIELDS}
 
 
 def risk_limits_hash(settings: Settings) -> str:

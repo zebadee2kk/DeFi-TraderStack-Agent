@@ -42,7 +42,7 @@ without activating the venv.
 | `traderstack-calendar-seasonality` | Paper-only UTC calendar seasonality: day-of-week long-only (Mon / Fri / Mon+Fri), skip-weekend (long Mon–Fri, flat Sat/Sun), month-of-year (Q4 / Jan / Nov+Dec), and turn-of-month last 3 / first 3 UTC calendar days. Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/calendar-seasonality.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, or Bollinger reprint. |
 | `traderstack-lead-lag` | Paper-only BTC→ETH lead-lag: ETH follows or fades lagged BTC L-day return (L in {1,2,3,5} follow-lo; {1,2,3} follow-ls / fade-lo; BTC-follows-ETH mirror lo {1,2}). Not same-bar residual z-score (#116). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): both BTC and ETH legs; other leg is **flat**. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/lead-lag.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, Bollinger, or calendar reprint. |
 | `traderstack-volume-breakout` | Paper-only volume-confirmed breakout: long-only or long/short on the prior N-day high/low **and** a volume gate (N×mult in {20x1.5, 55x1.5, 20x2}; V=20 SMA through t−1), plus a small volume-surge set. Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs as before; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Paper-executable on Kraken spot BTC/ETH. Writes `docs/artifacts/strategy-search/volume-breakout.md`. Never flips `PAPER_PROMOTE_*`. Empty dual-print set is success. Not an EMA, residual, XS, Donchian, TSMOM, Bollinger, calendar, or lead-lag reprint. |
-| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, `traderstack-calendar-seasonality --candles`, `traderstack-lead-lag --candles`, `traderstack-volume-breakout --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). |
+| `traderstack-download-candles` | Pages Kraken's public OHLC REST endpoint into the JSON candle format `traderstack-research --candles`, `traderstack-strategy-search --candles`, `traderstack-miles-search --candles`, `traderstack-harder-gates --candles`, `traderstack-honesty-pack --candles`, `traderstack-second-print --candles`, `traderstack-dual-print-search --candles`, `traderstack-liq-regime-search --candles`, `traderstack-intraday-dual-print --candles`, `traderstack-funding-carry --candles`, `traderstack-relative-value --candles`, `traderstack-xs-momentum --candles`, `traderstack-donchian-breakout --candles`, `traderstack-tsmom --candles`, `traderstack-bollinger-fade --candles`, `traderstack-calendar-seasonality --candles`, `traderstack-lead-lag --candles`, `traderstack-volume-breakout --candles`, and `traderstack-paper-report --candles` expect. Network only, no credentials required (public endpoint). `--venue` selects a longer history than Kraken's 720-bar REST cap: `coinbase` (Coinbase Exchange public candles), `binance_vision` (checksum-verified monthly spot zips) or `kraken_archive` (a local OHLCVT drop, no network). See "Multi-year candle archives". |
 | `traderstack-soak` | Drives the real service wiring against a seeded synthetic market (no network/database/credentials) for an acceptance soak window and always writes a pass/fail JSON report (`<workdir>/report.json`). `--preset ci` is the short CI/smoke path; `--preset full` is the 86400s window. See "24/7 acceptance soak" below. |
 | `traderstack-opportunity-funnel` | Zero-trade diagnosis (#131). Rebuilds the per-cycle opportunity funnel (`cycles → valid market data → signal candidate → pre-trade eligible → risk allowed → meta-agent retained → planner accepted → fill`) from a finished run's `audit/runtime.jsonl` (+ optional execution ledger) and names the dominant blocking gate with exact reason counts. Offline, read-only. The same funnel is written live to `--funnel-path` by `traderstack-paper` and into `traderstack-soak`'s `report.json`. See "Zero-trade diagnosis" below. |
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
@@ -1186,6 +1186,102 @@ Candles come from a JSON file (`--candles`, produced by `traderstack-download-ca
 or, with `--candle-store`, from the Postgres candle store populated by
 `--persistent-events`.
 
+## Multi-year candle archives (#133)
+
+Every catalog since #104 was scored on Kraken's public Spot OHLC cap —
+720 bars, about two years daily — plus one older Binance.US 720. That is
+one regime. `traderstack-download-candles --venue` reaches further back,
+into the same JSON candle format every `--candles` consumer already reads
+(`symbol`, `interval`, `opened_at`, `open`, `high`, `low`, `close`,
+`volume`; one object per bar, ascending).
+
+| `--venue` | Source | Reach | Network |
+|---|---|---|---|
+| `kraken` (default) | `api.kraken.com` public OHLC | most recent 720 bars | yes |
+| `coinbase` | `api.exchange.coinbase.com` public candles | BTC-USD from 2015, ETH-USD from 2016 | yes |
+| `binance_vision` | `data.binance.vision` monthly spot kline zips | spot from 2017-08 | yes |
+| `kraken_archive` | a manually downloaded Kraken OHLCVT drop | full venue history | **no** |
+
+```bash
+# Coinbase daily back to 2016 (300 bars per request, paced inside the public limit)
+.venv/bin/traderstack-download-candles BTC/USD \
+  --venue coinbase --resolution 1d --start 2016-01-01 \
+  --out var/research/btc_1d_coinbase.json
+
+# Binance Vision monthly zips, each sha256-verified against its .CHECKSUM
+.venv/bin/traderstack-download-candles BTC/USD \
+  --venue binance_vision --resolution 1d --start 2017-08-01 \
+  --out var/research/btc_1d_binance_vision.json
+
+# A local Kraken OHLCVT drop, cross-checked against the Coinbase pull
+.venv/bin/traderstack-download-candles BTC/USD \
+  --venue kraken_archive --resolution 1d \
+  --archive-path var/research/kraken_ohlcvt/ \
+  --out var/research/btc_1d_kraken_archive.json \
+  --cross-check var/research/btc_1d_coinbase.json
+```
+
+**Report header.** Every archive venue writes a sidecar JSON next to
+`--out` (default `<out>.report.json`, override with `--report`) recording
+`venue`, `status`, `reason`, `bars`, `first`, `last`, `gaps`,
+`missing_bars` and `fetched_at`. Read it before using a series: it is the
+only place the gaps are enumerated.
+
+**Status vocabulary.** Same `ok` / `skipped` as the funding adapters. A
+skip carries **no candles at all** — an unreachable host, an HTTP 429, a
+missing month, a checksum mismatch or an unparsable file never produces a
+partial series. When the status is `skipped`, no candle file is written
+and the report explains why.
+
+**Gaps are never filled.** A bar the venue did not publish stays absent
+and is counted in `gaps`. Nothing here interpolates, forward-fills or
+zero-fills, and every timestamp must land exactly on the UTC interval
+grid — a misaligned row is a parse failure, not something to round.
+
+**Rate limiting (Coinbase).** The documented public limit is **10
+requests per second per IP, bursting to 15**. This client paces itself at
+3 req/s by default (`--requests-per-second`), and an **HTTP 429 is a skip,
+not a retry**: the walk stops immediately and the series is reported
+`skipped` with the request count. It never backs off and retries, so a
+rate-limited pull can never turn into a retry storm against a public
+endpoint. Coinbase publishes no native 4h bucket — `--resolution 4h` is
+rolled up from complete 1h buckets, and a 4h bucket missing any of its
+four hours is dropped rather than completed.
+
+**Checksum verification (Binance Vision) fails closed.** For each month
+the zip is fetched, then its published `.CHECKSUM`, and the zip's sha256
+must equal the published digest before a single row is parsed. A
+mismatch, an unparsable digest, or data present with **no** published
+`.CHECKSUM` aborts the *whole* series — months that already verified are
+discarded too. A month that simply 404s (before listing, or a delisted
+symbol the bucket no longer retains) is a recorded per-month skip and is
+noted in the report. Quote asset is **USDT**, not USD.
+
+**Kraken OHLCVT archive.** Quarterly zips from Kraken support article
+360047124832, hosted on Google Drive, so this is a *loader for a local
+file*, not a fetcher — it makes no network call. Point `--archive-path`
+(or `RESEARCH_KRAKEN_ARCHIVE_PATH`) at the unpacked `{PAIR}_{minutes}.csv`
+or the directory holding it; `BTC/USD` at `1d` resolves to
+`XBTUSD_1440.csv`. It **refuses a partial or unparsable file outright**:
+one bad row, one off-grid timestamp or one truncated final line makes the
+whole load a skip with the offending line number, never the rows that
+happened to parse. The drop contains **active pairs only**, so any
+universe built from it alone is survivorship-biased — that caveat is
+attached as a note to every loaded series.
+
+**Cross-venue sanity.** `--cross-check <candle json>` compares daily
+closes bar-for-bar against another venue's export. Any shared bar whose
+closes disagree by more than `--max-divergence-bps` (default:
+`MAX_REFERENCE_DIVERGENCE_BPS` from `Settings`, read and never written) is
+listed in the report's `cross_venue_divergence` block and printed as a
+`WARNING`. Bars only one venue published are not compared and the two
+venues are never averaged together.
+
+These commands are **research-only**: they never run on the trading
+cycle, the `RiskEngine` never reads their output, and they flip no
+`PAPER_PROMOTE_*` flag. Re-scoring a catalog on the longer history is
+issue #136, not this tool.
+
 ## Strategy search and paper-voter promotion
 
 The paper loop's default 2-of-3 ensemble (momentum + MA trend + mean reversion) is
@@ -1295,6 +1391,51 @@ out of order all produce a specific, located failure rather than a bare "invalid
 `traderstack-soak`'s pass criteria include this check running clean over the
 whole window (see "24/7 acceptance soak" above); run it by hand any time you
 need to hand someone evidence the trail hasn't been altered.
+
+#### What `verify_chain` alone does *not* prove (#68)
+
+A hash chain is only as good as its root of trust, and here the root is the
+file itself. Anyone who can write to `var/audit/` can regenerate the chain from
+genesis with different content, and the rewritten file **passes `verify_chain`
+perfectly** — every hash is self-consistent because every hash was recomputed.
+The same applies to a file restored from an older backup, or truncated.
+
+`traderstack-verify-audit` closes that by cross-checking the trail against
+chain heads published *outside* it:
+
+```bash
+.venv/bin/traderstack-verify-audit \
+  --audit-path var/audit/risk_decisions.jsonl \
+  --anchor-path var/audit/anchors.jsonl
+```
+
+Exit codes are meant for cron: `0` chain intact **and** every anchor matches,
+`1` verification failed, `2` no trail at that path. A rewrite is reported as
+the sequence number where the file and an anchor disagree:
+
+```
+chain:   intact (412 record(s))
+anchors: 3 checked
+result:  FAILED
+error:   record 199 hashes to 8f21c0a4b7de but the published anchor commits to
+         1c9d4ee20b13: the trail was rewritten
+diverged at sequence: 199
+```
+
+**No anchors is a failure, not a pass.** An attacker who can rewrite the trail
+can usually delete a local anchor log too, so an intact chain with nothing to
+check it against proves only internal consistency. `--allow-unanchored`
+downgrades that to a pass; use it only when you know anchoring was never
+enabled for the run in question.
+
+A local anchor log on the same host is the weakest form of this: it raises the
+bar (two files to forge instead of one) without moving the root of trust off
+the box. Prefer the Redis or Postgres sinks with an insert-only grant for the
+app role, so the trading process can add an anchor but never rewrite one.
+`AUDIT_ANCHOR` sinks are wired through `FanoutAuditAnchorSink`, which counts
+failures on `traderstack_audit_anchor_failures_total{sink=...}` and never
+blocks a trading cycle — so alert on "no successful anchor in N minutes"
+rather than expecting a loud failure at the time.
 
 To see whether a decision the risk engine allowed was actually executed, read
 one record's `result` (the risk engine's own decision) alongside its
@@ -1625,9 +1766,11 @@ Once a proposal clears the risk engine (and, in veto mode, the meta-agent),
 | `plan_rejected` | `ExecutionPlanner` refused the order — quantity rounds to zero at `EXECUTION_LOT_STEP`, below `EXECUTION_MIN_NOTIONAL_USD`, or the execution price is outside `EXECUTION_MAX_SLIPPAGE_BPS` of the pipeline's validated tick (in *either* direction — a suspiciously favourable price is treated as a data-integrity signal, not a gift). | Usually a sizing/liquidity artefact, not a bug. Persistent slippage rejections on a liquid pair warrant checking the venue's actual spread. |
 | `rejected` | Permanent failure — a 4xx from the venue, or retries exhausted after confirmed absence (see `SUBMISSION_UNCERTAIN` below). Terminal in the ledger; never retried automatically. | Read `execution_reason` for the venue's message. Investigate before manually intervening. |
 | `uncertain` | The venue's truth for this order is unknown right now (see next section). No retry is permitted until reconciliation resolves it. | See "Resolving `SUBMISSION_UNCERTAIN`" below. |
+| `invalid_exit_size` | The venue-submission twin of `paper_fill_invalid_exit_size`: a *reducing-only* order (a deterministic exit) could not be sized at or below the held quantity that `PaperRuntime` passed from this cycle's portfolio snapshot. Distinct from `plan_rejected` so invalid exit sizing stays countable apart from a venue or data refusal. Nothing was sent and no ledger order was created. | Read `execution_reason`. Residual dust under `EXECUTION_MIN_NOTIONAL_USD` is the common, benign cause. Anything else means the snapshot the exit was sized against disagrees with the venue book — reconcile before expecting the exit to fill. |
 | `paper_filled` | In-process paper fill booked at mid ± `PAPER_SLIPPAGE_BPS` with `PAPER_FEE_BPS`. Ledger `FILLED`, cash/positions/NAV updated. Does not require Hummingbot. | None. This is the default paper PnL path (`PAPER_SIMULATE_FILLS=true`). |
 | `paper_fill_duplicate` | This `decision_id` already has a paper fill (restart / replay). Book unchanged. | None; confirms the ledger guard. |
-| `paper_fill_rejected` | Planner or book refused the fill (lot/notional/slippage, or a SELL larger than the held position). | Read `execution_reason`. Persistent slippage rejects: check `PAPER_SLIPPAGE_BPS` ≤ `EXECUTION_MAX_SLIPPAGE_BPS`. |
+| `paper_fill_rejected` | Planner or book refused the fill (lot/notional/slippage, or a *non-reducing* SELL larger than the held position — a reducing-only exit is clamped to the position instead, see the next row). | Read `execution_reason`. Persistent slippage rejects: check `PAPER_SLIPPAGE_BPS` ≤ `EXECUTION_MAX_SLIPPAGE_BPS`. |
+| `paper_fill_invalid_exit_size` | A *reducing-only* order (a deterministic exit) could not be sized at or below the held quantity: nothing left to reduce, the held quantity rounds to zero at `EXECUTION_LOT_STEP`, or clamping it to the held quantity leaves it under `EXECUTION_MIN_NOTIONAL_USD`. Distinct from `plan_rejected` / `paper_fill_rejected` so invalid exit sizing is countable apart from a venue or data refusal (`traderstack_paper_fills_total{status="paper_fill_invalid_exit_size"}`). | Read `execution_reason`. A residual dust position under the venue minimum is the common cause and is benign; anything else means the position the exit was sized against disagrees with the paper book — check the ledger and the checkpoint before expecting the exit to fill. |
 | `paper_fill_withheld` | Kill switch engaged, reconciliation blocked, or torn durable state. Intent was not filled. | Same as a withheld submission — fix the halt/reconcile/ledger before expecting NAV to move. |
 | `diagnostic_withheld` | `OPPORTUNITY_DIAGNOSTIC_MODE=true`: every upstream control allowed this order (or the kill switch was engaged — `execution_reason` says which) and diagnostic mode withheld the paper fill / venue submission by design. NAV never moves in this mode. | None. Read the opportunity funnel (`--funnel-path` snapshot or `traderstack-opportunity-funnel`) for where the *other* cycles stopped; set the flag back to `false` to resume paper fills. |
 

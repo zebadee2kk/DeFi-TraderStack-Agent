@@ -48,11 +48,12 @@ from traderstack.research.daily_candidates import (
     default_daily_robustness_candidates,
     default_expanded_harder_gates_candidates,
 )
-from traderstack.research.daily_robustness import (
+from traderstack.research.daily_robustness import (  # kraken_daily_candles moved here (#135)
     KRAKEN_DAILY_CAP_NOTE,
     DailyRobustnessReport,
     _holdout_excess,
     is_yahoo_symbol,
+    kraken_daily_candles,
     run_daily_robustness,
     series_for_asset,
 )
@@ -60,6 +61,14 @@ from traderstack.research.miles_candidates import SearchCandidate
 from traderstack.research.miles_search import (
     CandidateSearchResult,
     walkforward_candidate_on_window,
+)
+
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import (
+    CandidateEvidence,
+    SelectionEvidence,
+    build_selection_evidence,
+    render_evidence_lines,
 )
 
 # --- harder honesty gates (pre-registered; do not retune after scoring) ---
@@ -141,24 +150,6 @@ def evaluate_magnitude_gate(
     elif ratio < min_ratio:
         reasons.append("holdout_magnitude_ratio_below_minimum")
     return (not reasons, ratio, reasons)
-
-
-def kraken_daily_candles(
-    histories: dict[str, tuple[Candle, ...]],
-    asset: str,
-    *,
-    interval: str = "1d",
-) -> tuple[Candle, ...] | None:
-    wanted = asset.upper()
-    for candles in histories.values():
-        if (
-            candles
-            and candles[0].interval == interval
-            and candles[0].symbol.upper() == wanted
-            and not is_yahoo_symbol(candles[0].symbol)
-        ):
-            return candles
-    return None
 
 
 def split_contiguous_windows(
@@ -381,6 +372,22 @@ class CandidateHarderResult(BaseModel):
     gate_c_reasons: list[str] = Field(default_factory=list)
     combined: bool = False
     promoted: bool = False
+    # --- era prints / DSR / PBO (#135) ---
+    # Additional evidence gate. It can only WITHHOLD: a False here never
+    # promotes anything and never lowers #96/A/B/C. Skipped statistics
+    # withhold too, so absent evidence is not a pass.
+    print_kind: str | None = None
+    trial_count: int | None = None
+    deflated_sharpe: float | None = None
+    catalog_pbo: float | None = None
+    sharpe_ci_low: float | None = None
+    sharpe_ci_high: float | None = None
+    expectancy_ci_low: float | None = None
+    expectancy_ci_high: float | None = None
+    bootstrap_trade_floor: int | None = None
+    evidence_gate_pass: bool = False
+    evidence_gate_reasons: list[str] = Field(default_factory=list)
+    promotion_withheld_by_evidence: bool = False
 
 
 class HarderGatesReport(BaseModel):
@@ -424,6 +431,10 @@ class HarderGatesReport(BaseModel):
     honesty: str
     data_notes: list[str] = Field(default_factory=list)
     yahoo_notes: list[str] = Field(default_factory=list)
+    # --- era prints / DSR / PBO (#135) ---
+    selection_evidence: SelectionEvidence | None = None
+    evidence_passer_ids: list[str] = Field(default_factory=list)
+    evidence_withheld_candidate_id: str | None = None
 
 
 def paper_promote_flag_name(candidate_id: str) -> str:
@@ -500,6 +511,54 @@ def _row_by_id(report: DailyRobustnessReport, candidate_id: str) -> CandidateSea
     return next((row for row in report.candidates if row.candidate_id == candidate_id), None)
 
 
+# --- era prints / DSR / PBO (#135) ---
+def withhold_promotion_without_evidence(
+    selected: CandidateHarderResult | None,
+) -> str | None:
+    """Clear ``promoted`` when the #135 evidence gate did not pass.
+
+    An **additional** gate, applied after `apply_combined_promotion`: it
+    can only take promotion away, never grant it, and nothing is promoted
+    in the withheld name's place. Returns the withheld candidate id, or
+    ``None`` when there was nothing to withhold.
+    """
+    if selected is None or selected.evidence_gate_pass:
+        return None
+    selected.promoted = False
+    selected.promotion_withheld_by_evidence = True
+    return selected.candidate_id
+
+
+# --- era prints / DSR / PBO (#135) ---
+def _attach_evidence(rows: list[CandidateHarderResult], evidence: SelectionEvidence) -> None:
+    """Copy the per-trial evidence onto each row.
+
+    Denormalised deliberately: `DualPrintRow` and every family report
+    read these scalars straight off the row, so all nine dual-print
+    search families pick the new fields up from this one place.
+    """
+    pbo = evidence.pbo.pbo if evidence.pbo.computed else None
+    for row in rows:
+        found = evidence.for_candidate(row.candidate_id)
+        row.print_kind = evidence.print_kind.value
+        row.trial_count = evidence.trial_count
+        row.catalog_pbo = pbo
+        if found is None:
+            row.evidence_gate_pass = False
+            row.evidence_gate_reasons = ["evidence_missing_for_candidate"]
+            continue
+        row.deflated_sharpe = found.deflated.deflated_sharpe
+        row.sharpe_ci_low = found.sharpe_ci.low
+        row.sharpe_ci_high = found.sharpe_ci.high
+        row.expectancy_ci_low = found.expectancy_ci.low
+        row.expectancy_ci_high = found.expectancy_ci.high
+        row.bootstrap_trade_floor = (
+            found.trade_floor.effective_min_trades if found.trade_floor.computed else None
+        )
+        row.evidence_gate_pass = found.evidence_gate_pass
+        row.evidence_gate_reasons = list(found.evidence_gate_reasons)
+
+
 def run_harder_gates(
     histories: dict[str, tuple[Candle, ...]],
     *,
@@ -516,6 +575,9 @@ def run_harder_gates(
     now: datetime | None = None,
     data_notes: list[str] | None = None,
     promotion_interval: str = "1d",
+    # --- era prints / DSR / PBO (#135) ---
+    venue_print_available: bool = False,
+    venue_label: str = "scored_venue",
 ) -> HarderGatesReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -642,7 +704,23 @@ def run_harder_gates(
             )
         )
 
+    # --- era prints / DSR / PBO (#135) ---
+    # Built from the same baseline walk-forward the gates above used, so
+    # the trial catalog the DSR deflates against is exactly the catalog
+    # that was searched. This block can only WITHHOLD promotion.
+    evidence = build_selection_evidence(
+        baseline.candidates,
+        primary_candles=kraken_daily_candles(histories, "BTC/USD", interval=promotion_interval),
+        primary_venue=venue_label,
+        venue_print_available=venue_print_available,
+        interval=promotion_interval,
+        test_size=test_size,
+        configured_min_trades=min_trades,
+    )
+    _attach_evidence(rows, evidence)
+
     selected = apply_combined_promotion(rows)
+    withheld_id = withhold_promotion_without_evidence(selected)
     wf_top1 = next((row for row in rows if row.wf_rank == 1), None)
     promoted_ids = [row.candidate_id for row in rows if row.promoted]
     combined_ids = [row.candidate_id for row in rows if row.combined]
@@ -691,6 +769,39 @@ def run_harder_gates(
             f" Combined-passer top-1 was {selected.candidate_id} "
             f"({paper_promote_flag_name(selected.candidate_id)} default false). "
             "Document the paper-only id; do not enable live."
+        )
+
+    # --- era prints / DSR / PBO (#135) ---
+    honesty += (
+        f" Print kind: {evidence.print_kind.value} "
+        f"({evidence.print_kind_detail}) Trials scored K={evidence.trial_count}. "
+        + (
+            f"Catalog PBO (CSCV) {evidence.pbo.pbo:.3f} over "
+            f"{evidence.pbo.combinations} combinations "
+            f"(max {evidence.pbo_max:.2f})."
+            if evidence.pbo.computed and evidence.pbo.pbo is not None
+            else f"Catalog PBO skipped ({evidence.pbo.skipped_reason}); withholds."
+        )
+        + f" Evidence passers: {len(evidence.evidence_passer_ids)}"
+        + (
+            f" ({', '.join(evidence.evidence_passer_ids)})."
+            if evidence.evidence_passer_ids
+            else " (empty set is a successful result)."
+        )
+        + " DSR and PBO are additional gates on top of #96+A+B+C, never "
+        "replacements, and no existing threshold is lowered by them."
+    )
+    if withheld_id is not None:
+        honesty += (
+            f" Combined-passer {withheld_id} was top-1 by {RANKING_KEY} but "
+            "the #135 evidence gate WITHHELD promotion: "
+            + "; ".join(
+                (
+                    evidence.for_candidate(withheld_id)
+                    or CandidateEvidence(candidate_id=withheld_id)
+                ).evidence_gate_reasons
+            )
+            + ". Nothing is promoted in its place."
         )
 
     yahoo_notes: list[str] = []
@@ -758,6 +869,10 @@ def run_harder_gates(
         honesty=honesty,
         data_notes=list(data_notes or []),
         yahoo_notes=yahoo_notes,
+        # --- era prints / DSR / PBO (#135) ---
+        selection_evidence=evidence,
+        evidence_passer_ids=list(evidence.evidence_passer_ids),
+        evidence_withheld_candidate_id=withheld_id,
     )
 
 
@@ -1085,6 +1200,8 @@ def render_harder_gates_markdown(report: HarderGatesReport) -> str:
             lines.append(
                 "`ema_9_21` does **not** clear the combined harder-gates bar on this window."
             )
+    # --- era prints / DSR / PBO (#135) ---
+    lines.extend(render_evidence_lines(report.selection_evidence))
     lines.append("")
     lines.append(
         "Yahoo rows above are a longer non-Kraken A/B. Do not average them "
