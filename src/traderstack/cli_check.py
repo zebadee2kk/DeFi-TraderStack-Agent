@@ -1212,13 +1212,6 @@ def build_report(settings: Settings) -> ConfigReport:
             f"PAPER_FEE_TIER={PILOT_FEE_TIER_ID} for a pilot-sized account."
         )
 
-    # --- polymarket crypto-threshold vs Deribit wedge tape (#142; paper-only, opt-in) ---
-    items.append(
-        CheckItem(
-            "Polymarket crypto wedge tape",
-            "enabled" if settings.polymarket_crypto_tape_enabled else "disabled (opt-in)",
-            "traderstack-polymarket-crypto-collect; read-only tape of CLOB mid vs "
-            "Deribit option-implied probability; no CLOB orders, no signing",
     # --- polymarket weather PIT tape (#141) ---
     items.append(
         CheckItem(
@@ -1231,6 +1224,24 @@ def build_report(settings: Settings) -> ConfigReport:
             "cross-check; look-ahead guard forecast_issued_at < close_at; "
             "Celsius cities skipped (unit_unsupported); no "
             "PAPER_PROMOTE_POLYMARKET_WEATHER pin",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  PIT tape settle lag",
+            f"{settings.polymarket_weather_settle_lag_hours:g} h",
+            f"official highs from {settings.polymarket_weather_iem_base_url} "
+            f"(primary) and {settings.polymarket_weather_ghcn_base_url} (cross-check)",
+        )
+    )
+
+    # --- polymarket crypto-threshold vs Deribit wedge tape (#142; paper-only, opt-in) ---
+    items.append(
+        CheckItem(
+            "Polymarket crypto wedge tape",
+            "enabled" if settings.polymarket_crypto_tape_enabled else "disabled (opt-in)",
+            "traderstack-polymarket-crypto-collect; read-only tape of CLOB mid vs "
+            "Deribit option-implied probability; no CLOB orders, no signing",
         )
     )
     items.append(
@@ -1291,12 +1302,6 @@ def build_report(settings: Settings) -> ConfigReport:
             f"{', '.join(unknown_crypto_assets)}: only BTC and ETH have both a daily "
             "Polymarket threshold event and a Deribit option chain; they are skipped."
         )
-            "  PIT tape settle lag",
-            f"{settings.polymarket_weather_settle_lag_hours:g} h",
-            f"official highs from {settings.polymarket_weather_iem_base_url} "
-            f"(primary) and {settings.polymarket_weather_ghcn_base_url} (cross-check)",
-        )
-    )
 
     return ConfigReport(items=items, warnings=warnings)
 
