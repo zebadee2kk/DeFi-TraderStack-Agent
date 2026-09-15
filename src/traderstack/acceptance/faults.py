@@ -37,7 +37,7 @@ from traderstack.execution.ledger import ExecutionLedger
 from traderstack.execution.reconcile import ExecutionReconciliationResult
 from traderstack.features import AssetFeatureVector
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
-from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
+from traderstack.market.models import BookSnapshot, MarketSource, MarketTick, ReferencePrice
 from traderstack.models import PortfolioSnapshot, RiskResult, TradeProposal
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.reconciliation import ReconciliationResult
@@ -424,9 +424,11 @@ class FaultyRiskEngine(RiskEngine):
         features: AssetFeatureVector | None = None,
         *,
         now: datetime | None = None,
+        # --- order-book depth in the risk plane (#61) ---
+        book_snapshot: BookSnapshot | None = None,
     ) -> RiskResult:
         self.failure.raise_if_armed()
-        return super().evaluate(proposal, portfolio, features, now=now)
+        return super().evaluate(proposal, portfolio, features, now=now, book_snapshot=book_snapshot)
 
 
 @dataclass

@@ -42,6 +42,7 @@ from traderstack.exits import is_exit_strategy_id
 from traderstack.features import AssetFeatureVector
 from traderstack.garch import paper_risk_garch_factor
 from traderstack.killswitch import KillSwitch
+from traderstack.market.models import BookSnapshot
 from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side, TradeProposal
 
 # Settings fields that constitute risk policy. Any change to one of these
@@ -61,6 +62,10 @@ RISK_LIMIT_FIELDS: tuple[str, ...] = (
     "max_gross_exposure_pct",
     "max_portfolio_state_age_seconds",
     "risk_max_spread_bps",
+    # --- order-book depth in the risk plane (#61) ---
+    "risk_min_depth_bps",
+    "risk_min_depth_multiple",
+    "risk_require_book_depth",
     "volatility_sizing_enabled",
     "target_volatility",
     "paper_garch_size",
@@ -172,6 +177,10 @@ class RiskEngine:
         features: AssetFeatureVector | None = None,
         *,
         now: datetime | None = None,
+        # --- order-book depth in the risk plane (#61) ---
+        # Market data, so it may only withhold risk. It is never read to size
+        # or authorise: the only branch it reaches appends to blocking_reasons.
+        book_snapshot: BookSnapshot | None = None,
     ) -> RiskResult:
         reasons: list[str] = []
         blocking_reasons: list[str] = []
@@ -256,6 +265,17 @@ class RiskEngine:
             reasons.append("spread_too_wide")
             blocking_reasons.append("spread_too_wide")
 
+        # --- order-book depth in the risk plane (#61) ---
+        # The spread gate above bounds the price at the top of book; this
+        # bounds the size behind it. Risk-reducing exits are exempt: refusing
+        # to let a stop-loss out of a thin book is the #130 failure mode, and
+        # a thin book is exactly when flattening matters most.
+        if not risk_reducing:
+            depth_reason = self._book_depth_reason(proposal, book_snapshot)
+            if depth_reason is not None:
+                reasons.append(depth_reason)
+                blocking_reasons.append(depth_reason)
+
         # --- 5. trade-level validation ------------------------------------
         if risk_reducing:
             # An exit can never create a position. Cap it to the exposure
@@ -321,6 +341,34 @@ class RiskEngine:
         if self.kill_switch is not None:
             return self.kill_switch.engaged
         return self.settings.kill_switch
+
+    # --- order-book depth in the risk plane (#61) ---
+    def _book_depth_reason(self, proposal: TradeProposal, book: BookSnapshot | None) -> str | None:
+        """Blocking reason when the book is too thin to take, else ``None``.
+
+        Returns a reason string only. It cannot reach `approved`, so depth can
+        withhold a trade but never size or authorise one -- market data is
+        never permitted to raise risk.
+
+        The *taking* side is what matters: a BUY consumes asks, a SELL
+        consumes bids. Checking the wrong side would clear a trade against
+        liquidity it cannot reach.
+        """
+
+        if self.settings.risk_min_depth_multiple <= 0:
+            return None
+        if book is None:
+            # No information is not "deep enough". Fail closed only when the
+            # operator asked for it, so a venue path with no book at all
+            # (Robinhood Chain) is not blanket-rejected.
+            return "book_depth_unavailable" if self.settings.risk_require_book_depth else None
+
+        bid_depth, ask_depth = book.depth_within_bps(self.settings.risk_min_depth_bps)
+        takeable = ask_depth if proposal.side is Side.BUY else bid_depth
+        required = proposal.requested_notional_usd * self.settings.risk_min_depth_multiple
+        if takeable < required:
+            return "insufficient_book_depth"
+        return None
 
     def _volatility_factor(self, features: AssetFeatureVector) -> float:
         """target / observed realized volatility, never above 1.0.

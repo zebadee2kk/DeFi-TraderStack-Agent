@@ -217,6 +217,22 @@ class Settings(BaseSettings):
     # Asset/venue liquidity gate applied inside the risk engine (independent of
     # the pipeline's own market-data spread check).
     risk_max_spread_bps: float = Field(default=30.0, gt=0)
+
+    # --- order-book depth in the risk plane (#61) ---
+    # A spread check bounds the *price* at the top of book; it says nothing
+    # about how much size sits there. A 1% NAV clip into a thin book can fill
+    # well through that spread. This gate rejects when the notional resting
+    # within RISK_MIN_DEPTH_BPS of mid on the side the order must *take* is
+    # below RISK_MIN_DEPTH_MULTIPLE x the requested notional.
+    #
+    # Reject-only: depth can never raise an approved notional. It is market
+    # data, and market data may withhold risk, never authorise it.
+    risk_min_depth_bps: float = 10.0
+    risk_min_depth_multiple: float = 2.0
+    # An absent book (provider off, or errored) is "no information", not
+    # "deep enough". Default off so the Robinhood Chain path, which has no
+    # book at all, is unaffected; set true to make missing depth fail closed.
+    risk_require_book_depth: bool = False
     # Volatility targeting. Approved notional is scaled by
     # target_volatility / observed_volatility, and never scaled *up* above what
     # the proposal asked for.

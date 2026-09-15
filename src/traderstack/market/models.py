@@ -53,8 +53,14 @@ class PriceDivergence(BaseModel):
 
 
 class BookLevel(BaseModel):
-    price: float = Field(gt=0)
-    qty: float = Field(ge=0)
+    # --- order-book depth in the risk plane (#61) ---
+    # allow_inf_nan=False is load-bearing, not tidiness. Depth was purely
+    # informational until #61 made it a *permission* gate, and an infinite qty
+    # produces infinite depth, which satisfies any minimum. A hostile or
+    # malformed venue payload must fail here, before the engine sees it --
+    # nan already failed the gt/ge bound, inf did not.
+    price: float = Field(gt=0, allow_inf_nan=False)
+    qty: float = Field(ge=0, allow_inf_nan=False)
 
 
 class BookSnapshot(BaseModel):

@@ -13,7 +13,7 @@ from traderstack.exits import (
 from traderstack.features import AssetFeatureVector, MarketFeatures, ResearchEdgeFeatures
 from traderstack.intelligence import merge_external_intelligence
 from traderstack.intelligence_orchestrator import ExternalIntelligence
-from traderstack.market.models import MarketTick, PriceDivergence, ReferencePrice
+from traderstack.market.models import BookSnapshot, MarketTick, PriceDivergence, ReferencePrice
 from traderstack.market.validation import is_reference_consistent, pairwise_divergences
 from traderstack.market_features import CandleMarketFeatureBuilder
 from traderstack.models import PortfolioSnapshot, RiskDecision, RiskResult, Side, TradeProposal
@@ -83,6 +83,10 @@ class VerticalSlicePipeline:
         edge_source_ids: tuple[str, ...] = (),
         *,
         now: datetime | None = None,
+        # --- order-book depth in the risk plane (#61) ---
+        # Passed straight to RiskEngine.evaluate, which may only reject on it.
+        # Never read here to size or authorise anything.
+        book_snapshot: BookSnapshot | None = None,
     ) -> PipelineResult:
         asset = tick.symbol.split("/", 1)[0].upper()
         now = now or datetime.now(UTC)
@@ -260,7 +264,9 @@ class VerticalSlicePipeline:
         )
         # --- risk plane (Epic 7) --- the feature vector carries the realized
         # volatility and spread the risk engine sizes and gates on.
-        risk_result = self.risk_engine.evaluate(proposal, portfolio, feature_vector)
+        risk_result = self.risk_engine.evaluate(
+            proposal, portfolio, feature_vector, book_snapshot=book_snapshot
+        )
         paper_order = None
         if (
             risk_result.decision in {RiskDecision.ALLOW, RiskDecision.REDUCE}
@@ -349,6 +355,11 @@ class VerticalSlicePipeline:
             source_freshness_seconds=age_seconds,
             created_at=now,
         )
+        # --- order-book depth in the risk plane (#61) ---
+        # No book_snapshot on the exit path by design: the depth gate exempts
+        # risk-reducing proposals, because refusing to let a stop-loss out of a
+        # thin book is the #130 failure mode and a thin book is exactly when
+        # flattening matters most.
         risk_result = self.risk_engine.evaluate(proposal, portfolio, feature_vector, now=now)
         paper_order = None
         if (

@@ -137,6 +137,10 @@ def test_policy_version_moves_with_every_declared_risk_limit() -> None:
         "exit_trailing_stop_pct": 0.01,
         "exit_time_stop_bars": 12,
         "exit_on_thesis_invalidation": True,
+        # --- order-book depth in the risk plane (#61) ---
+        "risk_min_depth_bps": 25.0,
+        "risk_min_depth_multiple": 5.0,
+        "risk_require_book_depth": True,
         # --- policy-version coverage (#69 / SEC-2026-09-18) ---
         "intelligence_required": True,
         "intelligence_block_on_adverse_news": False,

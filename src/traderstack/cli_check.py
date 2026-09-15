@@ -888,6 +888,36 @@ def build_report(settings: Settings) -> ConfigReport:
         )
     )
 
+    # --- order-book depth in the risk plane (#61) ---
+    if settings.risk_min_depth_multiple > 0:
+        items.append(
+            CheckItem(
+                "Book-depth gate",
+                "on",
+                f"needs {settings.risk_min_depth_multiple:g}x requested notional within "
+                f"{settings.risk_min_depth_bps:g} bps of mid on the taking side; "
+                f"missing book {'rejects' if settings.risk_require_book_depth else 'is allowed'}",
+            )
+        )
+        if not settings.kraken_book_enabled and not settings.risk_require_book_depth:
+            items.append(
+                CheckItem(
+                    "  no book feed",
+                    "gate inert",
+                    "KRAKEN_BOOK_ENABLED=false, so no snapshot reaches the risk engine "
+                    "and depth is never checked. Enable the feed, or set "
+                    "RISK_REQUIRE_BOOK_DEPTH=true to fail closed instead.",
+                )
+            )
+    else:
+        items.append(
+            CheckItem(
+                "Book-depth gate",
+                "off",
+                "RISK_MIN_DEPTH_MULTIPLE=0; only the spread gate bounds liquidity (#61)",
+            )
+        )
+
     # --- audit anchoring (#68) ---
     if settings.audit_anchor_enabled:
         channels = "local file"

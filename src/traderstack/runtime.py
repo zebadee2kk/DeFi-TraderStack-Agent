@@ -261,6 +261,11 @@ class PaperRuntime:
                 intelligence=external,
                 edge=edge,
                 edge_source_ids=edge_source_ids,
+                # --- order-book depth in the risk plane (#61) ---
+                # The cycle already fetched this (and already tolerates the
+                # provider being down, leaving it None). The risk engine may
+                # only reject on it.
+                book_snapshot=book_snapshot,
             )
 
             # --- meta-agent (Epic 6) ---
