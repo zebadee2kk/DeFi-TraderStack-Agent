@@ -486,3 +486,26 @@ trial count is the deflation term: a wrong K silently *weakens* the DSR
 rather than failing loudly, which is worse than reporting no DSR at all. So
 they stay uncovered until that is designed per CLI, not guessed. This is the
 first slice of #48 and does not close it.
+
+### Polymarket weather — point-in-time tape now exists (#141)
+
+The statement above that this repository has **no** public point-in-time
+CLOB-mid + official-station-high tape is superseded in one respect: the
+repository now *builds* one. `traderstack-polymarket-weather-collect` records
+decision-time book and as-issued forecast while markets are open, and
+`traderstack-polymarket-weather-resolve` pairs those rows with the official
+station high and emits per-month print packs the evaluator consumes.
+
+What has **not** changed:
+
+* The tape starts empty. It can only be filled by running the collector from
+  an operator host over weeks; nothing is back-filled from settlement prices.
+  `docs/artifacts/strategy-search/polymarket-weather-tape.md` reports
+  `rows = 0`, which is the honest status, not a failure.
+* The evaluator still scores nothing until the resolver emits a print, still
+  requires two independent prints, and still cannot promote.
+* Gate 2 (walk-forward parameter fit) and gate 3 (a full season of live paper
+  A/B) are not claimed.
+* Only Fahrenheit-resolved cities are in scope until a unit-aware bucket
+  model lands; Celsius cities are catalogued and skipped.
+* `PAPER_PROMOTE_POLYMARKET_WEATHER` remains absent from `Settings`.

@@ -424,3 +424,18 @@ question phrasing change. The adapters fail closed on unparseable payloads.
 - DexScreener 300 rpm limit for pairs endpoints.
 - Dune free-plan credits; Tardis.dev list prices; Codex tier details; CoinGecko Demo access to onchain endpoints.
 - Existence of a public Uniswap v3/v4 subgraph already deployed for Robinhood Chain.
+
+### Point-in-time weather tape endpoints (#141, verified 2026-09-15)
+
+All unauthenticated GET. `[V]` = reached from this environment on the date
+shown; a source that was not reached is recorded as a skip, never filled in.
+
+| Source | Endpoint | Status | Notes |
+|---|---|---|---|
+| Polymarket Gamma | `/events?tag_slug=weather&closed=false&limit=100&order=id&ascending=false&offset=N` | [V] | 200, but the response carries `deprecation: true`, a `sunset` date and `warning: 299 - "use /events/keyset"`. ~50 cities × 2 families per day, so paging is required. `cache-control: max-age=300`. |
+| Polymarket Gamma | `/events/keyset?tag_slug=weather&closed=false&limit=N[&cursor=]` | [V] | `{"events": [...], "next_cursor": "..."}`; implemented alongside offset paging so the collector survives the cutover. |
+| Polymarket CLOB | `/book?token_id=<id>` | [V] | `bids`/`asks` arrays of `{price,size}` **strings, not sorted ascending** — best bid is `max(bids)`, best ask is `min(asks)`. A YES token's book is often **ask-only**: resting bids sit as asks on the complementary NO token (verified on the Miami 82-83 °F market: YES best ask 0.07, NO best bid 0.93), so an absent YES bid is real and the row is skipped as `book_one_sided` rather than mid-filled. A one-sided book is *not* a provider failure and must not reach the circuit breaker. Closed markets expose `outcomePrices` (settlement): forbidden as a mid. |
+| IEM ASOS | `cgi-bin/request/daily.py?network=<net>&stations=<id>&…&var=max_temp_f&na=blank&format=csv` | [V] | Same-day availability. US stations are 3-letter ids inside `<ST>_ASOS` (`MIA`/`FL_ASOS`, `LGA`/`NY_ASOS`, `ORD`/`IL_ASOS`, `PHNL`/`HI_ASOS`); `SJU` is invalid, Puerto Rico wants `TJSJ`. Non-US use ICAO in `<CC>__ASOS` (`LPPT`/`PT__ASOS`). No published limit; be polite (>= 1 s between requests). |
+| NCEI GHCN-Daily | `access/services/data/v1?dataset=daily-summaries&stations=<id>&startDate=&endDate=&dataTypes=TMAX&units=standard&format=json` | [V] | ~3-day publication lag, sparse outside the US. Used as a **cross-check only**; it is not the same measurement as the ASOS daily maximum (Miami 2025-06-01..03: IEM 85/89/78 vs GHCN 86/92/78 °F). |
+| Open-Meteo forecast | `/v1/forecast` with the optional `models=` parameter | [V] | One call per city/date per cycle; `best_match` sends no `models` parameter. |
+| Open-Meteo historical-forecast / previous-runs | archived as-issued runs | skipped | `{"error": true, "reason": "Daily API request limit exceeded"}` from this IP. Needed only for the deferred coarse backfill; run it from the operator host. |
