@@ -2,7 +2,7 @@
 
 Honesty rules (also written into every report):
 
-* Costs are ``max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)`` plus
+* Costs are ``max(PRETRADE_FEE_BPS, PAPER_FEE_TIER taker)`` (#138) plus
   ``PRETRADE_SLIPPAGE_BPS``. There is no zero-fee ranking path.
 * Ranking uses only the research prefix. The holdout tail is scored after
   ranking and never used to pick a winner.
@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from traderstack.backtest import BacktestMetrics, simulate_positions
 from traderstack.candles import Candle
+from traderstack.fee_tiers import FeeTierStamp
 from traderstack.garch import (
     DEFAULT_MAX_SIZE,
     DEFAULT_MIN_SIZE,
@@ -154,6 +155,8 @@ class MilesSearchReport(BaseModel):
     data_notes: list[str] = Field(default_factory=list)
     # Daily is the GARCH/Miles timeframe. 1h is reported but not averaged in.
     promotion_interval: str | None = None
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None
 
 
 def _position_decision(
@@ -168,6 +171,11 @@ def _position_decision(
         if signal.side is None:
             return 0.0, regime, []
         weight = 1.0 if signal.side is Side.BUY else -1.0
+        # --- ensemble trend (#137): opt-in fractional weight, |w| <= 1 ---
+        if candidate.weight_from_score:
+            weight *= min(abs(signal.score), 1.0)
+            if weight == 0.0:
+                return 0.0, regime, []
         if candidate.garch_sizing:
             forecast = (
                 forecast_at_window(garch_series, window) if garch_series is not None else None
@@ -210,7 +218,10 @@ def _run_backtest(
         warmup=warmup,
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
-        rebalance_threshold=0.05 if candidate.garch_sizing else 1e-9,
+        # --- ensemble trend (#137): fractional books rebalance like GARCH ---
+        rebalance_threshold=(
+            0.05 if (candidate.garch_sizing or candidate.weight_from_score) else 1e-9
+        ),
     )
 
 
@@ -447,6 +458,8 @@ def run_miles_search(
     garch_target_vol_ann: float = DEFAULT_TARGET_VOL_ANN,
     now: datetime | None = None,
     data_notes: list[str] | None = None,
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None,
 ) -> MilesSearchReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -578,7 +591,7 @@ def run_miles_search(
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
         cost_note=(
-            "fee_bps is max(PRETRADE_FEE_BPS, PAPER_FEE_BPS); "
+            "fee_bps is max(PRETRADE_FEE_BPS, PAPER_FEE_TIER taker; PAPER_FEE_BPS when modelled); "
             "slippage_bps is PRETRADE_SLIPPAGE_BPS. Every fill pays both."
         ),
         starting_equity=starting_equity,
@@ -617,6 +630,8 @@ def run_miles_search(
         honesty=honesty,
         data_notes=list(data_notes or []),
         promotion_interval=promotion_interval,
+        # --- fee realism (#138) ---
+        fee_tier=fee_tier,
     )
 
 
@@ -636,6 +651,8 @@ def render_miles_markdown(report: MilesSearchReport) -> str:
             f"Costs: fee={report.fee_bps:g} bps + slippage={report.slippage_bps:g} bps "
             f"({report.cost_note})"
         ),
+        # --- fee realism (#138) ---
+        *([report.fee_tier.render_line()] if report.fee_tier is not None else []),
         (
             f"Walk-forward: train={report.train_size} test={report.test_size} "
             f"step={report.step_size} (train is warmup; only the test window trades); "

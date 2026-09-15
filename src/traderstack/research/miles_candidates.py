@@ -102,6 +102,11 @@ class SearchCandidate:
     # Miles catalog uses EmaCrossoverStrategy; daily robustness adds others.
     strategy: DirectionStrategy
     garch_sizing: bool = False
+    # --- ensemble trend (#137) ---
+    # When true the harness uses sign(side) × min(|StrategySignal.score|, 1.0)
+    # as the position weight instead of ±1. Default false keeps every
+    # existing catalog at ±1. |weight| can never exceed 1 (no leverage).
+    weight_from_score: bool = False
 
 
 def apply_garch_size(weight: float, forecast: GarchForecast | None) -> float:

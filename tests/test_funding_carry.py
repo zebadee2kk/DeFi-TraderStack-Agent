@@ -675,3 +675,391 @@ def test_pit_basis_archives_memo_stays_unavailable() -> None:
     assert Settings.model_fields["paper_promote_ema_9_21"].default is False
     assert Settings.model_fields["paper_promote_ema_9_21_adx15"].default is False
     assert "PAPER_PROMOTE_CARRY" not in Settings.model_fields
+
+
+# --- second-venue PIT basis (#134) ---
+
+
+def _dual_print_inputs() -> dict[str, object]:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    other = datetime(2023, 1, 1, tzinfo=UTC)
+    btc = downtrend(360, symbol="BTC/USD", start=start)
+    eth = downtrend(360, symbol="ETH/USD", start=start)
+    other_btc = downtrend(360, symbol="BTC/USD", start=other)
+    other_eth = downtrend(360, symbol="ETH/USD", start=other)
+    series = tuple((candle.opened_at, 0.001) for candle in btc)
+    other_series = tuple((candle.opened_at, 0.001) for candle in other_btc)
+    return {
+        "histories": {"BTC/USD@1d": btc, "ETH/USD@1d": eth},
+        "funding_by_symbol": {"BTC/USD": series, "ETH/USD": series},
+        "second_funding_by_symbol": {"BTC/USD": other_series, "ETH/USD": other_series},
+        "second_histories": {"BTC/USD@1d": other_btc, "ETH/USD@1d": other_eth},
+        "primary_venue": "hyperliquid",
+        "second_venue": "htx",
+        "min_trades": 1,
+    }
+
+
+def _flat_basis(candles: tuple[Candle, ...], value: float = 0.0005) -> tuple:
+    return tuple((candle.opened_at, value) for candle in candles)
+
+
+def test_dual_print_with_basis_on_both_prints_sets_ok_and_records_venues() -> None:
+    inputs = _dual_print_inputs()
+    histories = inputs.pop("histories")
+    btc = histories["BTC/USD@1d"]  # type: ignore[index]
+    other_btc = inputs["second_histories"]["BTC/USD@1d"]  # type: ignore[index]
+    report = _search(
+        histories,  # type: ignore[arg-type]
+        basis_by_symbol={"BTC/USD": _flat_basis(btc), "ETH/USD": _flat_basis(btc)},
+        second_basis_by_symbol={
+            "BTC/USD": _flat_basis(other_btc),
+            "ETH/USD": _flat_basis(other_btc),
+        },
+        basis_venue="okx",
+        second_basis_venue="binance_vision",
+        **inputs,
+    )
+    assert report.print_kind == PRINT_DUAL
+    assert report.basis_status == "ok"
+    assert report.basis_print_kind == "dual_basis"
+    assert report.basis_venue == "okx"
+    assert report.second_basis_venue == "binance_vision"
+    assert report.can_promote is False  # 360 days: hard gates unavailable
+    assert {(row["print"], row["venue"], row["status"]) for row in report.basis_probe} == {
+        ("primary", "okx", "applied"),
+        ("second", "binance_vision", "applied"),
+    }
+    assert all(row["aligned_with_funding"] == "360" for row in report.basis_probe)
+    assert any(row.basis_modeled for row in report.carry)
+    assert any(row.basis_modeled for row in report.second_carry)
+    text = render_funding_carry_markdown(report)
+    assert "basis_print_kind=`dual_basis`" in text
+    assert "hyperliquid" in text and "okx" in text and "binance_vision" in text
+    assert "Pairing rule (frozen before any pull)" in text
+    assert "| primary | hyperliquid | okx | BTC/USD |" in text
+    assert "| second | htx | binance_vision | ETH/USD |" in text
+
+
+def test_dual_print_with_basis_on_one_print_is_not_applied_alone() -> None:
+    inputs = _dual_print_inputs()
+    histories = inputs.pop("histories")
+    btc = histories["BTC/USD@1d"]  # type: ignore[index]
+    report = _search(
+        histories,  # type: ignore[arg-type]
+        basis_by_symbol={"BTC/USD": _flat_basis(btc), "ETH/USD": _flat_basis(btc)},
+        basis_venue="okx",
+        second_basis_venue="binance_vision",
+        **inputs,
+    )
+    assert report.print_kind == PRINT_DUAL
+    assert report.basis_status == "skipped"
+    assert report.basis_print_kind == "none"
+    assert report.second_basis_venue is None
+    assert all(row.basis_modeled is False for row in report.carry)
+    assert all(row.basis_modeled is False for row in report.second_carry)
+    assert all(row["status"] == "not_applied_alone" for row in report.basis_probe)
+    assert "NOT applied alone" in report.basis_note
+    assert "not applied alone" in report.honesty
+    assert report.can_promote is False
+    # A per-symbol map covering only BTC is not usable either — ETH is never broadcast.
+    partial = _search(
+        histories,  # type: ignore[arg-type]
+        basis_by_symbol={"BTC/USD": _flat_basis(btc)},
+        second_basis_by_symbol={"BTC/USD": _flat_basis(btc)},
+        basis_venue="okx",
+        second_basis_venue="binance_vision",
+        **inputs,
+    )
+    assert partial.basis_status == "skipped"
+
+
+def test_basis_by_symbol_is_applied_per_asset() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    btc = downtrend(360, symbol="BTC/USD", start=start)
+    eth = downtrend(360, symbol="ETH/USD", start=start)
+    funding = tuple((candle.opened_at, 0.001) for candle in btc)
+    # Falling basis while harvesting is a cash-and-carry gain (BTC only).
+    falling = tuple((start + timedelta(days=i), 0.02 - 0.0001 * i) for i in range(360))
+    flat = tuple((start + timedelta(days=i), 0.0) for i in range(360))
+    without = _search(
+        {"BTC/USD@1d": btc, "ETH/USD@1d": eth},
+        funding_by_symbol={"BTC/USD": funding, "ETH/USD": funding},
+        primary_venue="file",
+    )
+    with_basis = _search(
+        {"BTC/USD@1d": btc, "ETH/USD@1d": eth},
+        funding_by_symbol={"BTC/USD": funding, "ETH/USD": funding},
+        primary_venue="file",
+        basis_by_symbol={"BTC/USD": falling, "ETH/USD": flat},
+        basis_venue="okx",
+    )
+    assert with_basis.basis_status == "ok"
+    assert with_basis.basis_print_kind == "single_basis"
+    base_row = next(r for r in without.carry if r.candidate_id == "carry_hedged_sign")
+    basis_row = next(r for r in with_basis.carry if r.candidate_id == "carry_hedged_sign")
+    btc_before = float(base_row.per_asset["BTC/USD"]["full_sample_total_return"] or 0)
+    btc_after = float(basis_row.per_asset["BTC/USD"]["full_sample_total_return"] or 0)
+    eth_before = float(base_row.per_asset["ETH/USD"]["full_sample_total_return"] or 0)
+    eth_after = float(basis_row.per_asset["ETH/USD"]["full_sample_total_return"] or 0)
+    assert btc_after > btc_before
+    assert eth_after == pytest.approx(eth_before)
+    assert basis_row.per_asset["BTC/USD"]["basis_modeled"]
+    assert basis_row.basis_modeled is True
+    assert with_basis.can_promote is False
+
+
+def test_basis_missing_day_is_skipped_not_zero() -> None:
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    series = tuple((start + timedelta(days=i), 0.001) for i in range(80))
+    full = tuple((start + timedelta(days=i), 0.01 - 0.0001 * i) for i in range(80))
+    gappy = tuple(point for point in full if point[0] != start + timedelta(days=40))
+    full_score = score_hedged_carry(
+        series,
+        abs_threshold=None,
+        z_threshold=None,
+        fee_bps=10.0,
+        slippage_bps=5.0,
+        train_size=40,
+        test_size=20,
+        step_size=20,
+        basis=full,
+    )
+    gappy_score = score_hedged_carry(
+        series,
+        abs_threshold=None,
+        z_threshold=None,
+        fee_bps=10.0,
+        slippage_bps=5.0,
+        train_size=40,
+        test_size=20,
+        step_size=20,
+        basis=gappy,
+    )
+    # The gap day contributes no basis PnL (skipped, not zero-filled) and is
+    # not counted as applied; the next day bridges 39→41 with no look-ahead.
+    assert int(full_score["basis_days_applied"] or 0) == 78
+    assert int(gappy_score["basis_days_applied"] or 0) == 77
+    assert float(gappy_score["full_sample_total_return"] or 0) == pytest.approx(
+        float(full_score["full_sample_total_return"] or 0), rel=1e-6
+    )
+
+
+def test_cli_basis_dir_loads_per_venue_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from traderstack.research.basis import write_feature_series_json
+    from traderstack.research.basis_cli import basis_series_path
+
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    other = datetime(2023, 1, 1, tzinfo=UTC)
+    btc = downtrend(360, symbol="BTC/USD", start=start)
+    eth = downtrend(360, symbol="ETH/USD", start=start)
+    write_candles(tmp_path / "btc.json", btc)
+    write_candles(tmp_path / "eth.json", eth)
+    funding = tuple((candle.opened_at, 0.001) for candle in btc)
+    second_funding = tuple((other + timedelta(days=i), 0.001) for i in range(360))
+    write_series(tmp_path / "funding.json", funding)
+    write_series(tmp_path / "second_funding.json", second_funding)
+    basis_dir = tmp_path / "basis"
+    # Files cover a wider window than the scored one; the loader clamps them.
+    wide = tuple((datetime(2023, 6, 1, tzinfo=UTC) + timedelta(days=i), 0.0004) for i in range(600))
+    for venue in ("okx", "binance_vision"):
+        for symbol in ("BTC/USD", "ETH/USD"):
+            write_feature_series_json(basis_series_path(basis_dir, venue, symbol), wide)
+
+    async def must_not_fetch(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("network fetch must not run when files exist")
+
+    monkeypatch.setattr("traderstack.research.basis_cli.fetch_okx_basis", must_not_fetch)
+    monkeypatch.setattr("traderstack.research.basis_cli.fetch_binance_vision_basis", must_not_fetch)
+    out_json = tmp_path / "report.json"
+    out_md = tmp_path / "report.md"
+    args = build_parser().parse_args(
+        [
+            "--candles",
+            str(tmp_path / "btc.json"),
+            "--candles",
+            str(tmp_path / "eth.json"),
+            "--interval",
+            "1d",
+            "--funding-z",
+            str(tmp_path / "funding.json"),
+            "--second-funding-z",
+            str(tmp_path / "second_funding.json"),
+            "--basis-dir",
+            str(basis_dir),
+            "--fetch-basis",
+            "--train-size",
+            "80",
+            "--test-size",
+            "40",
+            "--step-size",
+            "40",
+            "--warmup",
+            "8",
+            "--min-trades",
+            "1",
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+        ]
+    )
+    run(args, settings())
+    payload = json.loads(out_json.read_text())
+    assert payload["print_kind"] == "dual_print"
+    # --funding-z is one series (not per symbol): a per-symbol basis map cannot be
+    # paired with it, so it is loaded, reported, and NOT applied — never broadcast.
+    assert payload["basis_status"] == "skipped"
+    assert payload["basis_print_kind"] == "none"
+    assert "UNPAIRED" in payload["basis_note"]
+    assert payload["can_promote"] is False
+    assert payload["any_promoted"] is False
+    loaded = [n for n in payload["edge_notes"] if n["name"].endswith("_basis:BTC/USD")]
+    assert {n["name"] for n in loaded} == {"okx_basis:BTC/USD", "binance_vision_basis:BTC/USD"}
+    assert all(
+        n["status"] == "ok" and "clamped to the scored window" in n["reason"] for n in loaded
+    )
+    assert all(int(n["points"]) == 360 for n in loaded)
+    text = out_md.read_text()
+    assert (
+        "| primary | file | okx | BTC/USD | 2024-01-01 | 2024-12-25 | 360 | 360 | "
+        "not_applied_unpaired |" in text
+    )
+    # The same loaded maps, paired with per-symbol funding, score dual_basis.
+    from traderstack.research.funding_carry_cli import resolve_second_venue_basis
+
+    histories = {"BTC/USD@1d": btc, "ETH/USD@1d": eth}
+    primary_map, second_map, _notes = resolve_second_venue_basis(
+        args, ("BTC/USD", "ETH/USD"), histories
+    )
+    assert primary_map is not None and second_map is not None
+    assert set(primary_map) == {"BTC/USD", "ETH/USD"}
+    other_btc = downtrend(360, symbol="BTC/USD", start=other)
+    other_eth = downtrend(360, symbol="ETH/USD", start=other)
+    paired = _search(
+        histories,
+        funding_by_symbol={"BTC/USD": funding, "ETH/USD": funding},
+        second_funding_by_symbol={"BTC/USD": second_funding, "ETH/USD": second_funding},
+        second_histories={"BTC/USD@1d": other_btc, "ETH/USD@1d": other_eth},
+        primary_venue="hyperliquid",
+        second_venue="htx",
+        basis_by_symbol=primary_map,
+        second_basis_by_symbol=second_map,
+        basis_venue="okx",
+        second_basis_venue="binance_vision",
+    )
+    assert paired.basis_status == "ok"
+    assert paired.basis_print_kind == "dual_basis"
+    assert paired.can_promote is False
+    defaults = settings()
+    assert defaults.paper_promote_searched_strategies is False
+    assert defaults.paper_promote_ema_9_21 is False
+    assert defaults.paper_promote_ema_9_21_adx15 is False
+    assert defaults.trading_mode == "paper"
+
+
+def test_cli_same_basis_venue_on_both_prints_withholds_second_basis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from traderstack.research.basis import write_feature_series_json
+    from traderstack.research.basis_cli import basis_series_path
+
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    other = datetime(2023, 1, 1, tzinfo=UTC)
+    btc = downtrend(360, symbol="BTC/USD", start=start)
+    eth = downtrend(360, symbol="ETH/USD", start=start)
+    write_candles(tmp_path / "btc.json", btc)
+    write_candles(tmp_path / "eth.json", eth)
+    write_series(tmp_path / "funding.json", tuple((c.opened_at, 0.001) for c in btc))
+    write_series(
+        tmp_path / "second_funding.json",
+        tuple((other + timedelta(days=i), 0.001) for i in range(360)),
+    )
+    basis_dir = tmp_path / "basis"
+    wide = tuple((datetime(2023, 1, 1, tzinfo=UTC) + timedelta(days=i), 0.0004) for i in range(760))
+    for symbol in ("BTC/USD", "ETH/USD"):
+        write_feature_series_json(basis_series_path(basis_dir, "okx", symbol), wide)
+    out_json = tmp_path / "report.json"
+    args = build_parser().parse_args(
+        [
+            "--candles",
+            str(tmp_path / "btc.json"),
+            "--candles",
+            str(tmp_path / "eth.json"),
+            "--interval",
+            "1d",
+            "--funding-z",
+            str(tmp_path / "funding.json"),
+            "--second-funding-z",
+            str(tmp_path / "second_funding.json"),
+            "--basis-dir",
+            str(basis_dir),
+            "--basis-venue",
+            "okx",
+            "--second-basis-venue",
+            "okx",
+            "--no-fetch-basis",
+            "--train-size",
+            "80",
+            "--test-size",
+            "40",
+            "--step-size",
+            "40",
+            "--warmup",
+            "8",
+            "--min-trades",
+            "1",
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(tmp_path / "report.md"),
+        ]
+    )
+    run(args, settings())
+    payload = json.loads(out_json.read_text())
+    assert payload["print_kind"] == "dual_print"
+    assert payload["basis_status"] == "skipped"
+    assert payload["basis_print_kind"] == "none"
+    assert any(
+        n["name"] == "second_basis" and "not two independent basis prints" in n["reason"]
+        for n in payload["edge_notes"]
+    )
+    assert payload["can_promote"] is False
+
+
+def test_parser_second_venue_basis_defaults_keep_promote_paths_off() -> None:
+    args = build_parser().parse_args(["--live"])
+    assert args.basis_venue == "okx"
+    assert args.second_basis_venue == "binance_vision"
+    assert args.fetch_basis is None
+    assert str(args.basis_dir) == "var/research/basis"
+    assert str(args.basis_cache_dir) == "var/research/binance_vision"
+    assert args.basis_since is None and args.basis_until is None
+    frozen = build_parser().parse_args(
+        ["--live", "--basis-venue", "hyperliquid", "--second-basis-venue", "htx"]
+    )
+    assert frozen.basis_venue == "hyperliquid"
+    assert "OKX + Binance Vision" in FUNDING_CARRY_RULES
+    assert "not applied in dual-print" in FUNDING_CARRY_RULES
+    assert FUNDING_CARRY_RULES.startswith("Pre-registered funding/carry")
+    assert settings().trading_mode == "paper"
+    assert Settings.model_fields["paper_promote_searched_strategies"].default is False
+    assert "PAPER_PROMOTE_CARRY" not in Settings.model_fields
+
+
+def test_pit_basis_archives_memo_records_second_venue() -> None:
+    text = Path("docs/artifacts/strategy-search/pit-basis-archives.md").read_text()
+    assert "Second venue found and wired (#134)" in text
+    assert "OKX" in text
+    assert "Binance Vision" in text
+    assert "dual basis" in text.lower() or "two independent basis" in text.lower()
+    assert "PAPER_PROMOTE_*" in text
+    assert "Do not invent AWS keys" in text or "invent AWS" in text
+    assert "BitMEX" in text
+    assert "23 September 2026" in text
+    assert Settings.model_fields["paper_promote_searched_strategies"].default is False
+    assert Settings.model_fields["paper_promote_ema_9_21"].default is False
+    assert Settings.model_fields["paper_promote_ema_9_21_adx15"].default is False
+    assert "PAPER_PROMOTE_CARRY" not in Settings.model_fields

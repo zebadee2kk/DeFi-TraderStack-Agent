@@ -1436,3 +1436,15 @@ dual-print by construction. Single-print bar passers at the pilot
 cost: 0. No new pin; `PAPER_PROMOTE_*` defaults
 unchanged; `RiskEngine` limits documented, not widened. Second venue
 / older eras wait on #133; DSR / PBO on #135. See `xs-topk.md`.
+## Addendum 2026-09-13 (#134)
+
+Second-venue PIT basis is no longer UNAVAILABLE: OKX
+`history-mark-price-candles − history-index-candles` (`1Dutc`) and
+Binance Vision `markPriceKlines − indexPriceKlines` (sha256-verified
+zips) give two independent daily mark−index tapes from 2020-01-01 with
+2429 / 2443 aligned days on BTC / ETH. `carry_hedged_sign` re-scored
+basis-aware on the live Kraken 720 (HL×OKX, HTX×Vision) at 10+5 and
+80+5 bps: still the only dual-print passer, hard gates true on both,
+basis effect ≈ +0.05 pp full-sample. `can_promote=true` is a report
+field; no `PAPER_PROMOTE_*` default changed, no pin added. See
+`pit-basis-second-venue.md`, `funding-carry-basis.md`.

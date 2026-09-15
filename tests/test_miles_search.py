@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from traderstack.research.miles_candidates import (
     EMA_9_21_ADX15_STRATEGY_ID,
     EMA_9_21_STRATEGY_ID,
     EmaCrossoverStrategy,
+    SearchCandidate,
     build_ema_9_21_adx15_paper_ensemble,
     build_ema_9_21_paper_ensemble,
     default_miles_candidates,
@@ -32,6 +34,7 @@ from traderstack.research.miles_candidates import (
 )
 from traderstack.research.miles_cli import build_parser, run
 from traderstack.research.miles_search import (
+    _position_decision,
     render_miles_markdown,
     research_fee_bps,
     run_miles_search,
@@ -39,7 +42,7 @@ from traderstack.research.miles_search import (
 )
 from traderstack.risk import RiskEngine, derive_policy_version
 from traderstack.runtime import PaperRuntime
-from traderstack.strategies import Regime
+from traderstack.strategies import Regime, RegimeClassifier, StrategySignal
 
 
 def settings(**overrides: object) -> Settings:
@@ -596,6 +599,81 @@ async def test_promote_runtime_rejects_hourly_history_if_provider_returns_1h() -
     assert result.pipeline.rejection_reasons == ["candle_interval_mismatch"]
     assert result.pipeline.proposal is None
     assert result.pipeline.paper_order is None
+
+
+# --- ensemble trend (#137): opt-in fractional weight in the shared harness ---
+
+
+@dataclass(frozen=True)
+class _ScoreStub:
+    """Voter whose score is caller-controlled; used to pin the weight rule."""
+
+    strategy_id: str
+    side: Side | None
+    score: float
+
+    def evaluate(self, candles: tuple[Candle, ...], regime: Regime) -> StrategySignal:
+        return StrategySignal(
+            strategy_id=self.strategy_id,
+            symbol=candles[-1].symbol,
+            side=self.side,
+            score=max(-1.0, min(1.0, self.score)),
+            confidence=min(abs(self.score), 1.0),
+            regime=regime,
+            rationale="stub",
+        )
+
+
+def _decide(candidate: SearchCandidate, candles: tuple[Candle, ...]) -> float:
+    decide = _position_decision(candidate, garch_series=None, classifier=RegimeClassifier())
+    weight, _regime, _ids = decide(candles)
+    return weight
+
+
+def test_weight_from_score_default_off_keeps_unit_weight() -> None:
+    candles = noisy_uptrend(120)
+    ema = default_miles_candidates()[0]
+    assert ema.candidate_id == "ema_9_21"
+    assert ema.weight_from_score is False
+    signal = ema.strategy.evaluate(candles, Regime.RANGE)
+    assert signal.side is not None
+    assert abs(signal.score) == 1.0
+    assert abs(_decide(ema, candles)) == 1.0
+    # A fractional score on a default candidate is still mapped to ±1.
+    fractional = SearchCandidate(
+        candidate_id="stub_default",
+        family="stub",
+        label="stub",
+        params={},
+        strategy=_ScoreStub("stub_default", Side.BUY, 0.3),
+    )
+    assert _decide(fractional, candles) == 1.0
+
+
+def test_weight_from_score_caps_at_one_and_keeps_side() -> None:
+    candles = noisy_uptrend(120)
+
+    def candidate(side: Side | None, score: float) -> SearchCandidate:
+        return SearchCandidate(
+            candidate_id="stub_score",
+            family="stub",
+            label="stub",
+            params={},
+            strategy=_ScoreStub("stub_score", side, score),
+            weight_from_score=True,
+        )
+
+    assert _decide(candidate(Side.BUY, 3.0), candles) == 1.0
+    assert _decide(candidate(Side.SELL, 0.3), candles) == pytest.approx(-0.3)
+    assert _decide(candidate(Side.BUY, 0.0), candles) == 0.0
+    decide = _position_decision(
+        candidate(Side.BUY, 0.0), garch_series=None, classifier=RegimeClassifier()
+    )
+    weight, _regime, ids = decide(candles)
+    assert weight == 0.0 and ids == []
+    # |weight| never exceeds 1 regardless of score magnitude or sign.
+    for score in (-5.0, -1.0, -0.5, 0.5, 1.0, 5.0):
+        assert abs(_decide(candidate(Side.BUY, score), candles)) <= 1.0
 
 
 def test_miles_search_surfaces_the_selection_evidence_block() -> None:

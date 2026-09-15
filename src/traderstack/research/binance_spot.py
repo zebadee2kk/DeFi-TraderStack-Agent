@@ -28,13 +28,16 @@ BINANCE_SOURCE_US = "binance_us_spot"
 BINANCE_SOURCE_RESTRICTED = "binance_com_http_451"
 
 # Lowest published Binance.US Spot taker is typically 10 bps; we still
-# charge the paper-research defaults (10+5) rather than invent a rebate.
+# charge the same Kraken-tier research costs (#138) rather than invent a
+# cheaper venue schedule or a rebate.
 BINANCE_TAKER_BPS_NOTE = (
     "Binance.US Spot published taker is typically 10 bps at the lowest "
-    "listed tier. This print uses the paper-research defaults "
-    "`max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` + `PRETRADE_SLIPPAGE_BPS` "
-    "(10+5; gate C at 20+10) so costs stay comparable to the Kraken "
-    "print. Not a maker-rebate or VIP study. Quote is USDT, not USD."
+    "listed tier. This print uses the same research costs as the Kraken "
+    "print: `max(PRETRADE_FEE_BPS, PAPER_FEE_TIER taker)` + "
+    "`PRETRADE_SLIPPAGE_BPS` (exact numbers in the report's fee tier "
+    "line; gate C doubles both) so costs stay comparable. Binance.US's "
+    "own taker is not substituted and no maker rebate is assumed. Not a "
+    "VIP study. Quote is USDT, not USD."
 )
 
 
