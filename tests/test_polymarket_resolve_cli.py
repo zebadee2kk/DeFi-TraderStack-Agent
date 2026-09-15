@@ -14,7 +14,12 @@ from traderstack.config import Settings
 from traderstack.polymarket import eval_cli
 from traderstack.polymarket.cities import CITY_CATALOG
 from traderstack.polymarket.models import TemperatureContract
-from traderstack.polymarket.resolve_cli import DEFAULT_OUTPUT_MD, build_parser, resolve_tape
+from traderstack.polymarket.resolve_cli import (
+    COMMITTED_ARTIFACT,
+    DEFAULT_OUTPUT_MD,
+    build_parser,
+    resolve_tape,
+)
 from traderstack.polymarket.stations import GhcnDailyClient, IemAsosClient
 from traderstack.polymarket.tape import (
     PolymarketWeatherResolvedTape,
@@ -216,7 +221,7 @@ async def test_post_close_observation_is_never_resolved(tmp_path: Path) -> None:
 
 
 def test_committed_artifact_matches_the_empty_tape_renderer() -> None:
-    committed = (REPO / DEFAULT_OUTPUT_MD).read_text(encoding="utf-8")
+    committed = (REPO / COMMITTED_ARTIFACT).read_text(encoding="utf-8")
     generated_at = datetime.fromisoformat(
         committed.split("Generated: ", 1)[1].split("\n", 1)[0].strip()
     )
@@ -241,7 +246,9 @@ def test_committed_artifact_matches_the_empty_tape_renderer() -> None:
 
 def test_parser_defaults_are_report_only() -> None:
     args = build_parser().parse_args([])
+    # A routine run must not overwrite the committed artifact.
     assert args.output_md == DEFAULT_OUTPUT_MD
+    assert not str(args.output_md).startswith("docs/")
     assert args.settle_lag_hours is None
     assert args.station_tolerance_f == 1.0
     assert not hasattr(args, "promote")

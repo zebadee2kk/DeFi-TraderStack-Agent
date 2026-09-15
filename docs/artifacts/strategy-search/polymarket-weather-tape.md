@@ -2,6 +2,8 @@
 
 Evidence only. This report counts observations; it does not score them and never computes PnL. Scoring happens in `traderstack-polymarket-weather-eval`, which cannot promote on a single print. `PAPER_PROMOTE_POLYMARKET_WEATHER` is not a `Settings` field and is not added here.
 
+Snapshot of `traderstack-polymarket-weather-resolve` output; a routine run writes `var/ops/polymarket_weather_tape.md` instead, so the hand-written evidence below is not overwritten.
+
 Generated: 2026-09-15T15:44:59.435021+00:00
 
 ## Header

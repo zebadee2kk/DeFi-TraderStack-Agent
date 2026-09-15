@@ -55,7 +55,12 @@ from traderstack.polymarket.tape import (
 )
 
 DEFAULT_PRINT_DIR = Path("var/ops/polymarket_weather_prints")
-DEFAULT_OUTPUT_MD = Path("docs/artifacts/strategy-search/polymarket-weather-tape.md")
+# A routine operator run writes under var/ops. The committed artifact is a
+# deliberate snapshot (`--output-md docs/artifacts/...`) because it carries
+# hand-written evidence below the generated tables that a cron run must not
+# silently overwrite.
+DEFAULT_OUTPUT_MD = Path("var/ops/polymarket_weather_tape.md")
+COMMITTED_ARTIFACT = Path("docs/artifacts/strategy-search/polymarket-weather-tape.md")
 
 
 @dataclass
