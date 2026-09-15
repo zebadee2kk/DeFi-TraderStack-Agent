@@ -8,6 +8,12 @@ would-trade intents to a dedicated JSONL ledger.
 evaluator for those hypotheses. It cannot promote without dual
 independent prints and never writes a ``PAPER_PROMOTE_*`` pin.
 
+``traderstack-polymarket-weather-collect`` and
+``traderstack-polymarket-weather-resolve`` (#141) build the point-in-time
+tape that evaluator needs. They emit **observations, not intents**:
+nothing there is sized, sided or submitted, so they consult no kill
+switch and write no paper ledger. Do not route intents through them.
+
 Hard constraints:
 - public Gamma/CLOB GETs only; no signing, no private keys, no CLOB POSTs
 - ``TRADING_MODE`` must stay ``paper``

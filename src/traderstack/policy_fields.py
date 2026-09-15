@@ -60,6 +60,10 @@ NON_POLICY_FIELDS: tuple[str, ...] = (
     # Endpoints. Where a service lives, not what it is allowed to do.
     "binance_liq_url",
     "book_ticker_url",
+    # On-chain regime gate (#139). Where the Coin Metrics community series is
+    # read from; the gate's verdict-deciding fields are control plane in
+    # risk.py, but the host it talks to changes no decision.
+    "coinmetrics_base_url",
     "crucix_base_url",
     "database_url",
     "hummingbot_account_name",
@@ -201,4 +205,16 @@ NON_POLICY_FIELDS: tuple[str, ...] = (
     "polymarket_crypto_max_staleness_seconds",
     "polymarket_crypto_tape_enabled",
     "polymarket_crypto_tape_path",
+    # --- polymarket weather PIT tape (#141) ---
+    # Paths and base URLs for the paper-only Polymarket weather research
+    # tapes, plus how long the resolver waits after a market's local close
+    # before asking IEM/NCEI for the official high. None of them is read by
+    # the crypto paper loop, RiskEngine.evaluate or the pre-trade gate: they
+    # cannot build, size, side or submit anything, so they must not move the
+    # digest stamped on a risk decision.
+    "polymarket_weather_tape_path",
+    "polymarket_weather_resolved_path",
+    "polymarket_weather_iem_base_url",
+    "polymarket_weather_ghcn_base_url",
+    "polymarket_weather_settle_lag_hours",
 )

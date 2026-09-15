@@ -8,6 +8,7 @@ from traderstack.features import AssetFeatureVector, MarketFeatures
 from traderstack.intelligence import (
     AltFinsSignalSnapshot,
     NewsSnapshot,
+    OnChainRegimeSnapshot,
     OnChainSnapshot,
     SocialSnapshot,
     merge_external_intelligence,
@@ -19,6 +20,8 @@ SocialFetcher = Callable[[str], Awaitable[SocialSnapshot]]
 NewsFetcher = Callable[[str], Awaitable[NewsSnapshot]]
 # --- providers (Epic 3): altFINS technical-signal slot ------------------------
 AltFinsFetcher = Callable[[str], Awaitable[AltFinsSignalSnapshot]]
+# --- on-chain regime gate (#139) ---
+OnChainRegimeFetcher = Callable[[str], Awaitable[OnChainRegimeSnapshot]]
 
 
 @dataclass
@@ -60,12 +63,19 @@ class ExternalIntelligence:
     # True when an opted-in fail-closed news provider (Crucix) errored or
     # timed out. The pipeline rejects new risk; exits already ran upstream.
     provider_unavailable: bool = False
+    # --- on-chain regime gate (#139) ---
+    # Coin Metrics-derived valuation regime. None when the slot is not
+    # registered or its fetch failed; the opt-in pipeline gate then rejects
+    # new BUY entries (onchain_regime_unavailable). It is a policy input,
+    # not asset intelligence: it does not count toward `is_empty`, so it
+    # cannot by itself satisfy INTELLIGENCE_REQUIRED.
+    onchain_regime: OnChainRegimeSnapshot | None = None
 
     @property
     def source_ids(self) -> list[str]:
         return [
             s.source_id
-            for s in (self.onchain, self.social, self.news, self.altfins)
+            for s in (self.onchain, self.social, self.news, self.altfins, self.onchain_regime)
             if s is not None
         ]
 
@@ -92,14 +102,21 @@ class IntelligenceOrchestrator:
     # News fetchers that must succeed for new risk. Empty unless Crucix is
     # opted in. Optional `news` fetchers still isolate failures.
     fail_closed_news: tuple[NewsFetcher, ...] = ()
+    # --- on-chain regime gate (#139) ---
+    # Registered only when ONCHAIN_REGIME_GATE_ENABLED=true. A raise is
+    # isolated to None like every other slot; the pipeline gate is what
+    # makes that None fail closed for new longs.
+    onchain_regime: OnChainRegimeFetcher | None = None
 
     async def gather(self, asset: str) -> ExternalIntelligence:
         symbol = asset.upper()
         news_task = asyncio.create_task(self._fetch_news(symbol))
-        onchain, social, altfins = await asyncio.gather(
+        onchain, social, altfins, onchain_regime = await asyncio.gather(
             self._fetch_one("onchain", symbol, self.onchain, OnChainSnapshot),
             self._fetch_one("social", symbol, self.social, SocialSnapshot),
             self._fetch_one("altfins", symbol, self.altfins, AltFinsSignalSnapshot),
+            # --- on-chain regime gate (#139) ---
+            self._fetch_one("onchain_regime", symbol, self.onchain_regime, OnChainRegimeSnapshot),
         )
         news, provider_unavailable = await news_task
         bundle = ExternalIntelligence(
@@ -109,6 +126,7 @@ class IntelligenceOrchestrator:
             news=news,
             altfins=altfins,
             provider_unavailable=provider_unavailable,
+            onchain_regime=onchain_regime,
         )
         if self.require_any_external and bundle.is_empty and not provider_unavailable:
             raise RuntimeError("all external intelligence providers unavailable")
@@ -123,6 +141,7 @@ class IntelligenceOrchestrator:
             social=bundle.social,
             news=bundle.news,
             altfins=bundle.altfins,
+            onchain_regime=bundle.onchain_regime,
         )
 
     async def _fetch_one(

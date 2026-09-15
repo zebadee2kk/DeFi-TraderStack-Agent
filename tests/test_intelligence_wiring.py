@@ -1,11 +1,19 @@
 from collections.abc import AsyncIterator
+from datetime import date
 
 import pytest
 from pydantic import SecretStr
 
 from traderstack.cli import _secret, build_intelligence, parse_dune_query_ids
 from traderstack.config import Settings
-from traderstack.intelligence import NewsSnapshot, OnChainSnapshot, SocialSnapshot
+from traderstack.features import MarketFeatures
+from traderstack.intelligence import (
+    NewsSnapshot,
+    OnChainRegimeSnapshot,
+    OnChainSnapshot,
+    SocialSnapshot,
+    merge_external_intelligence,
+)
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
 from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
 from traderstack.models import PortfolioSnapshot
@@ -346,3 +354,82 @@ def test_build_intelligence_splits_optional_news_from_fail_closed_crucix() -> No
     assert orchestrator is not None
     assert len(orchestrator.news) == 1
     assert len(orchestrator.fail_closed_news) == 1
+
+
+# --- on-chain regime gate (#139) ---------------------------------------------------
+
+
+def _regime_snapshot(asset: str = "BTC", pct: float | None = 0.4) -> OnChainRegimeSnapshot:
+    return OnChainRegimeSnapshot(
+        asset=asset,
+        source_asset="btc",
+        as_of=date(2026, 9, 13),
+        mvrv_z=0.8 if pct is not None else None,
+        mvrv_z_percentile=pct,
+        nupl=0.3,
+        points=1460,
+        window_days=1460,
+        feature_version="onchain-regime-v1",
+        source_id="coinmetrics:community:v4:CapMVRVCur+CapMrktCurUSD",
+    )
+
+
+def test_build_intelligence_registers_regime_only_when_gate_enabled() -> None:
+    assert build_intelligence(Settings()) is None
+    off = build_intelligence(Settings(cryptopanic_api_key="c"))
+    assert off is not None and off.onchain_regime is None
+    on = build_intelligence(Settings(onchain_regime_gate_enabled=True))
+    assert on is not None and on.onchain_regime is not None
+    assert on.onchain is None and on.news == () and on.fail_closed_news == ()
+
+
+@pytest.mark.asyncio
+async def test_gather_isolates_a_raising_regime_fetcher_to_none() -> None:
+    async def broken(asset: str) -> OnChainRegimeSnapshot:
+        raise TimeoutError("community-api down")
+
+    result = await IntelligenceOrchestrator(onchain_regime=broken).gather("btc")
+    assert result.onchain_regime is None
+    assert result.provider_unavailable is False
+    assert result.is_empty, "the regime slot does not count as asset intelligence"
+
+
+@pytest.mark.asyncio
+async def test_gather_returns_regime_snapshot_and_source_id() -> None:
+    async def regime(asset: str) -> OnChainRegimeSnapshot:
+        return _regime_snapshot(asset)
+
+    result = await IntelligenceOrchestrator(onchain_regime=regime).gather("btc")
+    assert result.onchain_regime is not None
+    assert result.source_ids == ["coinmetrics:community:v4:CapMVRVCur+CapMrktCurUSD"]
+    # A regime-only bundle is a policy input, not asset intelligence: it does
+    # not satisfy INTELLIGENCE_REQUIRED on its own.
+    assert result.is_empty
+
+
+def test_merge_populates_onchain_regime_features() -> None:
+    market = MarketFeatures(
+        trend_4h=0.1, trend_1d=0.1, volatility_z=0.0, relative_volume=1.0, spread_bps=2.0
+    )
+    vector = merge_external_intelligence("BTC", market, onchain_regime=_regime_snapshot())
+    assert vector.onchain.mvrv_z_percentile == pytest.approx(0.4)
+    assert vector.onchain.nupl == pytest.approx(0.3)
+    assert vector.onchain.mvrv_z == pytest.approx(0.8)
+    assert vector.onchain.regime_as_of == date(2026, 9, 13)
+    assert vector.onchain.regime_version == "onchain-regime-v1"
+    assert vector.source_ids == ["coinmetrics:community:v4:CapMVRVCur+CapMrktCurUSD"]
+    plain = merge_external_intelligence("BTC", market)
+    assert plain.onchain.mvrv_z_percentile is None and plain.onchain.regime_version is None
+
+
+def test_bundle_with_regime_merges_through_the_pipeline() -> None:
+    external = ExternalIntelligence(
+        asset="BTC",
+        onchain=OnChainSnapshot(asset="BTC", exchange_netflow_z=-1.1, source_id="dune:q1"),
+        onchain_regime=_regime_snapshot(),
+    )
+    result = pipeline().process(tick(), references(), portfolio(), intelligence=external)
+    assert result.feature_vector is not None
+    assert result.feature_vector.onchain.exchange_netflow_z == pytest.approx(-1.1)
+    assert result.feature_vector.onchain.mvrv_z_percentile == pytest.approx(0.4)
+    assert result.rejection_reasons == []  # gate off by default

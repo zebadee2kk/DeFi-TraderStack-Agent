@@ -155,6 +155,10 @@ INTELLIGENCE_REASONS = frozenset(
 )
 SIGNAL_REASONS = frozenset({"no_strategy_consensus", "strategy_does_not_confirm_side"})
 META_AGENT_REASONS = frozenset({VETO_REASON, UNAVAILABLE_REASON})
+# --- on-chain regime gate (#139) ---
+# Fires AFTER the ensemble produced a side (BUY), so it is a policy withhold
+# at SIGNAL_CANDIDATE, not a missing-intelligence stop at VALID_MARKET_DATA.
+ONCHAIN_REGIME_REASONS = frozenset({"onchain_regime_blocked", "onchain_regime_unavailable"})
 
 PLANNER_STATUSES = frozenset(
     {
@@ -461,6 +465,10 @@ def classify(
                 BlockingGate.SIGNAL,
                 signal or check_reasons or rejection_reasons or ["no_confirmed_side"],
             )
+        # --- on-chain regime gate (#139) --- a side existed; policy withheld it.
+        regime = _first_matching(rejection_reasons, ONCHAIN_REGIME_REASONS)
+        if regime:
+            return stopped(FunnelStage.SIGNAL_CANDIDATE, BlockingGate.INTELLIGENCE, regime)
         # 4. ... or produced a side the backtest / walk-forward bar rejected.
         reasons = check_reasons or rejection_reasons or ["pretrade_rejected"]
         return stopped(FunnelStage.SIGNAL_CANDIDATE, BlockingGate.PRETRADE, reasons)

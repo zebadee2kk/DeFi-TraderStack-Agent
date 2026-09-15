@@ -489,6 +489,21 @@ class Settings(BaseSettings):
     polymarket_weather_max_mid: float = Field(default=0.98, gt=0, le=1)
     polymarket_weather_fee_haircut: float = Field(default=0.02, ge=0, lt=1)
 
+    # --- on-chain regime gate (#139) ---
+    # Opt-in, BUY-entries-only gate on the Coin Metrics community MVRV-Z
+    # percentile (market/coinmetrics.py). Off by default; when off nothing
+    # is fetched. When on: percentile > ONCHAIN_REGIME_MAX_PERCENTILE rejects
+    # new longs with onchain_regime_blocked; a provider outage / missing
+    # series rejects new longs with onchain_regime_unavailable (fail closed
+    # for this slot only — SELLs, exits and the rest of the cycle continue).
+    # The trailing window (1460 d), minimum points (730), stale limit (3 d)
+    # and the feature version are frozen in market/coinmetrics.py on
+    # purpose: pre-registered, not knobs. 0.90 is the pre-registered
+    # threshold; traderstack-check-config warns above it and at 1.0 (no-op).
+    onchain_regime_gate_enabled: bool = False
+    onchain_regime_source_asset: str = "btc"
+    onchain_regime_max_percentile: float = Field(default=0.90, gt=0, le=1)
+    coinmetrics_base_url: str = "https://community-api.coinmetrics.io"
     # --- fee realism (#138) ---
     # Kraken Pro spot published schedule (kraken.com/features/fee-schedule,
     # read 2026-09-13; frozen in traderstack.fee_tiers). The tier's TAKER leg
@@ -522,6 +537,19 @@ class Settings(BaseSettings):
     polymarket_crypto_calls_per_minute: int | None = Field(default=90, gt=0)
     polymarket_crypto_cache_seconds: float = Field(default=0.0, ge=0)
     deribit_base_url: str = "https://www.deribit.com/api/v2"
+    # --- polymarket weather PIT tape (#141) ---
+    # Research tapes for the paper-only weather collector/resolver. Plain
+    # JSONL evidence files, isolated from the crypto audit trail: the paper
+    # loop, the risk engine and the meta-agent never read them, and nothing
+    # here can move a limit, a side or a size. IEM / NCEI are read-only
+    # public station-high sources (no credentials exist for either).
+    polymarket_weather_tape_path: str = "var/audit/polymarket_weather_tape.jsonl"
+    polymarket_weather_resolved_path: str = "var/audit/polymarket_weather_resolved.jsonl"
+    polymarket_weather_iem_base_url: str = "https://mesonet.agron.iastate.edu"
+    polymarket_weather_ghcn_base_url: str = "https://www.ncei.noaa.gov"
+    # Hours after a market's local close before the resolver looks for the
+    # official high. NCEI publishes with a lag; resolving too early is a skip.
+    polymarket_weather_settle_lag_hours: float = Field(default=24.0, ge=0)
 
     @property
     def assets(self) -> tuple[str, ...]:

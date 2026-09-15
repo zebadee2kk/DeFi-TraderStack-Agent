@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -51,6 +51,34 @@ class AltFinsSignalSnapshot(BaseModel):
     source_id: str
 
 
+# --- on-chain regime gate (#139) ---------------------------------------------
+
+
+class OnChainRegimeSnapshot(BaseModel):
+    """Bounded, versioned on-chain valuation regime for one asset.
+
+    Derived by ``traderstack.market.coinmetrics`` from the Coin Metrics
+    community series (``source_asset`` is the series actually used — BTC
+    for every requested asset in the first slice; ``asset`` is what was
+    requested). ``as_of`` is the newest committed row used. ``None`` fields
+    mean "not enough history" and the pipeline gate treats them as
+    unavailable (fail closed for new longs). Nothing here can size, side,
+    or authorise; the gate only adds a rejection reason.
+    """
+
+    asset: str
+    source_asset: str
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    as_of: date
+    mvrv_z: float | None = Field(default=None, ge=-10, le=10)
+    mvrv_z_percentile: float | None = Field(default=None, ge=0, le=1)
+    nupl: float | None = Field(default=None, ge=-5, le=1)
+    points: int = Field(default=0, ge=0)
+    window_days: int = Field(gt=0)
+    feature_version: str
+    source_id: str
+
+
 def merge_external_intelligence(
     asset: str,
     market: MarketFeatures,
@@ -59,6 +87,8 @@ def merge_external_intelligence(
     social: SocialSnapshot | None = None,
     news: NewsSnapshot | None = None,
     altfins: AltFinsSignalSnapshot | None = None,
+    # --- on-chain regime gate (#139) ---
+    onchain_regime: OnChainRegimeSnapshot | None = None,
 ) -> AssetFeatureVector:
     source_ids: list[str] = []
     if onchain is not None:
@@ -67,6 +97,9 @@ def merge_external_intelligence(
         source_ids.append(social.source_id)
     if news is not None:
         source_ids.append(news.source_id)
+    # --- on-chain regime gate (#139) ---
+    if onchain_regime is not None:
+        source_ids.append(onchain_regime.source_id)
     # --- providers (Epic 3): altFINS technical-signal slot ---------------------
     market_features = market
     if altfins is not None:
@@ -83,6 +116,12 @@ def merge_external_intelligence(
         onchain=OnChainFeatures(
             exchange_netflow_z=onchain.exchange_netflow_z if onchain else None,
             large_wallet_accumulation=onchain.large_wallet_accumulation if onchain else None,
+            # --- on-chain regime gate (#139) ---
+            mvrv_z=onchain_regime.mvrv_z if onchain_regime else None,
+            mvrv_z_percentile=onchain_regime.mvrv_z_percentile if onchain_regime else None,
+            nupl=onchain_regime.nupl if onchain_regime else None,
+            regime_as_of=onchain_regime.as_of if onchain_regime else None,
+            regime_version=onchain_regime.feature_version if onchain_regime else None,
         ),
         narrative=NarrativeFeatures(
             mention_velocity_z=social.mention_velocity_z if social else None,

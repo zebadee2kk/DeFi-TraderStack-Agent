@@ -1134,6 +1134,58 @@ def build_report(settings: Settings) -> ConfigReport:
             "the weather CLI fails closed (no cities to research)."
         )
 
+    # --- on-chain regime gate (#139) ---
+    regime_on = settings.onchain_regime_gate_enabled
+    items.append(
+        CheckItem(
+            "  Coin Metrics (on-chain regime)",
+            _flag(regime_on),
+            (
+                f"{settings.coinmetrics_base_url} (source asset "
+                f"{settings.onchain_regime_source_asset}); BUY-only gate at "
+                f"MVRV-Z percentile > {settings.onchain_regime_max_percentile:g} "
+                "rejects onchain_regime_blocked; outage rejects new longs with "
+                "onchain_regime_unavailable (SELLs/exits untouched); no key"
+                if regime_on
+                else "unused unless ONCHAIN_REGIME_GATE_ENABLED=true; nothing is fetched"
+            ),
+        )
+    )
+    items.append(
+        CheckItem(
+            "Intelligence: on-chain regime gate (BUY entries only)",
+            _flag(regime_on),
+            (
+                "does not satisfy INTELLIGENCE_REQUIRED by itself; never sizes, sides or authorises"
+                if regime_on
+                else ""
+            ),
+        )
+    )
+    if regime_on and settings.onchain_regime_max_percentile >= 1.0:
+        warnings.append(
+            "ONCHAIN_REGIME_GATE_ENABLED=true but ONCHAIN_REGIME_MAX_PERCENTILE >= 1.0: "
+            "a percentile can never exceed 1.0, so the gate is a no-op (only the "
+            "outage fail-closed remains)."
+        )
+    elif regime_on and settings.onchain_regime_max_percentile > 0.90:
+        warnings.append(
+            "ONCHAIN_REGIME_MAX_PERCENTILE is looser than the pre-registered 0.90 "
+            "threshold (onchain-regime-v1). Loosening after seeing PnL is not "
+            "pre-registration."
+        )
+    items.append(
+        CheckItem(
+            "On-chain regime overlay search",
+            "report-only",
+            (
+                "traderstack-onchain-regime; frozen MVRV-Z percentile / NUPL overlays "
+                "(mvrvz_p90, mvrvz_p80, nupl_075) on the frozen TSMOM catalog; Kraken "
+                "daily 720 and Binance.US older-720; skip-not-invent; cannot promote; "
+                "PAPER_PROMOTE_* unchanged"
+            ),
+        )
+    )
     # --- fee realism (#138) ---
     fee_tier = resolve_fee_tier(settings.paper_fee_tier)
     items.append(
@@ -1167,6 +1219,18 @@ def build_report(settings: Settings) -> ConfigReport:
             "enabled" if settings.polymarket_crypto_tape_enabled else "disabled (opt-in)",
             "traderstack-polymarket-crypto-collect; read-only tape of CLOB mid vs "
             "Deribit option-implied probability; no CLOB orders, no signing",
+    # --- polymarket weather PIT tape (#141) ---
+    items.append(
+        CheckItem(
+            "  PIT tape collector / resolver",
+            "observations only (no intents, no CLOB orders)",
+            "traderstack-polymarket-weather-collect -> "
+            f"{settings.polymarket_weather_tape_path}; "
+            "traderstack-polymarket-weather-resolve -> "
+            f"{settings.polymarket_weather_resolved_path}; IEM primary + GHCN "
+            "cross-check; look-ahead guard forecast_issued_at < close_at; "
+            "Celsius cities skipped (unit_unsupported); no "
+            "PAPER_PROMOTE_POLYMARKET_WEATHER pin",
         )
     )
     items.append(
@@ -1227,6 +1291,12 @@ def build_report(settings: Settings) -> ConfigReport:
             f"{', '.join(unknown_crypto_assets)}: only BTC and ETH have both a daily "
             "Polymarket threshold event and a Deribit option chain; they are skipped."
         )
+            "  PIT tape settle lag",
+            f"{settings.polymarket_weather_settle_lag_hours:g} h",
+            f"official highs from {settings.polymarket_weather_iem_base_url} "
+            f"(primary) and {settings.polymarket_weather_ghcn_base_url} (cross-check)",
+        )
+    )
 
     return ConfigReport(items=items, warnings=warnings)
 

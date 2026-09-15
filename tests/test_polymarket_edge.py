@@ -88,3 +88,36 @@ def test_fee_haircut_can_push_below_min_edge() -> None:
     # model ≈ mid; haircut makes net negative
     edge = calculate_edge(_threshold(92.4), _forecast(92.4), 0.50, fee_haircut=0.02)
     assert edge.net_edge < 0.08
+
+
+# --- polymarket weather PIT tape (#141) ---
+
+
+def _lower(threshold: float = 79.0) -> ParsedTemperatureMarket:
+    return ParsedTemperatureMarket(
+        market_id="m-lower",
+        question=f"Will the highest temperature be {threshold}°F or below?",
+        city_slug="miami",
+        city_name="Miami",
+        event_date=date(2026, 9, 14),
+        contract=TemperatureContract.THRESHOLD_OR_LOWER,
+        threshold_f=threshold,
+        yes_token_id="yes",
+        no_token_id="no",
+    )
+
+
+def test_threshold_or_lower_probability_moves_with_the_threshold() -> None:
+    forecast = _forecast(92.4)
+    cold = model_probability(_lower(79.0), forecast)
+    warm = model_probability(_lower(95.0), forecast)
+    assert cold < 0.01
+    assert warm > 0.85
+    assert cold < warm
+
+
+def test_lower_and_higher_branches_partition_the_mass() -> None:
+    forecast = _forecast(92.4)
+    lower = model_probability(_lower(92.0), forecast)
+    higher = model_probability(_threshold(93.0), forecast)
+    assert abs(lower + higher - 1.0) < 1e-12

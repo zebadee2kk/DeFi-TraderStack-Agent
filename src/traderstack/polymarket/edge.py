@@ -38,6 +38,14 @@ def model_probability(market: ParsedTemperatureMarket, forecast: ForecastPoint) 
         # Continuity correction: P(T >= threshold) using the high-temp point.
         z = (market.threshold_f - mean) / sigma
         return _clip01(1.0 - normal_cdf(z))
+    # --- polymarket weather PIT tape (#141) ---
+    if market.contract is TemperatureContract.THRESHOLD_OR_LOWER:
+        if market.threshold_f is None:
+            raise ValueError("threshold contract missing threshold_f")
+        # Readings are whole °F, so "77°F or below" is P(T < 78) under the
+        # same [low, high+1) convention the bucket branch uses.
+        z = (market.threshold_f + 1.0 - mean) / sigma
+        return _clip01(normal_cdf(z))
     if market.bucket_low_f is None or market.bucket_high_f is None:
         raise ValueError("bucket contract missing bounds")
     # Inclusive integer-°F buckets are modelled as [low, high+1) in continuous °F.

@@ -48,10 +48,13 @@ without activating the venv.
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
 | `traderstack-polymarket-weather-eval` | Fee-aware evaluation of that weather rule against `always_hold` and `fade_the_mid`. Dual independent prints (non-overlapping dates or disjoint resolution sources) are required before anyone may talk about promotion. Writes `docs/artifacts/strategy-search/polymarket-weather-eval.md`. Never flips `PAPER_PROMOTE_*`. Empty / negative is success. No CLOB orders. |
+| `traderstack-onchain-regime` | Paper-only on-chain regime overlay (#139): the frozen TSMOM catalog scored ungated **and** gated by three pre-registered Coin Metrics community overlays (`mvrvz_p90`, `mvrvz_p80` on the MVRV-Z trailing-window percentile; `nupl_075` on NUPL; BTC series; only rows dated strictly before the decision bar; stale > 3 d → BUY withheld, never forward-filled). Same #96+A+B+C bar on Kraken public Spot daily 720 **and** the #102 Binance.US older-720. Reports ungated vs gated mean holdout excess and walk-forward per print; helping on one print/metric and hurting on another is `mixed_fail`. A passer must be a dual-print passer with non-negative deltas on both prints. `--live` fetches Coin Metrics (no key; `--onchain-json` / `--save-onchain-json` for offline reruns); an unreachable series skips every overlay and still scores the base catalog (exit 0). Writes `docs/artifacts/strategy-search/onchain-regime.md`. Never flips `PAPER_PROMOTE_*`; the runtime gate stays opt-in. Empty overlay-passer set is success. |
 | `traderstack-xs-topk` | Paper-only **long-only top-k cross-sectional momentum on the point-in-time Kraken USD spot universe** (#140). Universe: the current Kraken `AssetPairs` listing (online, USD-quoted, frozen exclusion list for stablecoins / fiat / commodities / wrapped duplicates; survivorship caveat stated), then monthly top-20 by trailing 30-day median dollar volume using only bars before each snapshot. Frozen grid: N in {21, 63, 126} with a 7-day skip, k in {3, 5}, equal or inverse-vol weights, weekly Monday-UTC rebalance (decide on close t, fill next open). Portfolio bar on era prints (local era constant pending #135; DSR/PBO printed as not computed); turnover and fee drag at research 10+5 bps **and** the Kraken tier-1 pilot taker cost (80+5 bps); `ew_bh_universe` control cannot promote. Dual print needs two independent covered cells (venues or eras) — a Kraken-only 720-day print is one venue × one era and cannot promote by construction. `--live` pulls Kraken; `--candles-dir VENUE DIR` scores any daily candle JSON (the `traderstack-download-candles` format, or #133 fetcher output) as a second print. Writes `docs/artifacts/strategy-search/xs-topk.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field; `RiskEngine` limits are documented, not widened. Empty dual-print set is success. Not a #117 top-1 reprint. |
 | `traderstack-ensemble-trend` | Paper-only ensemble trend (#137): long-only multi-lookback Donchian-on-close (N in {5, 10, 20, 30, 60, 90, 150, 250, 360}; bar t never sets its own level) with a trailing stop at max(prior stop, prior close-channel midpoint), equal-weight across open lookbacks, 25% annualised vol target on 90-day realised vol, capped at 1.0 (no leverage), on a frozen `CANDIDATE_UNIVERSE` of Kraken USD pairs with a monthly point-in-time top-20 snapshot (≥ 365 prior bars or 720-cap, median 30-day close×volume ≥ $2M; non-members forced flat). Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Fees from the frozen Kraken Pro tier table (`--kraken-tier`, default tier 1 = 80 bps taker per side) unless `--fee-bps` is explicit. Reports gross attribution by asset and by lookback. `era_prints_available=false` / `dsr_pbo_available=false` until #133 / #135 land (not invented). Accepts `traderstack-download-candles` JSON via `--candles`. Writes `docs/artifacts/strategy-search/ensemble-trend.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field. Empty dual-print set is success. |
 | `traderstack-download-basis` | Second-venue point-in-time basis (#134). Downloads daily **mark close − index close, over index** from OKX (`history-mark-price-candles` − `history-index-candles`, `bar=1Dutc`, `confirm==1` rows only, serial pagination with backoff on 403/429) and Binance Vision (`markPriceKlines` − `indexPriceKlines` monthly + trailing-month daily zips, sha256 `.CHECKSUM` verified per zip, fail closed on mismatch) into `var/research/basis/<venue>/<SYMBOL>_basis_1d.json` (the `[{opened_at, value}]` shape `traderstack-funding-carry --basis-dir` reads) and writes the probe table `docs/artifacts/strategy-search/pit-basis-second-venue.md` (first/last/days/gaps per series; OKX×Vision aligned days). Funding premium, last-trade candles and funding-implied basis are refused in code. A missing day is a skip, never a zero; an unreachable venue is a recorded skip and the command still exits 0. Quote is USDT on both venues. Network only, no credentials. Never flips `PAPER_PROMOTE_*`. |
 | `traderstack-polymarket-crypto-collect` | **Opt-in, paper-only** point-in-time tape (#142): per open Polymarket BTC/ETH "above $K on &lt;date&gt;" market, the CLOB mid against a Deribit option-implied `P(S_T > K)`, with both venue timestamps. GET-only Gamma / CLOB / Deribit public endpoints; no Deribit private endpoints, no signing, no CLOB orders, no size and no side. Crucix high-tier alerts are recorded as a withhold-only stand-aside. Requires `TRADING_MODE=paper`. Never flips `PAPER_PROMOTE_*`; an empty tape is success. See "Crypto-threshold wedge tape (#142)" below. |
+| `traderstack-polymarket-weather-collect` | **Paper-only** point-in-time tape collector (#141). Every 30-60 min it appends the decision-time CLOB top of book (`/book`, GET) plus the as-issued Open-Meteo high for each open, allowlisted, Fahrenheit-resolved temperature market to `POLYMARKET_WEATHER_TAPE_PATH`. Emits **observations, not intents**: nothing is sized, sided or submitted, so it consults no kill switch and writes no paper ledger. Gamma paging is offset-based with `/events/keyset` available. Requires `TRADING_MODE=paper`. |
+| `traderstack-polymarket-weather-resolve` | **Paper-only** daily resolver (#141). Pairs each tape market past `close_at + POLYMARKET_WEATHER_SETTLE_LAG_HOURS` with the official station high (IEM ASOS primary, NCEI GHCN-Daily cross-check), appends `POLYMARKET_WEATHER_RESOLVED_PATH`, and emits one `ResolvedWeatherRow` JSON array per calendar month for `traderstack-polymarket-weather-eval --resolved`. Writes `var/ops/polymarket_weather_tape.md` (pass `--output-md docs/artifacts/strategy-search/polymarket-weather-tape.md` deliberately when refreshing the committed snapshot, which carries hand-written evidence below the generated tables). Computes no PnL, writes no `PAPER_PROMOTE_*` pin; an empty tape is a successful run. |
 
 ## Zero to paper trading
 
@@ -267,6 +270,16 @@ more". A shadow run full of `kill_switch_enabled` is the system working.
   `build_intelligence` / `PaperRuntime` path is used for paper, shadow,
   and live — live does **not** ignore Crucix. This is safety plumbing,
   not a trading edge; it does not flip `PAPER_PROMOTE_*`.
+- **`ONCHAIN_REGIME_*` / `COINMETRICS_BASE_URL`** (#139): optional
+  Coin Metrics community on-chain regime gate, **BUY entries only**,
+  default off. Nothing is fetched while `ONCHAIN_REGIME_GATE_ENABLED=false`.
+  When on, an MVRV-Z percentile above `ONCHAIN_REGIME_MAX_PERCENTILE`
+  (pre-registered 0.90) rejects new longs with `onchain_regime_blocked`,
+  and a provider outage / short history rejects new longs with
+  `onchain_regime_unavailable`. SELLs, deterministic exits and the rest
+  of the cycle are untouched; the slot does not satisfy
+  `INTELLIGENCE_REQUIRED`. No key. See "On-chain regime gate and overlay
+  (Coin Metrics community)" at the end of this runbook.
 
 ## Starting and stopping
 
@@ -1369,6 +1382,7 @@ specifically:
 | `--risk-audit-path` (default `var/audit/risk_decisions.jsonl`) | `JsonlRiskAuditTrail` | One line per risk decision *that actually reached the risk engine* (no line at all for cycles rejected upstream by market-data/intelligence/pre-trade gates): the full `TradeProposal`, the full `RiskResult`, the risk limits in force (inline and hashed), the meta-agent review and execution outcome from the *same* cycle, plus a SHA-256 hash chained to the previous record. | **Yes** — this is the record built specifically to survive an "did the agent secretly relax risk" audit. |
 | `POLYMARKET_WEATHER_LEDGER_PATH` (default `var/audit/polymarket_weather_paper.jsonl`) | `PolymarketWeatherPaperLedger` | One line per weather-market observation or would-trade intent from `traderstack-polymarket-weather-paper`. Always `venue_submitted=false`. Isolated from the crypto audit files so a weather run cannot rewrite crypto risk history. | No — plain JSONL research ledger. |
 | `POLYMARKET_CRYPTO_TAPE_PATH` (default `var/audit/polymarket_crypto_wedge_tape.jsonl`) | `CryptoWedgeTape` (#142) | One line per observed Polymarket BTC/ETH threshold market per cycle: mid, best bid/ask, option-implied probability, model version, both venue timestamps, Crucix stand-aside status, row status. Always `venue_submitted=false` / `execution=paper_tape_only`; no size, side or notional field exists. Isolated from the crypto audit files. | No — plain JSONL research tape. |
+| `POLYMARKET_WEATHER_TAPE_PATH` / `POLYMARKET_WEATHER_RESOLVED_PATH` (defaults `var/audit/polymarket_weather_tape.jsonl`, `var/audit/polymarket_weather_resolved.jsonl`) | `PolymarketWeatherTape` / `PolymarketWeatherResolvedTape` (#141) | One line per point-in-time observation (decision-time book + as-issued forecast + local `close_at`) and one line per resolved market (official station high + cross-check + mismatch). Always `venue_submitted=false`, always `trading_mode=paper`. Research evidence, isolated from the crypto audit files; the paper loop, the risk engine and the meta-agent never read them. | No — plain JSONL research tapes, not hash-chained. |
 
 ```bash
 tail -f var/audit/runtime.jsonl | jq .
@@ -1478,6 +1492,8 @@ proposal):
 | `no_external_intelligence` | `INTELLIGENCE_REQUIRED=true` but no configured provider (Dune/LunarCrush/CryptoPanic/Perplexity/altFINS/Crucix) returned anything this cycle. | Check provider keys/circuit breakers, or set `INTELLIGENCE_REQUIRED=false` if trading on market data alone is acceptable. |
 | `adverse_news_event` | `INTELLIGENCE_BLOCK_ON_ADVERSE_NEWS=true` (default) and a news provider flagged an adverse event for this asset — new risk is blocked for the cycle; existing positions are untouched. | Expected behaviour during a real news event. Read the `news` feature fields in the audit line for which provider/asset triggered it. |
 | `intelligence_provider_unavailable` | Crucix is opted in (`CRUCIX_ENABLED=true` or `CRUCIX_BASE_URL` / `CRUCIX_API_KEY` set) and that provider timed out, raised, or returned a non-snapshot this cycle. New risk is blocked; existing positions/exits are untouched. Other optional intel failures are still isolated. Same reject on paper, shadow, and live. | Check Crucix reachability (`host.docker.internal:8787` by default), the `crucix` circuit breaker, and `PROVIDER_TIMEOUT_SECONDS`. This is **not** a news event — distinguish it from `adverse_news_event`. Do not set `CRUCIX_ENABLED=false` to "fix" an outage unless you intend to stop using Crucix as a safety source. |
+| `onchain_regime_blocked` | `ONCHAIN_REGIME_GATE_ENABLED=true` and the Coin Metrics community MVRV-Z trailing-window percentile (`onchain.mvrv_z_percentile`, `onchain-regime-v1`, BTC series) is above `ONCHAIN_REGIME_MAX_PERCENTILE` for a **BUY** entry. New longs are withheld this cycle; SELLs and exits are untouched. Applies after the pre-trade side is fixed (#139). | Expected in a hot valuation regime. Read `onchain.mvrv_z_percentile` / `onchain.regime_as_of` in the audit line. Loosening the threshold above the pre-registered 0.90 is flagged by `traderstack-check-config`; do not retune it after seeing PnL. |
+| `onchain_regime_unavailable` | `ONCHAIN_REGIME_GATE_ENABLED=true` and no regime snapshot reached the pipeline for a **BUY** entry: the Coin Metrics pull timed out / errored / returned a non-payload, the breaker is open, or the series is too short (< 730 points) for a percentile. Fails closed for new longs only; exits and SELLs are untouched; the cycle is a reject, not an error. | Check `community-api.coinmetrics.io` reachability, the `coinmetrics` circuit breaker and `PROVIDER_TIMEOUT_SECONDS` (one ~800 KB pull per UTC day). Do not set `ONCHAIN_REGIME_GATE_ENABLED=false` to "fix" an outage unless you intend to stop using the regime as a safety source. |
 
 **Pre-trade backtest gate** (`PreTradeBacktestGate.evaluate`, only when
 `PRETRADE_BACKTEST_ENABLED=true`):
@@ -2082,6 +2098,10 @@ showing `candle_error`/`intelligence_error`, or repeated `stale_primary_tick` /
    consecutive errors and the service stops itself — this is expected, not a bug.
 5. Restart once the provider recovers: `docker compose --profile app up -d
    --force-recreate app`.
+6. Coin Metrics (only when `ONCHAIN_REGIME_GATE_ENABLED=true`): an outage
+   shows as `onchain_regime_unavailable` on new BUY entries only — exits,
+   SELLs and every other gate keep running; nothing to do but monitor the
+   `coinmetrics` breaker (#139).
 
 ### Database (Postgres) outage
 
@@ -2257,6 +2277,115 @@ Gates 2 (walk-forward parameter fit) and 3 (a full season of live paper
 A/B) are still not claimed. Do not promote this module toward live CLOB
 trading from paper intents or a single fixture pack.
 
+## On-chain regime gate and overlay (Coin Metrics community)
+
+#139. Two things, both withhold-only, both off by default:
+
+1. A **runtime gate** on new BUY entries, fed by the Coin Metrics
+   community API (no key) through `traderstack.market.coinmetrics`.
+2. A **research overlay** (`traderstack-onchain-regime`) that scores the
+   frozen TSMOM catalog ungated vs gated on the two existing prints.
+
+### Frozen derivation (`onchain-regime-v1`)
+
+`GET https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=CapMVRVCur,CapMrktCurUSD&frequency=1d`
+(verified 2026-09-13/14: 5902 daily rows from 2010-07-18 in one
+`page_size=10000` page; `next_page_url` is followed with a 0.7 s pause when
+the server pages). `CapRealUSD` and `SplyAct1d` are HTTP 403 on the
+community plan and are **skipped, never invented** — realised cap is
+`CapMrktCurUSD / CapMVRVCur` and NUPL is `1 − 1/MVRV` by exact identity.
+MVRV-Z is `(mcap − realised cap) / pstdev(mcap over the trailing 1460
+rows)`; the percentile is the rank of MVRV-Z inside that same trailing
+window; both are `None` until 730 points exist. The row dated today UTC is
+dropped as uncommitted. Window, minimum points, the 3-day stale limit and
+the version tag are constants in `market/coinmetrics.py`, not settings —
+they were pre-registered and are not knobs.
+
+### Runtime gate
+
+```
+ONCHAIN_REGIME_GATE_ENABLED=false      # default; nothing is fetched while off
+ONCHAIN_REGIME_SOURCE_ASSET=btc        # the series that gates every requested asset
+ONCHAIN_REGIME_MAX_PERCENTILE=0.90     # pre-registered; check-config warns above it
+COINMETRICS_BASE_URL=https://community-api.coinmetrics.io
+```
+
+- Registered in `build_intelligence` only when enabled, wrapped in the
+  `coinmetrics` `ProviderRegistry` (timeout, breaker, quota). One HTTP
+  pull per UTC day per process (~800 KB); the snapshot is then served from
+  memory. `PROVIDER_TIMEOUT_SECONDS` (default 10 s) applies to that pull.
+- Runs in `VerticalSlicePipeline.process` **after the pre-trade side is
+  fixed** and before any proposal exists, for `Side.BUY` only. Percentile
+  above the threshold → `onchain_regime_blocked`; no snapshot / no
+  percentile → `onchain_regime_unavailable`. Exits, SELLs, sizing, side,
+  `RiskEngine` and the meta-agent boundary are untouched; the cycle is a
+  reject, not an error. With the pre-trade gate disabled the default BUY
+  path is gated too (intended: gate-only).
+- The regime slot is a **policy input, not asset intelligence**: it does
+  not satisfy `INTELLIGENCE_REQUIRED`, and a regime-only configuration with
+  `INTELLIGENCE_REQUIRED=true` still rejects `no_external_intelligence`.
+- The same BTC series gates BTC, ETH and SOL (frozen market-regime
+  assumption; SOL has no community MVRV; ETH's own series is a follow-up).
+  The snapshot carries `source_asset=btc` and `regime_as_of` so the audit
+  line says which row was used.
+- `traderstack-check-config` reports the provider, the gate, and warns when
+  the threshold is above the pre-registered 0.90 or is a no-op (>= 1.0).
+- The opportunity funnel (#131) classifies both reasons as a policy
+  withhold at `signal_candidate` / gate `intelligence`
+  (`opportunity_rejected`), because the ensemble did produce a side.
+
+### Research overlay
+
+```bash
+.venv/bin/traderstack-onchain-regime --live
+.venv/bin/traderstack-onchain-regime --live --save-onchain-json var/research/coinmetrics_btc.json
+.venv/bin/traderstack-onchain-regime --live --onchain-json var/research/coinmetrics_btc.json
+.venv/bin/traderstack-onchain-regime --candles var/research/btc_1d.json --candles var/research/eth_1d.json \
+  --binance-candles var/research/btcusdt_1d.json --binance-candles var/research/ethusdt_1d.json \
+  --onchain-json var/research/coinmetrics_btc.json
+```
+
+- Frozen overlays: `mvrvz_p90` (percentile > 0.90), `mvrvz_p80` (> 0.80),
+  `nupl_075` (NUPL > 0.75), each applied to the 8 frozen TSMOM names
+  (`<base>__<overlay>`); the control `ma_cross_10_30` is scored ungated and
+  cannot pass.
+- Point-in-time: a gated voter reads the newest regime row with `time`
+  **strictly before** the decision bar; a missing or stale (> 3 d) row
+  withholds the BUY (flat), never forward-fills. A tested replay proves rows
+  dated on/after the bar cannot change the decision.
+- Prints: Kraken public Spot daily 720 **and** the #102 Binance.US
+  older-720, each with the #96+A+B+C combined gates on BTC+ETH (SOL
+  reported). An overlay whose series does not cover every bar of a print is
+  skipped on that print (a skip, never a zero).
+- Verdict (frozen) over gated − ungated mean holdout excess **and**
+  walk-forward total on every scored print: `helps` / `hurts` /
+  `mixed_fail` (both signs present — a FAIL, not an edge) / `neutral` (gate
+  never bound) / `skipped`. Passer: dual-print passer **and** both deltas
+  >= 0 on both prints. Empty passer set is success.
+- Coin Metrics unreachable → every overlay skipped with the reason, base
+  catalog still scored, exit 0. Binance.US missing/short/overlapping → fail
+  closed as in every other dual-print family.
+- Never flips `PAPER_PROMOTE_*`; cannot add a pin; the runtime gate stays
+  opt-in regardless of the table. Era prints / DSR / PBO (#135, #136) are a
+  follow-up, not claimed.
+
+See `docs/artifacts/strategy-search/onchain-regime.md` (2026-09-14 live
+run: overlay passers **0**; `mvrvz_p90` `mixed_fail`; `mvrvz_p80` mostly
+`hurts`; `nupl_075` never bound) and the addendum in
+`docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
+
+### Where the gate sits in `policy_version` (#139)
+
+`ONCHAIN_REGIME_GATE_ENABLED`, `ONCHAIN_REGIME_MAX_PERCENTILE` and
+`ONCHAIN_REGIME_SOURCE_ASSET` are **control-plane** policy fields
+(`CONTROL_PLANE_FIELDS` in `risk.py`), so changing any of them changes the
+`policy_version` stamped on every audit record. That is deliberate: the gate is
+withhold-only and never reaches `RiskEngine.evaluate`, but it does decide
+whether a BUY is built at all, so a gated run and an ungated run must never be
+indistinguishable in the audit trail — the SEC-2026-09-18 property.
+`COINMETRICS_BASE_URL` is non-policy (`policy_fields.py`), with the other
+endpoints: it changes where the series is read from, not any decision. Pinned by
+`tests/security/test_onchain_regime_policy_version.py`.
 ## Long-only top-k cross-sectional momentum (wide universe, #140)
 
 #117 ranked three names and picked one; a three-name rank is a coin
@@ -2686,3 +2815,82 @@ The day-zero shakedown (two live cycles, what each venue answered, and the first
 wedge sample) is committed at
 `docs/artifacts/strategy-search/polymarket-crypto-wedge-collector.md`. It is a
 reachability record, not a print.
+## Polymarket weather point-in-time tape (collector / resolver) (#141)
+
+The `#44` evaluator has never scored a row, because scoring needs something
+this repository did not have: a *decision-time* CLOB mid recorded next to the
+forecast that existed at that moment, paired afterwards with the official
+station high. Settlement prices are not a substitute — reading a resolved
+market's `outcomePrices` back as a mid is look-ahead, and the evaluator
+refuses it. The two CLIs below build that tape.
+
+Both are paper-only, GET-only and emit **observations, not intents**. Nothing
+in either path is sized, sided or submitted, so neither consults the kill
+switch; `traderstack-polymarket-weather-paper` remains the only intent path
+and its kill-switch withholding is unchanged. **Do not route intents through
+the collector.**
+
+### Operator cadence
+
+```bash
+# every 30-60 minutes while markets are open (cron / systemd timer)
+TRADING_MODE=paper .venv/bin/traderstack-polymarket-weather-collect \
+  --cities miami,new_york,chicago,houston,dallas,austin \
+  --max-pages 6
+
+# once a day, after the settle lag has passed
+TRADING_MODE=paper .venv/bin/traderstack-polymarket-weather-resolve
+
+# only once two monthly prints exist, each with >= 20 eligible rows
+.venv/bin/traderstack-polymarket-weather-eval \
+  --resolved var/ops/polymarket_weather_prints/2026-09.json \
+  --resolved var/ops/polymarket_weather_prints/2026-10.json
+```
+
+A 6-city allowlist is about 66 CLOB GETs per cycle, roughly 3.5 minutes at the
+existing `POLYMARKET_WEATHER_CALLS_PER_MINUTE=20` registry quota. IEM and NCEI
+are polite one-request-per-station-per-day reads.
+
+### Rules the tape is built to (pre-registered, not per run)
+
+| Rule | Value |
+|---|---|
+| `close_at` | End of the event's **local calendar day** in the city's timezone — *not* Gamma's `endDate`, which is 12:00Z while the market keeps `acceptingOrders` all day. |
+| Decision row | The latest observation with `lead_hours >= --min-lead-hours` (default 0), one per market. |
+| Look-ahead guard | `observed_at < close_at` **and** `forecast_issued_at < close_at`, enforced by the tape writer, again by the resolver's converter, and a third time by `eval._row_reason`. |
+| Station match | IEM ASOS daily maximum (primary, `resolution_source=iem_asos`) cross-checked against NCEI GHCN-Daily `TMAX`. Disagreement beyond `--station-tolerance-f` (default 1 °F), or either source missing, drops the row as `station_unmatched`. |
+| Prints | One per calendar month of event dates, so independence is disjoint dates — never the same rows re-scored against a second resolution source. |
+| Universe | Fahrenheit-resolved cities only. |
+
+### Warnings
+
+* **Never use Gamma `outcomePrices` as a mid.** On a closed market they are
+  the settlement (`["1","0"]`). Using them as a decision-time price is
+  look-ahead and would manufacture an edge out of nothing.
+* **Celsius cities are skipped** (`unit_unsupported`): London, Seoul,
+  Toronto, Singapore, Zhengzhou and friends quote single-degree °C buckets,
+  which do not fit the integer-°F `[low, high+1)` bucket model in `edge.py`
+  or `yes_won` in `eval.py`. They are catalogued so the skip names a city
+  instead of silently dropping an unknown one.
+* **The two free station sources do not always agree.** Verified on
+  2026-09-15: Miami 2025-06-01..03 read 85/89/78 °F at IEM and 86/92/78 °F at
+  GHCN. Polymarket itself resolves on the NOAA WRH hourly `Temp` maximum at
+  the named airport. The resolver therefore fails closed rather than picking
+  whichever source flatters the row.
+* **`rows = 0` is a successful run.** The committed status artifact is
+  `docs/artifacts/strategy-search/polymarket-weather-tape.md`. Nothing is
+  back-filled, and `PAPER_PROMOTE_POLYMARKET_WEATHER` is still not a
+  `Settings` field.
+
+### Collector skip reasons
+
+| Reason | Meaning |
+|---|---|
+| `city_blocked` | The market names a catalogued city that is not on this run's allowlist. |
+| `unit_unsupported` | The city resolves in °C. |
+| `station_unverified` | No verified IEM network/station pair for the city (e.g. Denver/Buckley's GHCN id). |
+| `unparsed` | Not a "highest temperature" bucket market (includes every "lowest temperature" event). |
+| `book_one_sided` | `/book` had no bid or no ask, so there is no decision-time mid to record. |
+| `book_unavailable` | `/book` did not answer (HTTP error, timeout, quota or breaker), so nothing was recorded for that market this cycle. |
+| `forecast_missing` | Open-Meteo did not answer for that city/date. |
+| `closed` | The local close (or the forecast's issue time) is already past. |

@@ -1,0 +1,11 @@
+{
+ "miami-2026-09-17": {
+  "city_slug": "miami",
+  "event_date": "2026-09-17",
+  "high_f": 89.4,
+  "issued_at": "2026-09-16T12:00:00Z",
+  "model": "best_match",
+  "sigma_f": 2.5,
+  "source": "open_meteo"
+ }
+}

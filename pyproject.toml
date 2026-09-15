@@ -157,6 +157,11 @@ traderstack-polymarket-weather-paper = "traderstack.polymarket.cli:main"
 # independent prints required before anyone may talk about promotion.
 # Never flips PAPER_PROMOTE_*. Empty / negative is success. No CLOB orders.
 traderstack-polymarket-weather-eval = "traderstack.polymarket.eval_cli:main"
+# On-chain regime overlay (#139): frozen MVRV-Z percentile / NUPL overlays
+# (Coin Metrics community, BTC series) on the frozen TSMOM catalog; two
+# prints (Kraken 720 + Binance.US older-720); skip-not-invent; never flips
+# PAPER_PROMOTE_*; empty overlay set is success; no live.
+traderstack-onchain-regime = "traderstack.research.onchain_regime_cli:main"
 # Long-only top-k cross-sectional momentum on the point-in-time Kraken USD
 # spot universe (#140): N in {21,63,126}, 7-day skip, k in {3,5}, ew/iv,
 # weekly. Portfolio bar with era prints; turnover and fee drag at research
@@ -182,6 +187,11 @@ traderstack-download-basis = "traderstack.research.basis_cli:main"
 # paper loop. Crucix high-tier alerts are recorded as stand-aside and can
 # only withhold. Never flips PAPER_PROMOTE_*. An empty tape is success.
 traderstack-polymarket-crypto-collect = "traderstack.polymarket.crypto_cli:main"
+# Point-in-time Polymarket weather tape (#141). Observations only: the
+# collector appends decision-time book + as-issued forecast, the resolver
+# pairs them with an official station high. No intents, no CLOB orders.
+traderstack-polymarket-weather-collect = "traderstack.polymarket.collect_cli:main"
+traderstack-polymarket-weather-resolve = "traderstack.polymarket.resolve_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/traderstack"]
