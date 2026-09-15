@@ -48,6 +48,7 @@ without activating the venv.
 | `traderstack-paper-report` | Reconstructs the paper equity curve from a completed run's audit trail and ledger, and compares it against the buy-and-hold / momentum / trend / mean-reversion / volatility-targeted baselines. See "Paper performance versus baselines" below. |
 | `traderstack-polymarket-weather-paper` | **Opt-in, paper-only** Polymarket weather research. Compares Open-Meteo (or NOAA) highs to public CLOB mids and writes *would-trade* intents to a dedicated JSONL ledger. Never signs, never posts CLOB orders, never touches the crypto paper loop. Requires `TRADING_MODE=paper`. See "Polymarket weather paper research" below. |
 | `traderstack-polymarket-weather-eval` | Fee-aware evaluation of that weather rule against `always_hold` and `fade_the_mid`. Dual independent prints (non-overlapping dates or disjoint resolution sources) are required before anyone may talk about promotion. Writes `docs/artifacts/strategy-search/polymarket-weather-eval.md`. Never flips `PAPER_PROMOTE_*`. Empty / negative is success. No CLOB orders. |
+| `traderstack-xs-topk` | Paper-only **long-only top-k cross-sectional momentum on the point-in-time Kraken USD spot universe** (#140). Universe: the current Kraken `AssetPairs` listing (online, USD-quoted, frozen exclusion list for stablecoins / fiat / commodities / wrapped duplicates; survivorship caveat stated), then monthly top-20 by trailing 30-day median dollar volume using only bars before each snapshot. Frozen grid: N in {21, 63, 126} with a 7-day skip, k in {3, 5}, equal or inverse-vol weights, weekly Monday-UTC rebalance (decide on close t, fill next open). Portfolio bar on era prints (local era constant pending #135; DSR/PBO printed as not computed); turnover and fee drag at research 10+5 bps **and** the Kraken tier-1 pilot taker cost (80+5 bps); `ew_bh_universe` control cannot promote. Dual print needs two independent covered cells (venues or eras) — a Kraken-only 720-day print is one venue × one era and cannot promote by construction. `--live` pulls Kraken; `--candles-dir VENUE DIR` scores any daily candle JSON (the `traderstack-download-candles` format, or #133 fetcher output) as a second print. Writes `docs/artifacts/strategy-search/xs-topk.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field; `RiskEngine` limits are documented, not widened. Empty dual-print set is success. Not a #117 top-1 reprint. |
 | `traderstack-ensemble-trend` | Paper-only ensemble trend (#137): long-only multi-lookback Donchian-on-close (N in {5, 10, 20, 30, 60, 90, 150, 250, 360}; bar t never sets its own level) with a trailing stop at max(prior stop, prior close-channel midpoint), equal-weight across open lookbacks, 25% annualised vol target on 90-day realised vol, capped at 1.0 (no leverage), on a frozen `CANDIDATE_UNIVERSE` of Kraken USD pairs with a monthly point-in-time top-20 snapshot (≥ 365 prior bars or 720-cap, median 30-day close×volume ≥ $2M; non-members forced flat). Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Fees from the frozen Kraken Pro tier table (`--kraken-tier`, default tier 1 = 80 bps taker per side) unless `--fee-bps` is explicit. Reports gross attribution by asset and by lookback. `era_prints_available=false` / `dsr_pbo_available=false` until #133 / #135 land (not invented). Accepts `traderstack-download-candles` JSON via `--candles`. Writes `docs/artifacts/strategy-search/ensemble-trend.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field. Empty dual-print set is success. |
 | `traderstack-download-basis` | Second-venue point-in-time basis (#134). Downloads daily **mark close − index close, over index** from OKX (`history-mark-price-candles` − `history-index-candles`, `bar=1Dutc`, `confirm==1` rows only, serial pagination with backoff on 403/429) and Binance Vision (`markPriceKlines` − `indexPriceKlines` monthly + trailing-month daily zips, sha256 `.CHECKSUM` verified per zip, fail closed on mismatch) into `var/research/basis/<venue>/<SYMBOL>_basis_1d.json` (the `[{opened_at, value}]` shape `traderstack-funding-carry --basis-dir` reads) and writes the probe table `docs/artifacts/strategy-search/pit-basis-second-venue.md` (first/last/days/gaps per series; OKX×Vision aligned days). Funding premium, last-trade candles and funding-implied basis are refused in code. A missing day is a skip, never a zero; an unreachable venue is a recorded skip and the command still exits 0. Quote is USDT on both venues. Network only, no credentials. Never flips `PAPER_PROMOTE_*`. |
 | `traderstack-polymarket-weather-collect` | **Paper-only** point-in-time tape collector (#141). Every 30-60 min it appends the decision-time CLOB top of book (`/book`, GET) plus the as-issued Open-Meteo high for each open, allowlisted, Fahrenheit-resolved temperature market to `POLYMARKET_WEATHER_TAPE_PATH`. Emits **observations, not intents**: nothing is sized, sided or submitted, so it consults no kill switch and writes no paper ledger. Gamma paging is offset-based with `/events/keyset` available. Requires `TRADING_MODE=paper`. |
@@ -2257,6 +2258,93 @@ Gates 2 (walk-forward parameter fit) and 3 (a full season of live paper
 A/B) are still not claimed. Do not promote this module toward live CLOB
 trading from paper intents or a single fixture pack.
 
+## Long-only top-k cross-sectional momentum (wide universe, #140)
+
+#117 ranked three names and picked one; a three-name rank is a coin
+flip between two betas. `traderstack-xs-topk` is the **portfolio**
+version of that idea on a wide, point-in-time Kraken USD universe, and
+it is scored on a **different, pre-registered bar** (basket equity vs.
+an equal-weight buy-and-hold control), not the per-asset #96+A+B+C
+gates. It never edits the frozen #117 catalog.
+
+- Universe: Kraken public `GET /0/public/AssetPairs` — online, USD or
+  ZUSD quote, `XBT→BTC` / `XDG→DOGE` aliases, no `.d` dark-pool pairs,
+  and a frozen exclusion list (stablecoins, fiat, tokenised
+  commodities, wrapped / liquid-staked duplicates). That listing is
+  **current** (delisted names are absent — survivorship); the report
+  header records the fetch time and freezes membership from it.
+  Within the list, monthly membership is point-in-time: top-20 by
+  trailing 30-day median `close × volume` using only bars strictly
+  before each month start. A name without a full trailing window is
+  skipped for that month, never zero-filled.
+- Signal (frozen): on each Monday UTC close `t`,
+  `close[t-7] / close[t-7-N] − 1`, N in {21, 63, 126}. A name missing
+  either close, or with fewer than N+8 bars, is skipped that week.
+  Fewer than 10 rankable names → flat week (counted). Long the top
+  k in {3, 5}; equal (`ew`) or inverse trailing-30-day-vol (`iv`)
+  weights; long-only, no leverage. Decide on close `t`, fill at the
+  next bar open, drift between rebalances.
+- Costs: research 10 + 5 bps **and** the Kraken Pro tier-1 pilot
+  taker cost (80 bps + 5 bps slippage, from
+  `docs/artifacts/research/odds-brief-2026-09-13.md` §5). The bar and
+  the ranking use the pilot print. One-way turnover per year and fee
+  drag are printed for every cell — weekly rebalancing of five names
+  is where this family usually dies.
+- Bar (frozen, pilot cost): in every covered era (2016–2019 /
+  2020–2022 / 2022–2024 / 2024–2026, ≥ 365 bars to count; a local
+  constant until #135 ships the shared policy) net return > 0, net
+  Sharpe > 0 and net excess over `ew_bh_universe` > 0, plus the
+  print's last-20% holdout excess > 0. A family that only works in
+  one era fails. Dual print = two independent covered cells (distinct
+  venues or non-overlapping eras) pass and none fail.
+- Ranking key (frozen): `mean_era_excess_vs_ew_bh_among_dual_print_passers`,
+  tie-break `candidate_id`. Deflated Sharpe / PBO are printed as
+  `not_computed_pending_135`, never approximated.
+- Never flips `PAPER_PROMOTE_*`, adds no Settings field, and cannot
+  write a pin. An empty dual-print set is success.
+
+```bash
+.venv/bin/traderstack-xs-topk --live                       # Kraken listing + one daily pull per pair (1 s apart)
+.venv/bin/traderstack-xs-topk --candles-dir kraken var/research/kraken_1d \
+                              --candles-dir coinbase var/research/coinbase_1d   # two prints from JSON
+```
+
+`--live` writes the listing it used next to `--output-json` as
+`xs_topk_universe.json`; pass it back as `--universe-file` for a
+reproducible re-score. `--cache-dir DIR` makes the ~600-pair pull
+resumable: pairs already saved there as `<BASE>_USD_1d.json` are
+reused instead of re-fetched, newly fetched pairs are written back,
+and the report's data notes say how many came from each. If `AssetPairs` is unreachable and no
+`--universe-file` is given, the report says "universe unavailable;
+nothing scored" and the command exits 0. A pair that errors,
+rate-limits (HTTP 429 is a per-pair skip, not a retry storm), or has
+fewer than 29 committed daily bars is skipped with a data note.
+
+### RiskEngine layering (documented, not widened)
+
+`paper_path_ready=true` in the report means the signals are
+candle-only long/flat per name and `paper_simulate_fills` can book
+them on Kraken spot. It does **not** mean the runtime cycles twenty
+names, and nothing in this family can make it do so:
+
+- `max(k) = 5` equals the `MAX_OPEN_POSITIONS` default (5);
+  `max_positions_reached` (see "What each rejection reason means")
+  remains the binding control and this family cannot raise it.
+- `5 × MAX_POSITION_PCT (0.10) = 0.50` sits under
+  `MAX_GROSS_EXPOSURE_PCT (0.60)` on defaults.
+- The runtime universe is still `MVP_ASSETS` (`asset_not_allowlisted`
+  rejects everything else) and `PAPER_PROMOTE_UNIVERSE` stays
+  BTC/USD,ETH/USD. A wide-universe paper cycle would be its own
+  reviewed change to those settings — this CLI reads no `Settings`
+  beyond fee / slippage / NAV defaults and cannot move a limit, a
+  side, an asset list, or a size.
+- The voter (`CrossSectionalTopKVoter`) emits `Side.BUY` or no side;
+  it never emits `Side.SELL`. `tests/security/test_xs_topk_cannot_relax_position_limits.py`
+  pins all of the above.
+
+See `docs/artifacts/strategy-search/xs-topk.md` for the committed
+Kraken-only print (one venue, one era: zero dual-print passers by
+construction until #133 supplies a second venue or an older era).
 ## Ensemble trend (multi-lookback Donchian, trailing stop, vol target)
 
 #137 pre-registers the Zarattini / Pagani / Barbon "Catching Crypto

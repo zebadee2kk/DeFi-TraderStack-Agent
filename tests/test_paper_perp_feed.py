@@ -248,7 +248,13 @@ async def test_bitmex_funding_tape_uses_funding_rate_only() -> None:
 
 @pytest.mark.asyncio
 async def test_htx_funding_tape_uses_funding_rate_only() -> None:
-    since = datetime(2026, 9, 12, 0, 0, tzinfo=UTC)
+    # The HTX fetcher keeps only rows inside its own ``now - lookback_days``
+    # window, so the fixture must be dated relative to now: an absolute
+    # timestamp here silently ages out of the window and the test fails on
+    # the calendar, not on the code.
+    now = datetime.now(UTC)
+    since = now - timedelta(days=1)
+    funding_time_ms = int((now - timedelta(hours=8)).timestamp() * 1000)
 
     async def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -258,7 +264,7 @@ async def test_htx_funding_tape_uses_funding_rate_only() -> None:
                 "data": {
                     "data": [
                         {
-                            "funding_time": "1789228800000",
+                            "funding_time": str(funding_time_ms),
                             "funding_rate": "0.0001",
                             "realized_rate": None,
                             "avg_premium_index": "0.01",

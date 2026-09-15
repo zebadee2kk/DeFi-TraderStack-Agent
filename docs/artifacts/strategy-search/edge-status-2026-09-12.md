@@ -1426,6 +1426,16 @@ the dual-print PIT basis that is now reachable, the DSR/PBO harness gates,
 fee realism, and the Polymarket tape collector. Nothing in that program
 relaxes a gate or flips a `PAPER_PROMOTE_*` default.
 
+## Addendum 2026-09-15 — #140 wide-universe top-k (first print)
+
+`traderstack-xs-topk` scored the frozen long-only top-k catalog (12
+baskets + `ew_bh_universe` control) on the Kraken public daily print
+(568 names, 2024-09-24 → 2026-09-14,
+one era). Dual-print passers: **0** — one venue × one era cannot
+dual-print by construction. Single-print bar passers at the pilot
+cost: 0. No new pin; `PAPER_PROMOTE_*` defaults
+unchanged; `RiskEngine` limits documented, not widened. Second venue
+/ older eras wait on #133; DSR / PBO on #135. See `xs-topk.md`.
 ## Addendum 2026-09-13 (#134)
 
 Second-venue PIT basis is no longer UNAVAILABLE: OKX
