@@ -111,7 +111,10 @@ def _iter_market_payloads(events: tuple[dict[str, Any], ...]) -> list[dict[str, 
 def _build_registries(settings: Settings) -> dict[str, ProviderRegistry]:
     quota = settings.polymarket_weather_calls_per_minute
     ttl = settings.polymarket_weather_cache_seconds
-    names = ("polymarket_gamma", "polymarket_clob", "open_meteo", "noaa")
+    # --- polymarket weather PIT tape (#141) ---
+    # "iem" / "ghcn" are the official station-high readers used by the
+    # resolver; they share the same timeout/breaker/quota wiring.
+    names = ("polymarket_gamma", "polymarket_clob", "open_meteo", "noaa", "iem", "ghcn")
     return {
         name: ProviderRegistry(
             name=name,

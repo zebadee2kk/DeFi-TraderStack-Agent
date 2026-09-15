@@ -206,6 +206,11 @@ def yes_won(row: ResolvedWeatherRow) -> bool | None:
         if row.threshold_f is None:
             return None
         return high >= row.threshold_f
+    # --- polymarket weather PIT tape (#141) ---
+    if row.contract is TemperatureContract.THRESHOLD_OR_LOWER:
+        if row.threshold_f is None:
+            return None
+        return high <= row.threshold_f
     if row.bucket_low_f is None or row.bucket_high_f is None:
         return None
     return row.bucket_low_f <= high <= row.bucket_high_f
@@ -269,6 +274,9 @@ def _row_reason(
     if not (min_mid <= row.market_mid <= max_mid):
         return "mid_out_of_bounds"
     if row.contract is TemperatureContract.THRESHOLD_OR_HIGHER and row.threshold_f is None:
+        return "unparsed"
+    # --- polymarket weather PIT tape (#141) ---
+    if row.contract is TemperatureContract.THRESHOLD_OR_LOWER and row.threshold_f is None:
         return "unparsed"
     if row.contract is TemperatureContract.BUCKET and (
         row.bucket_low_f is None or row.bucket_high_f is None

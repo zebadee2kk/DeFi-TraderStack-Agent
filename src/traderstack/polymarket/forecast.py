@@ -74,16 +74,26 @@ class OpenMeteoClient:
     registry: ProviderRegistry | None = None
     timeout_seconds: float = 10.0
 
-    async def daily_high(self, city: City, event_date: date, *, sigma_f: float) -> ForecastPoint:
+    async def daily_high(
+        self,
+        city: City,
+        event_date: date,
+        *,
+        sigma_f: float,
+        # --- polymarket weather PIT tape (#141) ---
+        model: str | None = None,
+    ) -> ForecastPoint:
+        chosen = (model or "best_match").strip() or "best_match"
         if self.registry is not None:
             high = await self.registry.call(
                 self._daily_high,
                 city,
                 event_date,
-                cache_key=("open_meteo", city.slug, event_date.isoformat()),
+                model=chosen,
+                cache_key=("open_meteo", city.slug, event_date.isoformat(), chosen),
             )
         else:
-            high = await self._daily_high(city, event_date)
+            high = await self._daily_high(city, event_date, model=chosen)
         return ForecastPoint(
             city_slug=city.slug,
             event_date=event_date,
@@ -91,9 +101,12 @@ class OpenMeteoClient:
             source="open_meteo",
             issued_at=datetime.now(UTC),
             sigma_f=sigma_f,
+            model=chosen,
         )
 
-    async def _daily_high(self, city: City, event_date: date) -> float:
+    async def _daily_high(
+        self, city: City, event_date: date, *, model: str = "best_match"
+    ) -> float:
         params = {
             "latitude": f"{city.latitude:.4f}",
             "longitude": f"{city.longitude:.4f}",
@@ -102,6 +115,10 @@ class OpenMeteoClient:
             "timezone": city.timezone,
             "forecast_days": "16",
         }
+        # --- polymarket weather PIT tape (#141) ---
+        # best_match is Open-Meteo's own blend and takes no ``models`` param.
+        if model and model != "best_match":
+            params["models"] = model
         payload = await self._get("/v1/forecast", params)
         return _daily_high_from_open_meteo(payload, event_date)
 

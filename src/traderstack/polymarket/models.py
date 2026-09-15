@@ -18,6 +18,10 @@ class ContractSide(StrEnum):
 class TemperatureContract(StrEnum):
     THRESHOLD_OR_HIGHER = "threshold_or_higher"
     BUCKET = "bucket"
+    # --- polymarket weather PIT tape (#141) ---
+    # Polymarket's bottom bucket is "N°F or below"; it is a distinct contract
+    # family from the top "N°F or higher" bucket, not its complement.
+    THRESHOLD_OR_LOWER = "threshold_or_lower"
 
 
 class IntentStatus(StrEnum):
@@ -39,6 +43,17 @@ class City(BaseModel):
     longitude: float
     timezone: str
     climate: str
+    # --- polymarket weather PIT tape (#141) ---
+    # Official-resolution metadata. Empty station ids mean "not verified":
+    # the resolver skips the city rather than guessing a station.
+    station_icao: str = ""
+    iem_station: str = ""
+    iem_network: str = ""
+    ghcn_id: str = ""
+    resolution_station_name: str = ""
+    # Unit the Polymarket buckets are quoted in. Celsius buckets are single
+    # degrees and do not fit the integer-°F bucket model, so they fail closed.
+    market_unit: Literal["F", "C"] = "F"
 
 
 class ParsedTemperatureMarket(BaseModel):
@@ -56,6 +71,8 @@ class ParsedTemperatureMarket(BaseModel):
     yes_token_id: str
     no_token_id: str
     end_at: datetime | None = None
+    # --- polymarket weather PIT tape (#141) ---
+    condition_id: str = ""
 
 
 class ForecastPoint(BaseModel):
@@ -65,6 +82,8 @@ class ForecastPoint(BaseModel):
     source: Literal["open_meteo", "noaa"]
     issued_at: datetime
     sigma_f: float = Field(gt=0)
+    # --- polymarket weather PIT tape (#141) ---
+    model: str = "best_match"
 
 
 class EdgeCalculation(BaseModel):
