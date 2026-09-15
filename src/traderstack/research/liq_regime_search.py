@@ -32,6 +32,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from traderstack.candles import Candle
+from traderstack.fee_tiers import FeeTierStamp
 from traderstack.research.candidates import (
     FEATURE_CATALOG,
     RegimeAgreeVoter,
@@ -334,6 +335,8 @@ class LiqRegimeSearchReport(BaseModel):
     any_promoted: bool = False
     promoted_candidate_ids: list[str] = Field(default_factory=list)
     recommended_promote_flag: str | None = None
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None
 
 
 def run_liq_regime_search(
@@ -360,6 +363,8 @@ def run_liq_regime_search(
     history_notes: list[dict[str, str]] | None = None,
     edge_notes: list[dict[str, str]] | None = None,
     now: datetime | None = None,
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None,
 ) -> LiqRegimeSearchReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -508,6 +513,8 @@ def run_liq_regime_search(
         any_promoted=False,
         promoted_candidate_ids=[],
         recommended_promote_flag=None,
+        # --- fee realism (#138) ---
+        fee_tier=fee_tier,
     )
 
 
@@ -545,6 +552,8 @@ def render_liq_regime_markdown(report: LiqRegimeSearchReport) -> str:
             f"slippage={report.search.slippage_bps:g} bps "
             f"({report.search.cost_note})"
         ),
+        # --- fee realism (#138) ---
+        *([report.fee_tier.render_line()] if report.fee_tier is not None else []),
         (
             f"Walk-forward: train={report.search.train_size} "
             f"test={report.search.test_size} step={report.search.step_size}; "

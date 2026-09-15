@@ -585,3 +585,52 @@ def test_cli_writes_json_and_markdown(tmp_path: Path) -> None:
     assert "Expanded catalog harder-gates report" in text
     assert "PAPER_PROMOTE" in text
     assert RANKING_KEY in text
+
+
+# --- fee realism (#138) ---
+def test_cli_default_fee_tier_is_pilot_and_gate_c_doubles_it(tmp_path: Path) -> None:
+    btc = tmp_path / "btc.json"
+    eth = tmp_path / "eth.json"
+    write_candles(btc, downtrend(720, symbol="BTC/USD"))
+    write_candles(eth, downtrend(720, symbol="ETH/USD"))
+    out_json = tmp_path / "ops" / "report.json"
+    out_md = tmp_path / "ops" / "report.md"
+    args = build_parser().parse_args(
+        [
+            "--candles",
+            str(btc),
+            "--candles",
+            str(eth),
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+            "--train-size",
+            "80",
+            "--test-size",
+            "40",
+            "--step-size",
+            "40",
+            "--min-trades",
+            "1",
+            "--catalog",
+            "legacy",
+            "--no-yahoo",
+        ]
+    )
+    written_json, written_md = run(args, settings=settings())
+    payload = json.loads(written_json.read_text())
+    assert payload["fee_bps"] == 80.0
+    assert payload["fee_stress_fee_bps"] == 160.0
+    assert payload["fee_tier"]["tier_id"] == "kraken_pro_spot_t1"
+    assert payload["fee_tier"]["taker_bps"] == 80.0
+    markdown = written_md.read_text()
+    assert "Fee tier: Tier 1 ($0+ 30d) maker 40 / taker 80 bps" in markdown
+    assert "not assumed" in markdown
+
+    args.fee_tier = "kraken_pro_spot_t3"
+    written_json, _ = run(args, settings=settings())
+    payload = json.loads(written_json.read_text())
+    assert payload["fee_bps"] == 38.0
+    assert payload["fee_stress_fee_bps"] == 76.0
+    assert payload["fee_tier"]["tier_id"] == "kraken_pro_spot_t3"

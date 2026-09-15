@@ -17,6 +17,8 @@ from typing import Any
 
 from traderstack.backtest import BacktestMetrics, BaselineBacktester
 from traderstack.candles import Candle
+from traderstack.config import Settings
+from traderstack.fee_tiers import FeeTierStamp, add_fee_tier_argument, resolve_research_costs
 from traderstack.market.kraken_candles import KrakenCandleProvider
 from traderstack.research.attribution import (
     AttributionReport,
@@ -54,8 +56,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--count", type=int, default=500, help="candle count when fetching from Kraken"
     )
     parser.add_argument("--starting-equity", type=float, default=10_000.0)
-    parser.add_argument("--fee-bps", type=float, default=10.0)
-    parser.add_argument("--slippage-bps", type=float, default=5.0)
+    # --- fee realism (#138) --- default None = PAPER_FEE_TIER taker (Tier 1 = 80 bps)
+    parser.add_argument("--fee-bps", type=float, default=None)
+    add_fee_tier_argument(parser)
+    parser.add_argument("--slippage-bps", type=float, default=None)
     parser.add_argument("--warmup", type=int, default=31)
     parser.add_argument("--train-size", type=int, default=180)
     parser.add_argument("--test-size", type=int, default=60)
@@ -86,6 +90,10 @@ class ResearchReport:
         baselines: dict[str, BacktestMetrics],
         excess: dict[str, ExcessMetrics],
         attribution: AttributionReport,
+        # --- fee realism (#138) ---
+        fee_tier: FeeTierStamp | None = None,
+        fee_bps: float | None = None,
+        slippage_bps: float | None = None,
     ) -> None:
         self.asset = asset
         self.candle_count = candle_count
@@ -94,6 +102,10 @@ class ResearchReport:
         self.baselines = baselines
         self.excess = excess
         self.attribution = attribution
+        # --- fee realism (#138) ---
+        self.fee_tier = fee_tier
+        self.fee_bps = fee_bps
+        self.slippage_bps = slippage_bps
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -104,12 +116,21 @@ class ResearchReport:
             "baselines": {name: m.model_dump(mode="json") for name, m in self.baselines.items()},
             "excess": {name: e.model_dump(mode="json") for name, e in self.excess.items()},
             "attribution": self.attribution.model_dump(mode="json"),
+            # --- fee realism (#138) ---
+            "fee_bps": self.fee_bps,
+            "slippage_bps": self.slippage_bps,
+            "fee_tier": self.fee_tier.model_dump(mode="json") if self.fee_tier else None,
         }
 
     def render(self) -> str:
         lines: list[str] = []
         metrics = self.metrics
         lines.append(f"Asset: {self.asset}  ({self.candle_count} candles)")
+        # --- fee realism (#138) ---
+        if self.fee_bps is not None and self.slippage_bps is not None:
+            lines.append(f"Costs: fee={self.fee_bps:g} bps + slippage={self.slippage_bps:g} bps")
+        if self.fee_tier is not None:
+            lines.append(self.fee_tier.render_line())
         lines.append("-" * 60)
         lines.append(f"Total return:      {metrics.total_return:.2%}")
         lines.append(f"Benchmark return:  {metrics.benchmark_return:.2%}")
@@ -151,16 +172,25 @@ class ResearchReport:
         return "\n".join(lines)
 
 
-def run(args: argparse.Namespace) -> ResearchReport:
+def run(args: argparse.Namespace, settings: Settings | None = None) -> ResearchReport:
     candles = _load_candles(args)
     if not candles:
         raise ValueError("no candles loaded")
     asset = args.asset or candles[0].symbol
 
+    # --- fee realism (#138) ---
+    # Precedence: --fee-bps (stamped "explicit") > --fee-tier > PAPER_FEE_TIER;
+    # the tier fee is max(PRETRADE_FEE_BPS, tier taker). Taker leg only.
+    costs = resolve_research_costs(
+        fee_bps=args.fee_bps,
+        fee_tier=args.fee_tier,
+        settings=settings or Settings(),
+        slippage_bps=args.slippage_bps,
+    )
     backtester = BaselineBacktester(
         starting_equity=args.starting_equity,
-        fee_bps=args.fee_bps,
-        slippage_bps=args.slippage_bps,
+        fee_bps=costs.fee_bps,
+        slippage_bps=costs.slippage_bps,
         warmup=args.warmup,
     )
     metrics = backtester.run(candles)
@@ -191,6 +221,10 @@ def run(args: argparse.Namespace) -> ResearchReport:
         baselines=baseline_metrics,
         excess=excess,
         attribution=attribution,
+        # --- fee realism (#138) ---
+        fee_tier=costs.stamp,
+        fee_bps=costs.fee_bps,
+        slippage_bps=costs.slippage_bps,
     )
 
 

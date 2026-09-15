@@ -192,3 +192,27 @@ async def test_reconciliation_block_withholds_paper_fill() -> None:
 
     assert book.nav_usd == pytest.approx(10_000)
     assert captured[0].execution_status == PaperFillStatus.WITHHELD.value
+
+
+# --- fee realism (#138) ---
+@pytest.mark.asyncio
+async def test_service_tier_taker_fee_reduces_nav_by_notional_times_eighty_bps() -> None:
+    book = InMemoryPortfolioBook(starting_nav_usd=10_000)
+    service = ContinuousPaperService(
+        runtime=FakeRuntime(_allowed_result()),  # type: ignore[arg-type]
+        portfolio=book,
+        symbols=("BTC/USD",),
+        submit=False,
+        execution_ledger=ExecutionLedger(),
+        paper_fill_simulator=PaperFillSimulator(paper_fee_bps=80.0, paper_slippage_bps=0.0),
+        error_backoff_seconds=0,
+    )
+
+    await service._run_symbol_safely("BTC/USD")
+
+    position = book.positions["BTC"]
+    # Zero slippage, mark at last == mid: the NAV drop is quantity * price * 0.008.
+    expected_fee = position.quantity * 20_000 * 80.0 / 10_000
+    assert position.fees_paid_usd == pytest.approx(expected_fee)
+    assert book.nav_usd == pytest.approx(10_000 - expected_fee)
+    assert expected_fee == pytest.approx(8.0, rel=1e-3)

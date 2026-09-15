@@ -20,6 +20,7 @@ import httpx
 
 from traderstack.candles import Candle
 from traderstack.config import Settings
+from traderstack.fee_tiers import add_fee_tier_argument, resolve_research_costs
 from traderstack.research.binance_spot import (
     DEFAULT_BINANCE_SYMBOLS,
     download_binance_spot_histories,
@@ -34,7 +35,6 @@ from traderstack.research.liq_regime_search import (
     render_liq_regime_markdown,
     run_liq_regime_search,
 )
-from traderstack.research.miles_search import research_fee_bps
 from traderstack.research.search_cli import _parse_feature_series
 from traderstack.research.second_print import (
     SECOND_PRINT_BARS,
@@ -82,6 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-candles", type=int, default=KRAKEN_PUBLIC_OHLC_MAX_BARS)
     parser.add_argument("--starting-equity", type=float, default=None)
     parser.add_argument("--fee-bps", type=float, default=None)
+    # --- fee realism (#138) ---
+    add_fee_tier_argument(parser)
     parser.add_argument("--slippage-bps", type=float, default=None)
     parser.add_argument("--train-size", type=int, default=180)
     parser.add_argument("--test-size", type=int, default=60)
@@ -256,17 +258,21 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
             }
         )
 
-    fee_bps = (
-        args.fee_bps
-        if args.fee_bps is not None
-        else research_fee_bps(settings.pretrade_fee_bps, settings.paper_fee_bps)
+    # --- fee realism (#138) ---
+    # Precedence: --fee-bps (stamped "explicit") > --fee-tier > PAPER_FEE_TIER;
+    # the tier fee is max(PRETRADE_FEE_BPS, tier taker). Taker leg only.
+    costs = resolve_research_costs(
+        fee_bps=args.fee_bps,
+        fee_tier=args.fee_tier,
+        settings=settings,
+        slippage_bps=args.slippage_bps,
     )
-    slippage_bps = (
-        args.slippage_bps if args.slippage_bps is not None else settings.pretrade_slippage_bps
-    )
+    fee_bps = costs.fee_bps
+    slippage_bps = costs.slippage_bps
     report = run_liq_regime_search(
         kraken_histories,
         fee_bps=fee_bps,
+        fee_tier=costs.stamp,
         slippage_bps=slippage_bps,
         starting_equity=args.starting_equity or settings.paper_starting_nav_usd,
         train_size=args.train_size,

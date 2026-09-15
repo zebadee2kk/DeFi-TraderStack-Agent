@@ -178,4 +178,12 @@ NON_POLICY_FIELDS: tuple[str, ...] = (
     "meta_agent_max_tokens_per_day",
     "meta_agent_model",
     "meta_agent_output_cost_per_mtok",
+    # --- fee realism (#138) ---
+    # The venue fee tier only selects a taker-cost floor for paper/research
+    # accounting: it can make simulated costs equal or more expensive, never
+    # cheaper, and never authorises a larger, different or differently-sided
+    # order. Proven non-policy by
+    # tests/security/test_fee_tier_cannot_relax_costs.py::test_fee_tier_is_not_risk_engine_policy,
+    # which pins that every tier id yields an identical policy_version.
+    "paper_fee_tier",
 )

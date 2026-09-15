@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from traderstack.backtest import BacktestMetrics, BaselineBacktester
 from traderstack.candles import Candle
+from traderstack.fee_tiers import FeeTierStamp
 from traderstack.research.candidates import (
     FEATURE_CATALOG,
     SearchCandidate,
@@ -136,6 +137,8 @@ class StrategySearchReport(BaseModel):
     any_promoted: bool = False
     honesty: str
     allowed_promote_id: str | None = None
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None
 
 
 def research_fee_bps(pretrade_fee_bps: float, paper_fee_bps: float) -> float:
@@ -342,6 +345,8 @@ def run_search(
     edge_notes: list[dict[str, str]] | None = None,
     now: datetime | None = None,
     include_feature_candidates: bool = True,
+    # --- fee realism (#138) ---
+    fee_tier: FeeTierStamp | None = None,
 ) -> StrategySearchReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -518,7 +523,7 @@ def run_search(
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
         cost_note=(
-            "fee_bps is max(PRETRADE_FEE_BPS, PAPER_FEE_BPS); "
+            "fee_bps is max(PRETRADE_FEE_BPS, PAPER_FEE_TIER taker; PAPER_FEE_BPS when modelled); "
             "slippage_bps is PRETRADE_SLIPPAGE_BPS. Every fill pays both."
         ),
         starting_equity=starting_equity,
@@ -560,6 +565,8 @@ def run_search(
         allowed_promote_id=(
             selected.candidate_id if selected is not None and selected.promoted else None
         ),
+        # --- fee realism (#138) ---
+        fee_tier=fee_tier,
     )
 
 
@@ -573,6 +580,8 @@ def render_search_markdown(report: StrategySearchReport) -> str:
             f"Costs: fee={report.fee_bps:g} bps + slippage={report.slippage_bps:g} bps "
             f"({report.cost_note})"
         ),
+        # --- fee realism (#138) ---
+        *([report.fee_tier.render_line()] if report.fee_tier is not None else []),
         (
             f"Walk-forward: train={report.train_size} test={report.test_size} "
             f"step={report.step_size} warmup={report.warmup}; "
