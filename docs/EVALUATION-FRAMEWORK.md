@@ -450,9 +450,28 @@ deferred — the first to `TYPE_CHECKING` (annotation-only under
 K is the frozen catalog length the report already publishes as
 `multiple_testing["n_candidates"]`, so the deflation term is not a guess.
 
-**Not carrying the block:** `traderstack-strategy-search`,
-`traderstack-daily-robustness`, `traderstack-liq-regime-search` and
-`traderstack-funding-carry`.
+`traderstack-strategy-search` carries it too, behind an opt-in.
+`search.AssetCandidateMetrics` now records the `interval` that `_score_asset`
+already held, which makes it field-for-field identical to
+`miles_search.SeriesCandidateMetrics`, and `CandidateSearchResult` exposes a
+`per_series` alias. The builder reads only `candidate_id` and `per_series`, so
+the call site casts and
+`test_strategy_search_rows_stay_shape_compatible_with_the_evidence_builder`
+fails if either model grows a field the other lacks — the cast cannot go stale
+silently. K is again the published `n_candidates`.
+
+The opt-in (`include_selection_evidence`, default off) exists because
+`run_search` is called in a loop by `funding_carry` and `liq_regime_search`,
+neither of which carries a block; only `traderstack-strategy-search` passes it.
+
+**Not carrying the block:** `traderstack-daily-robustness`,
+`traderstack-liq-regime-search` and `traderstack-funding-carry`.
+
+`liq-regime-search` and `funding-carry` remain genuinely undecided rather than
+merely unwired: each calls `run_search` several times per run, so "one trial"
+spans multiple scored sets and K is not simply a catalog length. Choosing K
+wrongly there understates the deflation term, which makes the DSR look better
+rather than failing loudly.
 
 `traderstack-daily-robustness` is deliberately excluded rather than blocked:
 `run_daily_robustness` is called twice inside `run_harder_gates` (baseline and

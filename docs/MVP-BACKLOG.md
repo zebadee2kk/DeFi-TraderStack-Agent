@@ -60,7 +60,9 @@
       been computing the block and discarding it), and `-miles-search` (K is
       the frozen catalog length it already publishes; an import cycle through
       `selection_evidence` had to be broken first).
-      `traderstack-strategy-search`, `-daily-robustness`, `-liq-regime-search`
+      `-strategy-search` carries it behind an opt-in (its rows needed an
+      `interval` field recorded and a `per_series` alias; a guard test pins the
+      two row models field-for-field). `-daily-robustness`, `-liq-regime-search`
       and `-funding-carry` do **not** carry it and are **not** wiring: they never
       call `run_harder_gates`, so each needs a decision about what its trial
       set is, and a wrong trial count silently weakens the DSR rather than
