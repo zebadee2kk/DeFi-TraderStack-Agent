@@ -116,7 +116,7 @@ async def resolve_tape(
             key = f"station_unmatched:{official.reason}"
             drop_reasons[key] = drop_reasons.get(key, 0) + 1
             continue
-        resolved_tape.append_sync(
+        await resolved_tape.append(
             ResolvedTapeRow(
                 **row.model_dump(),
                 official_high_f=official.high_f,
