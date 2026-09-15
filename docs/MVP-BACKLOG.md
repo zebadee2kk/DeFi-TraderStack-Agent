@@ -62,8 +62,10 @@
       `selection_evidence` had to be broken first).
       `-strategy-search` carries it behind an opt-in (its rows needed an
       `interval` field recorded and a `per_series` alias; a guard test pins the
-      two row models field-for-field). `-daily-robustness`, `-liq-regime-search`
-      and `-funding-carry` do **not** carry it and are **not** wiring: they never
+      two row models field-for-field), and `-daily-robustness` (same opt-in,
+      off by default because harder_gates calls it twice and honesty_pack once
+      more). `-liq-regime-search` and `-funding-carry` do **not** carry it and
+      are **not** wiring: they never
       call `run_harder_gates`, so each needs a decision about what its trial
       set is, and a wrong trial count silently weakens the DSR rather than
       failing loudly. Additional withholding gate: it can only remove a

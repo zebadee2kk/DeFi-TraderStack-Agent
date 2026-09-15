@@ -530,3 +530,35 @@ def test_cli_writes_json_and_markdown(tmp_path: Path) -> None:
     assert "Daily robustness report" in text
     assert "Multiple testing" in text
     assert "balanced-holdout" in text.lower() or "BTC holdout excess" in text
+
+
+def test_daily_robustness_surfaces_the_selection_evidence_block_only_when_asked() -> None:
+    """#135 reaches this CLI behind an opt-in, and the opt-in is load-bearing.
+
+    `run_daily_robustness` is called twice inside `run_harder_gates` (baseline
+    and fee-stressed) and again by `honesty_pack`, each of which already
+    computes or inherits its own block. Computing it here by default would run
+    the bootstrap three times per harder-gates run for one reported result, so
+    the off-by-default half of this test matters as much as the on half.
+    """
+
+    histories = {
+        "BTC/USD@1d": chop(360, symbol="BTC/USD"),
+        "ETH/USD@1d": downtrend(360, symbol="ETH/USD"),
+    }
+
+    off = _search(histories)
+    assert off.selection_evidence is None, "library callers must not pay for the block"
+
+    on = _search(histories, include_selection_evidence=True)
+    evidence = on.selection_evidence
+    assert evidence is not None
+    # K is the frozen catalog length this run actually scored.
+    assert evidence.trial_count == len(on.candidates)
+    # One venue scored here, so the print is single and withholds.
+    assert evidence.print_kind.value == "single"
+    assert not evidence.any_evidence_passer
+
+    rendered = render_daily_robustness_markdown(on)
+    assert "## Selection evidence (#135)" in rendered
+    assert "**Trials scored (K):**" in rendered

@@ -39,6 +39,13 @@ from traderstack.research.miles_search import (
     SeriesCandidateMetrics,
     evaluate_candidate_on_series,
 )
+
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import (
+    SelectionEvidence,
+    build_selection_evidence,
+    render_evidence_lines,
+)
 from traderstack.signal_registry import version_of
 
 DEFAULT_HOLDOUT_FRACTION = 0.20
@@ -187,6 +194,13 @@ class DailyRobustnessReport(BaseModel):
     promotion_assets: list[str]
     kraken_cap_note: str
     candidates: list[CandidateSearchResult]
+    # --- era prints / DSR / PBO (#135) ---
+    # Off unless the caller asks. run_daily_robustness is called twice inside
+    # run_harder_gates (baseline and fee-stressed) and again by honesty_pack,
+    # all of which already compute or inherit their own block, so computing it
+    # here by default would run the bootstrap three times per harder-gates run
+    # for one reported result. traderstack-daily-robustness opts in.
+    selection_evidence: SelectionEvidence | None = None
     selected_candidate_id: str | None = None
     promoted_candidate_ids: list[str] = Field(default_factory=list)
     any_promoted: bool = False
@@ -242,6 +256,8 @@ def run_daily_robustness(
     now: datetime | None = None,
     data_notes: list[str] | None = None,
     promotion_interval: str = "1d",
+    # --- era prints / DSR / PBO (#135) ---
+    include_selection_evidence: bool = False,
 ) -> DailyRobustnessReport:
     if not histories:
         raise ValueError("no candle histories provided")
@@ -411,6 +427,22 @@ def run_daily_robustness(
 
     symbols = sorted({candles[0].symbol for candles in histories.values() if candles})
     intervals = sorted({candles[0].interval for candles in histories.values() if candles})
+
+    # --- era prints / DSR / PBO (#135) ---
+    # K is the frozen catalog length this run scored. One venue is scored here
+    # (Yahoo rows are labeled non-Kraken and excluded by is_promotion_series),
+    # so the print is single and withholds.
+    evidence = None
+    if include_selection_evidence:
+        evidence = build_selection_evidence(
+            rows,
+            primary_candles=kraken_daily_candles(histories, "BTC/USD", interval=promotion_interval),
+            primary_venue="scored_venue",
+            interval=promotion_interval,
+            test_size=test_size,
+            configured_min_trades=min_trades,
+        )
+
     return DailyRobustnessReport(
         generated_at=now or datetime.now(UTC),
         symbols=symbols,
@@ -455,6 +487,8 @@ def run_daily_robustness(
         promotion_assets=list(PROMOTION_ASSETS),
         kraken_cap_note=KRAKEN_DAILY_CAP_NOTE,
         candidates=rows,
+        # --- era prints / DSR / PBO (#135) ---
+        selection_evidence=evidence,
         selected_candidate_id=selected.candidate_id if selected is not None else None,
         promoted_candidate_ids=promoted_ids,
         any_promoted=bool(selected is not None and selected.promoted),
@@ -732,4 +766,6 @@ def render_daily_robustness_markdown(report: DailyRobustnessReport) -> str:
         "with Kraken prints. Do not copy YouTube or Yahoo-backtest return figures."
     )
     lines.append("")
+    # --- era prints / DSR / PBO (#135) ---
+    lines.extend(render_evidence_lines(report.selection_evidence))
     return "\n".join(lines)

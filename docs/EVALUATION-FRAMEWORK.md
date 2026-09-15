@@ -464,25 +464,20 @@ The opt-in (`include_selection_evidence`, default off) exists because
 `run_search` is called in a loop by `funding_carry` and `liq_regime_search`,
 neither of which carries a block; only `traderstack-strategy-search` passes it.
 
-**Not carrying the block:** `traderstack-daily-robustness`,
-`traderstack-liq-regime-search` and `traderstack-funding-carry`.
+`traderstack-daily-robustness` carries it behind the same opt-in. The default
+stays off because `run_daily_robustness` is called twice inside
+`run_harder_gates` (baseline and fee-stressed) and again by `honesty_pack`,
+each of which already computes or inherits its own block; computing it there
+by default would trip the bootstrap three times per harder-gates run for one
+reported result. A test pins both directions, so those callers cannot start
+paying for it by accident.
 
-`liq-regime-search` and `funding-carry` remain genuinely undecided rather than
-merely unwired: each calls `run_search` several times per run, so "one trial"
-spans multiple scored sets and K is not simply a catalog length. Choosing K
-wrongly there understates the deflation term, which makes the DSR look better
-rather than failing loudly.
+**Not carrying the block:** `traderstack-liq-regime-search` and
+`traderstack-funding-carry`. These are undecided rather than unwired: each
+calls `run_search` several times per run, so "one trial" spans multiple scored
+sets and K is not simply a catalog length. The trial count is the deflation
+term, so choosing K wrongly *weakens* the DSR rather than failing loudly —
+worse than reporting no DSR at all. They stay uncovered until the trial set is
+defined deliberately per CLI, not guessed.
 
-`traderstack-daily-robustness` is deliberately excluded rather than blocked:
-`run_daily_robustness` is called twice inside `run_harder_gates` (baseline and
-fee-stressed) and again by `honesty_pack`, each of which already computes or
-inherits its own block, so computing it there would trip the bootstrap three
-times per harder-gates run for one reported result. These build
-their reports on `research.search` / `research.miles_search` /
-`research.daily_robustness` and never call `run_harder_gates`, so — contrary
-to what this section previously claimed — extending the block to them is
-**not** wiring. Each needs a decision about what its trial set is, and the
-trial count is the deflation term: a wrong K silently *weakens* the DSR
-rather than failing loudly, which is worse than reporting no DSR at all. So
-they stay uncovered until that is designed per CLI, not guessed. This is the
-first slice of #48 and does not close it.
+This is the first slice of #48 and does not close it.

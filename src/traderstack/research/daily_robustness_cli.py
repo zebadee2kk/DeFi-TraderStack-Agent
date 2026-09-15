@@ -176,6 +176,10 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
     )
     report = run_daily_robustness(
         histories,
+        # --- era prints / DSR / PBO (#135) ---
+        # This CLI is the report consumer, so it opts in. harder_gates and
+        # honesty_pack leave it off and carry their own block.
+        include_selection_evidence=True,
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
         starting_equity=args.starting_equity or settings.paper_starting_nav_usd,
