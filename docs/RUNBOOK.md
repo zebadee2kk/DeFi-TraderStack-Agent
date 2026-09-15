@@ -2532,6 +2532,11 @@ Hard constraints (all covered by
 `tests/security/test_polymarket_crypto_wedge_boundary.py`):
 
 - `TRADING_MODE` must be `paper`; the CLI refuses to start otherwise.
+- `POLYMARKET_CRYPTO_TAPE_ENABLED` is declarative, exactly like
+  `POLYMARKET_WEATHER_ENABLED`: running the dedicated CLI *is* the opt-in, and
+  the flag is what `traderstack-check-config` reports (and warns on) so an
+  operator's intent is visible in one place. Nothing in `traderstack-paper`
+  reads it.
 - Deribit is read-only: two allowlisted public paths, and any path containing
   `private`, `auth`, `buy`, `sell`, `edit`, `cancel` or `withdraw` is refused
   before a request is built. There is no POST anywhere in this path.
