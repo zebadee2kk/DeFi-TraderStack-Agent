@@ -2365,3 +2365,16 @@ See `docs/artifacts/strategy-search/onchain-regime.md` (2026-09-14 live
 run: overlay passers **0**; `mvrvz_p90` `mixed_fail`; `mvrvz_p80` mostly
 `hurts`; `nupl_075` never bound) and the addendum in
 `docs/artifacts/strategy-search/edge-status-2026-09-12.md`.
+
+### Where the gate sits in `policy_version` (#139)
+
+`ONCHAIN_REGIME_GATE_ENABLED`, `ONCHAIN_REGIME_MAX_PERCENTILE` and
+`ONCHAIN_REGIME_SOURCE_ASSET` are **control-plane** policy fields
+(`CONTROL_PLANE_FIELDS` in `risk.py`), so changing any of them changes the
+`policy_version` stamped on every audit record. That is deliberate: the gate is
+withhold-only and never reaches `RiskEngine.evaluate`, but it does decide
+whether a BUY is built at all, so a gated run and an ungated run must never be
+indistinguishable in the audit trail — the SEC-2026-09-18 property.
+`COINMETRICS_BASE_URL` is non-policy (`policy_fields.py`), with the other
+endpoints: it changes where the series is read from, not any decision. Pinned by
+`tests/security/test_onchain_regime_policy_version.py`.
