@@ -120,6 +120,21 @@ CONTROL_PLANE_FIELDS: tuple[str, ...] = (
     "trading_mode",
     "paper_simulate_fills",
     "paper_slippage_bps",
+    # --- on-chain regime gate (#139) ---
+    # A deterministic, withhold-only pre-trade gate in `pipeline.process`: with
+    # it on, a BUY can be rejected (onchain_regime_blocked /
+    # onchain_regime_unavailable) that the same cycle would have built with it
+    # off, without RiskEngine.evaluate ever seeing a different proposal. That is
+    # the exact SEC-2026-09-18 shape, so all three fields that decide the gate's
+    # verdict are control plane: the flag, the threshold it compares against,
+    # and the asset whose series the percentile is taken from. None of them can
+    # relax anything -- the gate only ever adds a rejection -- but two audit
+    # records must not be able to share a policy_version across a change to any
+    # of them. `coinmetrics_base_url` is just the endpoint and stays non-policy
+    # with the other base URLs (see policy_fields.py).
+    "onchain_regime_gate_enabled",
+    "onchain_regime_max_percentile",
+    "onchain_regime_source_asset",
 )
 
 # The union actually hashed into policy_version.

@@ -489,6 +489,21 @@ class Settings(BaseSettings):
     polymarket_weather_max_mid: float = Field(default=0.98, gt=0, le=1)
     polymarket_weather_fee_haircut: float = Field(default=0.02, ge=0, lt=1)
 
+    # --- on-chain regime gate (#139) ---
+    # Opt-in, BUY-entries-only gate on the Coin Metrics community MVRV-Z
+    # percentile (market/coinmetrics.py). Off by default; when off nothing
+    # is fetched. When on: percentile > ONCHAIN_REGIME_MAX_PERCENTILE rejects
+    # new longs with onchain_regime_blocked; a provider outage / missing
+    # series rejects new longs with onchain_regime_unavailable (fail closed
+    # for this slot only — SELLs, exits and the rest of the cycle continue).
+    # The trailing window (1460 d), minimum points (730), stale limit (3 d)
+    # and the feature version are frozen in market/coinmetrics.py on
+    # purpose: pre-registered, not knobs. 0.90 is the pre-registered
+    # threshold; traderstack-check-config warns above it and at 1.0 (no-op).
+    onchain_regime_gate_enabled: bool = False
+    onchain_regime_source_asset: str = "btc"
+    onchain_regime_max_percentile: float = Field(default=0.90, gt=0, le=1)
+    coinmetrics_base_url: str = "https://community-api.coinmetrics.io"
     # --- fee realism (#138) ---
     # Kraken Pro spot published schedule (kraken.com/features/fee-schedule,
     # read 2026-09-13; frozen in traderstack.fee_tiers). The tier's TAKER leg

@@ -600,3 +600,32 @@ async def test_funnel_from_audit_rebuilds_the_run_and_joins_the_ledger(tmp_path:
 def test_funnel_cli_reports_a_missing_audit_trail(tmp_path: Path, capsys) -> None:
     assert funnel_main(["--audit-path", str(tmp_path / "missing.jsonl")]) == 2
     assert "no runtime audit trail" in capsys.readouterr().out
+
+
+# --- on-chain regime gate (#139) ---
+
+
+def test_onchain_regime_rejection_is_a_policy_withhold_after_a_side_existed() -> None:
+    for reason in ("onchain_regime_blocked", "onchain_regime_unavailable"):
+        check = PreTradeCheck(passed=True, confirmed_side=Side.BUY, reasons=[], confidence=0.6)
+        result = RuntimeResult(
+            tick=_tick(),
+            references=[],
+            pipeline=PipelineResult(
+                accepted_market_data=True, rejection_reasons=[reason], pretrade_check=check
+            ),
+            candles_loaded=720,
+        )
+        observation = classify(result)
+        assert observation.stage is FunnelStage.SIGNAL_CANDIDATE, reason
+        assert observation.gate is BlockingGate.INTELLIGENCE, reason
+        assert observation.category is FunnelCategory.OPPORTUNITY_REJECTED, reason
+        assert observation.reasons == [reason]
+        # Without a pre-trade gate the default BUY path lands on the same gate.
+        bare = RuntimeResult(
+            tick=_tick(),
+            references=[],
+            pipeline=PipelineResult(accepted_market_data=True, rejection_reasons=[reason]),
+        )
+        assert classify(bare).gate is BlockingGate.INTELLIGENCE, reason
+        assert classify(bare).stage is FunnelStage.SIGNAL_CANDIDATE, reason
