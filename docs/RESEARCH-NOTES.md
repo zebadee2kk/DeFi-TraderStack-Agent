@@ -171,3 +171,15 @@ At minimum:
   Empty dual-print is success. Not an EMA, residual, XS,
   Donchian, TSMOM, Bollinger, calendar, or lead-lag reprint.
   See `docs/artifacts/strategy-search/volume-breakout.md`.
+- Does a fee-aware **long-only top-k** (k in {3, 5}) by frozen
+  skip-week trailing return (N in {21, 63, 126}, 7-day skip) on a
+  ≥ 20-name point-in-time Kraken USD universe beat equal-weight
+  buy-and-hold of the same universe in **every** era and on two
+  independent prints, net of weekly turnover at the Kraken tier-1
+  pilot fee? `traderstack-xs-topk` scores that family on a
+  pre-registered portfolio bar (#140). The Kraken-only 720-day
+  print is one venue × one era and cannot dual-print; a second
+  venue or an older era from #133 is required. DSR / PBO are
+  printed as not computed until #135. Empty is success. Not a
+  #117 top-1 reprint. See
+  `docs/artifacts/strategy-search/xs-topk.md`.
