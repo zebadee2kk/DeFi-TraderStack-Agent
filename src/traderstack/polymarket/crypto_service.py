@@ -71,6 +71,7 @@ class _Chain:
     instruments: tuple[OptionInstrument, ...]
     quotes: tuple[OptionQuote, ...]
     error: str | None = None
+    fetched_at: datetime | None = None
 
 
 @dataclass
@@ -262,7 +263,7 @@ class PolymarketCryptoWedgeCollector:
         statuses: dict[CryptoAsset, CrucixStatus] = {}
         chain_errors: dict[str, str] = {}
         for asset in assets:
-            chain = await self._chain(asset)
+            chain = await self._chain(asset, now)
             chains[asset] = chain
             if chain.error is not None:
                 chain_errors[asset.value] = chain.error
@@ -299,13 +300,19 @@ class PolymarketCryptoWedgeCollector:
         status_counts: dict[str, int] = {}
         for market in parsed_markets:
             # Each row is stamped with its own read time, not the cycle start:
-            # a full live cycle is ~50 CLOB GETs, and the freshness bound must
-            # measure the age of *that* row's reads.
+            # a full live cycle is ~66 CLOB GETs over minutes, and the freshness
+            # bound must measure the age of *that* row's reads. For the same
+            # reason the option chain is re-read once it is half the bound old,
+            # instead of letting one snapshot age out across the cycle.
+            row_now = self.clock()
+            chains[market.asset] = await self._refresh_chain_if_stale(
+                market.asset, chains[market.asset], row_now, chain_errors
+            )
             row = await self._observe(
                 market,
                 chain=chains[market.asset],
                 crucix=statuses[market.asset],
-                now=self.clock(),
+                now=row_now,
             )
             await self.tape.append(row)
             rows.append(row)
@@ -444,7 +451,33 @@ class PolymarketCryptoWedgeCollector:
             raise RuntimeError("CLOB client is not configured")
         return await self.clob.book(token_id)
 
-    async def _chain(self, asset: CryptoAsset) -> _Chain:
+    async def _refresh_chain_if_stale(
+        self,
+        asset: CryptoAsset,
+        chain: _Chain,
+        now: datetime,
+        chain_errors: dict[str, str],
+    ) -> _Chain:
+        """Re-read the option chain once the snapshot is half the bound old.
+
+        A failed refresh keeps the previous snapshot: its quotes then age past
+        the freshness bound on their own and the affected rows are recorded as
+        ``stale_deribit`` — never silently re-used as if they were fresh.
+        """
+
+        if self.fixtures is not None or chain.fetched_at is None:
+            return chain
+        age = abs((now - chain.fetched_at).total_seconds())
+        if age <= self.settings.polymarket_crypto_max_staleness_seconds / 2:
+            return chain
+        refreshed = await self._chain(asset, now)
+        if refreshed.error is not None:
+            chain_errors[asset.value] = f"refresh failed: {refreshed.error}"
+            return chain
+        chain_errors.pop(asset.value, None)
+        return refreshed
+
+    async def _chain(self, asset: CryptoAsset, now: datetime) -> _Chain:
         if self.fixtures is not None:
             instruments_raw = self.fixtures.deribit_instruments.get(asset.value)
             summary_raw = self.fixtures.deribit_summary.get(asset.value)
@@ -461,7 +494,7 @@ class PolymarketCryptoWedgeCollector:
             quotes = await self.deribit.book_summary(asset.value)
         except Exception as exc:  # noqa: BLE001 - unreachable venue is a skip.
             return _Chain(instruments=(), quotes=(), error=type(exc).__name__)
-        return _Chain(instruments=instruments, quotes=quotes)
+        return _Chain(instruments=instruments, quotes=quotes, fetched_at=now)
 
     async def _crucix_status(self, asset: CryptoAsset) -> CrucixStatus:
         snapshot: NewsSnapshot | None

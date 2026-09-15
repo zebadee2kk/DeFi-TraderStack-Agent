@@ -2519,6 +2519,15 @@ One invocation does exactly this:
    *independently* to the CLOB book timestamp and to the oldest Deribit quote
    used, then append one row per market to `POLYMARKET_CRYPTO_TAPE_PATH`.
 
+Two deliberate conservatisms in step 6. Polymarket's `/book` `timestamp` is the
+*last book update*, not the response time, so a quiet market can be recorded
+`stale_polymarket` even though its quote is current — the bound would rather
+drop a good row than score a mid nobody has refreshed in minutes. And because a
+live cycle is ~66 CLOB GETs, each row is stamped with its own read time and the
+Deribit chain is re-read once the snapshot is half the bound old, instead of one
+option snapshot silently ageing across the cycle. A failed re-read keeps the
+previous snapshot, whose quotes then age out into `stale_deribit` on their own.
+
 Hard constraints (all covered by
 `tests/security/test_polymarket_crypto_wedge_boundary.py`):
 

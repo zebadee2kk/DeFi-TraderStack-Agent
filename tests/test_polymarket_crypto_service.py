@@ -271,3 +271,102 @@ async def test_unknown_assets_are_named_in_the_report(tmp_path: Path) -> None:
     assert report.unknown_assets == ("DOGE",)
     assert "DOGE" in report.render()
     assert report.assets == ("BTC",)
+
+
+async def test_the_option_chain_is_re_read_as_the_cycle_runs(tmp_path: Path) -> None:
+    """One chain snapshot must not age out silently across a long cycle."""
+
+    import httpx
+
+    from traderstack.market.deribit import DeribitPublicClient
+    from traderstack.polymarket.clob import ClobPublicClient
+    from traderstack.polymarket.gamma import GammaClient
+
+    expiry_ms = 1789372800000  # 2026-09-14T08:00:00Z
+    book_ms = 1789365570000  # 2026-09-14T05:59:30Z
+    description = (
+        'This market will resolve to "Yes" if the Binance 1 minute candle for '
+        "BTC/USDT 12:00 in the ET timezone (noon) has a final close above the "
+        "price in the title."
+    )
+    markets = [
+        {
+            "id": f"m{index}",
+            "question": f"Will the price of Bitcoin be above ${strike:,} on September 14?",
+            "description": description,
+            "clobTokenIds": json.dumps([f"yes{index}", f"no{index}"]),
+            "endDate": "2026-09-14T16:00:00Z",
+            "active": True,
+            "closed": False,
+            "acceptingOrders": True,
+            "enableOrderBook": True,
+        }
+        for index, strike in enumerate((74000, 76000, 78000))
+    ]
+    deribit_calls: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/events":
+            return httpx.Response(200, json=[{"slug": "bitcoin-above-on-x", "markets": markets}])
+        if path == "/book":
+            return httpx.Response(
+                200,
+                json={
+                    "bids": [{"price": "0.60", "size": "1"}],
+                    "asks": [{"price": "0.62", "size": "1"}],
+                    "timestamp": str(book_ms),
+                },
+            )
+        deribit_calls.append(path)
+        if path.endswith("get_instruments"):
+            return httpx.Response(
+                200,
+                json={
+                    "result": [
+                        {
+                            "instrument_name": f"BTC-14SEP26-{strike}-C",
+                            "option_type": "call",
+                            "strike": float(strike),
+                            "expiration_timestamp": expiry_ms,
+                        }
+                        for strike in (70000, 80000)
+                    ]
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {
+                        "instrument_name": f"BTC-14SEP26-{strike}-C",
+                        "mark_iv": 40.0,
+                        "mark_price": 0.05,
+                        "underlying_price": 76000.0,
+                        "creation_timestamp": book_ms,
+                    }
+                    for strike in (70000, 80000)
+                ]
+            },
+        )
+
+    stamps = iter([NOW + timedelta(seconds=90 * step) for step in range(8)])
+    cfg = settings(polymarket_crypto_assets="BTC", polymarket_crypto_lookahead_days=0)
+    async with httpx.AsyncClient(
+        base_url="https://example.invalid", transport=httpx.MockTransport(handler)
+    ) as client:
+        made = PolymarketCryptoWedgeCollector(
+            settings=cfg,
+            tape=CryptoWedgeTape(tmp_path / "tape.jsonl"),
+            kill_switch=KillSwitch.from_settings(cfg),
+            gamma=GammaClient(client=client),
+            clob=ClobPublicClient(client=client),
+            deribit=DeribitPublicClient(client=client),
+            clock=lambda: next(stamps),
+        )
+        report = await made.run_once()
+
+    assert report.rows_written == 3
+    # Two calls for the first snapshot, then a re-read once it is over half the
+    # 120s bound old — not one snapshot stretched across the whole cycle.
+    assert len(deribit_calls) > 2
