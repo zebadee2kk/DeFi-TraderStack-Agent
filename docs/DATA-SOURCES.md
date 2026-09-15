@@ -466,3 +466,31 @@ question phrasing change. The adapters fail closed on unparseable payloads.
 - DexScreener 300 rpm limit for pairs endpoints.
 - Dune free-plan credits; Tardis.dev list prices; Codex tier details; CoinGecko Demo access to onchain endpoints.
 - Existence of a public Uniswap v3/v4 subgraph already deployed for Robinhood Chain.
+
+## Polymarket crypto-threshold vs Deribit (paper research only)
+
+Sources for `traderstack-polymarket-crypto-collect` (#142). All GET, all
+unauthenticated, all reached from this environment on 2026-09-15 unless marked
+otherwise. [V] = verified live here; [S] = documented shape, not re-verified.
+
+| Endpoint | What it gives | Auth | Order/trade surface |
+|---|---|---|---|
+| Gamma `https://gamma-api.polymarket.com/events?slug=<asset>-above-on-<month>-<day>-<year>` [V] | The daily BTC/ETH threshold event: 11 markets per event, `endDate` 16:00 UTC, `description` naming the Binance `BTC/USDT` (or `ETH/USDT`) 1-minute candle at noon ET, `clobTokenIds` as a JSON *string*, plus `orderPriceMinTickSize` (0.001) and `takerBaseFee` (1000) recorded as evidence only | None | None — the client only knows `/events` and `/markets` |
+| CLOB `https://clob.polymarket.com/book?token_id=<yes token>` [V] | `bids` / `asks` (`price`, `size` strings) and a millisecond `timestamp`; one-sided books do occur at far strikes | None | **None — the client refuses order/auth paths and has no POST** |
+| Deribit `https://www.deribit.com/api/v2/public/get_instruments?currency=BTC&kind=option&expired=false` [V] | ~900 rows per currency: `instrument_name`, `strike`, `option_type`, `expiration_timestamp` (ms). Dailies expire 08:00 UTC | None | **None — only two public paths are allowlisted; anything with `private`/`auth`/`buy`/`sell`/`cancel`/`withdraw` is refused** |
+| Deribit `https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=option` [V] | `mark_iv` (percent), `mark_price`, `bid_price`/`ask_price` (null at far strikes), `underlying_price`, `underlying_index`, `creation_timestamp` (ms) | None | As above |
+| Binance Vision `https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1m/BTCUSDT-1m-<date>.zip` [V 200, not used in this slice] | The slice-2 settlement source: the 16:00 UTC 1-minute close. Binance REST itself answers 451 from this environment | None | None |
+| Crucix (operator-hosted, `CRUCIX_*`) [S] | High-tier alerts, read only to record a withhold-only stand-aside status per asset | Optional bearer | None |
+
+Budget at the documented 15-minute cadence: 4–6 Gamma GETs, ~44–66 CLOB GETs
+and 4 Deribit GETs per cycle. `POLYMARKET_CRYPTO_CALLS_PER_MINUTE=90` keeps the
+provider registry from refusing most of a cycle (the weather default of 20/min
+would, and a refusal shows up as non-`ok` row statuses, not as a crash).
+Deribit's public non-matching-engine budget is far above 4 calls per cycle.
+`get_book_summary_by_instrument` returns 400 for unknown names and is not used.
+
+Skip, never invent: a missing slug, an unreadable book, a one-sided book, an
+unreachable Deribit, or a chain that cannot bracket the strike or the expiry
+all produce a row with a named non-`ok` status (or no row at all), never a
+substituted settlement price, a cached quote past the freshness bound, or an
+index-price-only probability.

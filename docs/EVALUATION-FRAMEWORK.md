@@ -488,3 +488,59 @@ trial count is the deflation term: a wrong K silently *weakens* the DSR
 rather than failing loudly, which is worse than reporting no DSR at all. So
 they stay uncovered until that is designed per CLI, not guessed. This is the
 first slice of #48 and does not close it.
+
+## Polymarket crypto-threshold vs Deribit — pre-registered rules (#142)
+
+These rules were frozen in `src/traderstack/polymarket/crypto_models.py`
+(`CRYPTO_WEDGE_RULES`, printable with
+`traderstack-polymarket-crypto-collect --print-rules`) **before the first tape
+row existed**, so the slice-2 evaluator cannot be tuned to the data it scores.
+
+- **Universe**: Polymarket daily `Will the price of <Bitcoin|Ethereum> be above
+  $K on <Month D>?` markets (resolution 16:00 UTC on the Binance BTC/USDT or
+  ETH/USDT 1-minute close at noon ET), matched against the Deribit option chain
+  for the same currency.
+- **Point-in-time by construction**: every row is captured while the market is
+  open and carries both venue timestamps. A row may never be scored with a
+  settlement price as its mid, and the evaluator must refuse rows with
+  `observed_at >= resolves_at`. Gamma's settled `outcomePrices` is a resolution
+  source, never a mid.
+- **Freshness**: `POLYMARKET_CRYPTO_MAX_STALENESS_SECONDS` (default 120) is
+  applied independently to the CLOB book timestamp and to the oldest Deribit
+  quote used. Stale, one-sided and unpriceable rows are recorded with a named
+  status and are never scored. A missing series is a skip, never a zero.
+- **Model**: `bs_n_d2_markiv_interp_v1` — mark IV interpolated linearly in
+  strike inside each bracketing Deribit expiry, total variance interpolated
+  linearly in time to the resolution instant, forward from `underlying_price`,
+  `r = 0`, `P = N(d2)`. The Deribit 08:00 UTC expiry is not the Polymarket
+  16:00 UTC resolution instant: `expiry_gap_hours` is recorded on every row and
+  no arbitrage is claimed. A secondary `call_spread_v1` model is out of scope
+  for this slice and would be reported side by side, never as a replacement.
+- **Wedge and threshold**: `wedge = poly_mid − deribit_prob`; the decision
+  threshold is `|wedge| >= 0.05`, frozen.
+- **Crucix stand-aside**: a row only enters a trade mask when Crucix is
+  positively known `clear`. `adverse`, `unavailable` and `not_configured` are
+  all stand-aside. `apply_crucix_gate` returns a bitwise subset of its input
+  mask — it can only remove trades, has no size or side output, and never
+  reaches `RiskEngine`.
+- **Fees** (frozen from the issue, never computed from venue payload text):
+  Polymarket taker `= shares × 0.07 × p × (1 − p)`, capped at 1.75 USD per 100
+  shares; Deribit option taker `= 0.0003` of the underlying per contract,
+  capped at 12.5% of premium; a delta-hedge perp leg costs 5 bps taker. The
+  unhedged and hedged variants are reported separately.
+- **Controls**: `always_hold` and `fade_the_mid`, computed on the same trade
+  mask as the rule.
+- **Print bar**: two independent prints (BTC vs ETH, or non-overlapping
+  resolution dates), `MIN_ROWS_PER_PRINT = 20`, `MIN_TRADES_PER_PRINT = 8`. An
+  ungated informational mask is reportable but can never promote.
+- **No promote pin**: `PAPER_PROMOTE_POLYMARKET_CRYPTO_WEDGE` is *not* a
+  `Settings` field (pinned by
+  `tests/security/test_polymarket_crypto_wedge_boundary.py`), and no
+  `PAPER_PROMOTE_*` default changes.
+- **Empty is success**: a cycle that finds no open event, and an evaluation
+  with no qualifying rows, are both successful results and are reported as such.
+
+The evaluator (`traderstack-polymarket-crypto-eval`) and the two disjoint
+resolution sources (Binance Vision 1-minute closes and Gamma's settled
+`outcomePrices`) are the next slice. Until they ship, the tape is evidence
+only and no PnL is claimed anywhere.
