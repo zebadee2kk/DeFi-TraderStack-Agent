@@ -833,6 +833,19 @@ On the 2026-09-12 live run (catalog committed first):
 See `volume-breakout.md`.
 
 
+## Second-venue PIT basis (`traderstack-download-basis`, #134)
+
+`pit-basis-second-venue.md` is the committed probe table from
+`traderstack-download-basis`: OKX `history-mark-price-candles` −
+`history-index-candles` (`1Dutc`) and Binance Vision `markPriceKlines`
+− `indexPriceKlines` (sha256-verified zips), daily mark−index per
+symbol with first/last/days/gaps and the OKX×Vision aligned-day count.
+`funding-carry-daily.md` is the live dual-basis re-score of the frozen
+carry catalog (10+5 bps) and `funding-carry-daily-tier1-taker.md` the
+same at the Kraken Pro Tier-1 taker print (80 bps per side). Pairing
+(frozen before the pull): primary funding print × OKX basis, second ×
+Binance Vision basis. A lone series is not applied. No `PAPER_PROMOTE_*`
+default changes.
 ## Fee tier of the committed reports (#138)
 
 Every report in this directory generated **before** #138 was scored at

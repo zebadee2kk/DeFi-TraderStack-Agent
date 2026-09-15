@@ -198,6 +198,34 @@ verification record.
   is not substituted. A venue without usable base volume fails
   closed for volume names. Fill at t+1 open. No exogenous
   series. Input to `traderstack-volume-breakout`.
+- **Second-venue PIT basis (research only; #134, verified 2026-09-13):** two
+  independent daily **mark−index** tapes now feed
+  `traderstack-download-basis` → `traderstack-funding-carry
+  --basis-dir`. OKX `GET /api/v5/market/history-mark-price-candles`
+  (`instId=BTC-USDT-SWAP`) and `history-index-candles`
+  (`instId=BTC-USDT`, **no** `-SWAP`; `-SWAP` on the index path is
+  code 51001), `bar=1Dutc` (plain `1D` is the UTC+8 day, opening at
+  16:00 UTC), 100 rows per page, `after=<ts_ms>` pages older; BTC and
+  ETH both reach 2020-01-01 on `1Dutc` (the September-2020 BTC start
+  quoted in #134 was the `1D` bar); the newest row is the uncommitted
+  day (`confirm=="0"`) and is dropped. Documented limit ~10 req/2 s
+  and rapid pagination has returned HTTP 403 from the WAF, so pages
+  are walked serially with a pause and exponential backoff; after
+  the retry budget the series is truncated/skipped, never filled.
+  Binance Vision `data/futures/um/{monthly,daily}/{markPriceKlines,
+  indexPriceKlines}/{BTCUSDT,ETHUSDT}/1d/*.zip` respond 200 via S3
+  from 2020-01 (2026-08 monthly 200; 2026-09 monthly 404 → daily
+  zips; 2026-09-12 daily 200) while `fapi.binance.com` stays 451;
+  each zip's sibling `.CHECKSUM` (`sha256  filename`) is verified
+  before parsing and a mismatch or missing checksum fails closed.
+  CSVs carry a header row in newer files and none in 2020 files;
+  timestamps are epoch ms. Forbidden and refused in code:
+  `premiumIndexKlines` / `premium` (funding-formula premium),
+  `klines` / `market/candles` (last-trade), `fundingRate`
+  (funding-implied), trade/book tapes. Quote is **USDT** on both
+  venues. A day missing on either side is a skip, never a zero. The
+  HuggingFace `asiletto81/hyperliquid` mirror (ends 2026-06-01)
+  remains the third tape on the #126 freeze path.
 
 ### Fee schedules (#138)
 

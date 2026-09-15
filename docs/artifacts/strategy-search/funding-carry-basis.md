@@ -131,3 +131,92 @@ soak path does not unlock a pin. Leave every
   basis on both + paper path + dual passers; every
   `PAPER_PROMOTE_*=false` until earned.
 
+
+## Dual basis re-score (#134)
+
+Generated 2026-09-13 from two live runs of
+`traderstack-funding-carry --live --interval 1d --basis-dir
+var/research/basis` (second run `--fee-bps 80`). Paper / research
+only. No `PAPER_PROMOTE_*` flip. No live.
+
+**Header.** Print kind `dual_print`; funding primary `hyperliquid`
+(hourly `fundingHistory`, 800d lookback, resampled to UTC daily sums),
+second `htx` (8h `funding_rate`, 800d); Kraken public Spot daily 720
+committed bars **2024-09-23 → 2026-09-12** on BTC/USD and ETH/USD;
+aligned bars primary **720** / second **720**; hard gates
+**available**; `basis_status=ok`, `basis_print_kind=dual_basis`,
+`basis_venue=okx`, `second_basis_venue=binance_vision`. Basis series
+reached (status **ok** on every leg): OKX BTC/ETH 720/720 days aligned
+with the HL funding days; Binance Vision BTC/ETH 719/719 days aligned
+with the HTX funding days (one calendar gap inside the window, skipped
+not filled). Fee prints: **10 bps + 5 bps** (modelled default) and
+**80 bps + 5 bps** (Kraken Pro Tier-1 taker per side, #138); hedged
+carry pays 2 legs × (fee + slippage) on each harvest on/off flip.
+
+**Pairing (frozen in code before the pull).** primary funding print
+(Hyperliquid) × OKX mark−index; second funding print (HTX) × Binance
+Vision mark−index. Cross-venue, stated not hidden. USDT quote on both
+basis legs.
+
+### `carry_hedged_sign` (the only dual-print passer, unchanged)
+
+| print | basis | fee | WF total | holdout total | full-sample | #96 | A (ratio) | B | C | combined |
+| --- | --- | ---: | ---: | ---: | ---: | :---: | :---: | :---: | :---: | :---: |
+| HL funding × OKX basis | applied (720d) | 10+5 | +1.71% | +3.33% | +27.76% | true | true (0.874) | 3/3 | true | **true** |
+| HTX funding × Vision basis | applied (719d) | 10+5 | +1.49% | +3.30% | +21.26% | true | true (0.804) | 3/3 | true | **true** |
+| HL funding × OKX basis | applied (720d) | 80+5 | +1.71% | +3.33% | +25.96% | true | true (0.874) | 3/3 | true | **true** |
+| HTX funding × Vision basis | applied (719d) | 80+5 | +1.49% | +3.30% | +19.56% | true | true (0.804) | 3/3 | true | **true** |
+
+Basis-unaware reference (2026-09-12 print, same window shape): HL WF
++1.72% / HO +3.32% / full +27.71%; HTX WF +1.50% / HO +3.31% / full
++21.26%. The window rolled one day versus that reference (2024-09-23 → 2026-09-12
+here vs 2024-09-22 → 2026-09-11 there), so the deltas below mix that roll
+with the basis term. The full-sample number moved by **+0.05 pp**
+(HL×OKX) and **0.00 pp** (HTX×Vision), and the walk-forward / holdout
+means by ≤0.01 pp. That is what the construction implies: for an
+always-on hedged position the daily `prev_basis − current_basis` term
+telescopes to `basis_entry − basis_exit` over any contiguous harvest
+span, and a perp's mark−index is a few bps, so basis is a small unwind
+term here, not a per-day signal. It is now measured rather than
+skipped, which is the point of this issue.
+
+The other three carry rows (`abs_1bp`, `abs_3bp`, `z_1_5`) remain
+ineligible on both prints and collapse further at 80 bps (−14% to −22%
+WF) because they flip repeatedly.
+
+**Was the #96+A+B+C bar reachable on each print?** Yes on both, at
+both fee prints. At 80 bps the WF and holdout numbers are unchanged
+because `carry_hedged_sign` is always-on and flips **once**, so the
+Tier-1 taker cost appears only as a 1.7–1.8 pp lower full-sample
+return.
+
+### Honesty / known optimism (frozen model, not retuned here)
+
+- The #111 hedged-carry model charges legs only on harvest **on/off**
+  transitions. `carry_hedged_sign` harvests `|rate|`, so a funding
+  **sign** change (short-perp/long-spot ↔ long-perp/short-spot) is not
+  charged as a flip. That is an optimism in the frozen catalog; it is
+  recorded here and left for a follow-up rather than retuned after
+  seeing PnL.
+- Basis is applied only on days where both the current and previous
+  print have a value; the harvest decision never sees basis; missing
+  days are skipped. The HTX print has 719 not 720 basis days for that
+  reason.
+- Funding tapes and basis tapes are different venues (HL/HTX funding;
+  OKX/Binance basis). A same-venue Binance funding × Binance basis print
+  (Vision `fundingRate` zips) is a follow-up.
+- Statistical power is unchanged: this is still one ~2-year window.
+  Era prints (2020→) and Deflated Sharpe / PBO are #133 / #135 / #136.
+
+### Promotion decision
+
+`can_promote` is **true** in both committed reports: the pre-registered
+conjunction (dual-print **and** hard gates **and** `basis_status=ok`
+**and** paper path **and** a dual-print passer) is now fully evaluated
+and clears for `carry_hedged_sign`. That is a **report field only**.
+This PR changes no `PAPER_PROMOTE_*` default, adds no Settings pin, and
+hedged carry is still not executable on the Kraken paper-spot path
+(the paper hedge+funding soak, `PAPER_PERP_HEDGE`, stays default
+false). Whether to propose a documented default-false pin is a human
+decision for a follow-up, after the known-optimism item above is
+either fixed or accepted. Do not enable live.
