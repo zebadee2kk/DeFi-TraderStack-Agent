@@ -358,3 +358,57 @@ def test_check_config_mentions_eval_cli() -> None:
     item = next(item for item in report.items if "weather eval" in item.label.lower())
     assert "report-only" in item.value
     assert "dual" in (item.detail or "").lower() or "dual" in item.value.lower()
+
+
+# --- polymarket weather PIT tape (#141) ---
+
+
+def _lower_row(**overrides: object) -> ResolvedWeatherRow:
+    payload: dict[str, object] = {
+        "market_id": "m-lower",
+        "city_slug": "miami",
+        "event_date": date(2026, 9, 14),
+        "contract": TemperatureContract.THRESHOLD_OR_LOWER,
+        "threshold_f": 88.0,
+        "forecast_high_f": 86.0,
+        "forecast_issued_at": datetime(2026, 9, 14, 12, tzinfo=UTC),
+        "market_mid": 0.55,
+        "half_spread": 0.01,
+        "official_high_f": 87.0,
+        "station_id": "KMIA",
+        "resolution_source": "iem_asos",
+        "close_at": datetime(2026, 9, 15, 4, tzinfo=UTC),
+        "print_id": "2026-09",
+    }
+    payload.update(overrides)
+    return ResolvedWeatherRow(**payload)  # type: ignore[arg-type]
+
+
+def test_threshold_or_lower_rows_resolve_on_the_official_high() -> None:
+    assert yes_won(_lower_row()) is True
+    assert yes_won(_lower_row(official_high_f=89.0)) is False
+    assert yes_won(_lower_row(official_high_f=88.0)) is True
+
+
+def test_threshold_or_lower_row_without_a_threshold_is_unparsed() -> None:
+    report = run_weather_eval(
+        {"2026-09": (_lower_row(threshold_f=None, official_high_f=87.0),)},
+        min_edge=0.08,
+        fee_haircut=0.02,
+        sigma_f=2.5,
+        allowlist=("miami",),
+    )
+    assert report.prints[0].n_eligible == 0
+    assert any(row.reason == "unparsed" for row in report.dispositions)
+
+
+def test_threshold_or_lower_row_is_eligible_and_cannot_promote() -> None:
+    report = run_weather_eval(
+        {"2026-09": (_lower_row(),)},
+        min_edge=0.08,
+        fee_haircut=0.02,
+        sigma_f=2.5,
+        allowlist=("miami",),
+    )
+    assert report.prints[0].n_eligible == 1
+    assert report.can_promote is False

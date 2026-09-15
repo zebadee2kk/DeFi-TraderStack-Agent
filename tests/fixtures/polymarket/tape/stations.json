@@ -1,0 +1,36 @@
+{
+ "ghcn_mia_mismatch": [
+  {
+   "DATE": "2025-06-02",
+   "STATION": "USW00012839",
+   "TMAX": "92"
+  }
+ ],
+ "ghcn_missing_tmax": [
+  {
+   "DATE": "2025-06-02",
+   "STATION": "USW00012839"
+  }
+ ],
+ "ghcn_phnl": [
+  {
+   "DATE": "2025-06-01",
+   "STATION": "USW00022521",
+   "TMAX": "83"
+  },
+  {
+   "DATE": "2025-06-02",
+   "STATION": "USW00022521",
+   "TMAX": "86"
+  },
+  {
+   "DATE": "2025-06-03",
+   "STATION": "USW00022521",
+   "TMAX": "87"
+  }
+ ],
+ "iem_mia_csv": "station,day,max_temp_f\nMIA,2025-06-02,89.0\n",
+ "iem_phnl_blank_csv": "station,day,max_temp_f\nPHNL,2025-06-01,\n",
+ "iem_phnl_csv": "station,day,max_temp_f\nPHNL,2025-06-01,83.0\nPHNL,2025-06-02,86.0\nPHNL,2025-06-03,87.0\n",
+ "iem_station_not_found": "ERROR: station: HNL not found in network: HI_ASOS"
+}
