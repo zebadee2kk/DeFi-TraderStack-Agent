@@ -504,6 +504,24 @@ class Settings(BaseSettings):
     onchain_regime_source_asset: str = "btc"
     onchain_regime_max_percentile: float = Field(default=0.90, gt=0, le=1)
     coinmetrics_base_url: str = "https://community-api.coinmetrics.io"
+    # --- fee realism (#138) ---
+    # Kraken Pro spot published schedule (kraken.com/features/fee-schedule,
+    # read 2026-09-13; frozen in traderstack.fee_tiers). The tier's TAKER leg
+    # is charged on every paper fill, the no-venue-fee reconcile fallback and
+    # every research print (research fee = max(PRETRADE_FEE_BPS, taker)).
+    # Default is the pilot tier (Tier 1, $0+ 30d volume: maker 40 / taker 80
+    # bps). "modelled" restores the pre-#138 PAPER_FEE_BPS behaviour. Maker
+    # bps are never assumed: no post-only orders (#73) and no paper fill-rate
+    # evidence exist yet. Not read by RiskEngine; not in RISK_LIMIT_FIELDS; a
+    # fee can only withhold (it debits NAV, which the breakers already read).
+    paper_fee_tier: Literal[
+        "kraken_pro_spot_t1",
+        "kraken_pro_spot_t2",
+        "kraken_pro_spot_t3",
+        "kraken_pro_spot_t8",
+        "kraken_pro_spot_t12",
+        "modelled",
+    ] = "kraken_pro_spot_t1"
 
     @property
     def assets(self) -> tuple[str, ...]:
@@ -747,6 +765,17 @@ class Settings(BaseSettings):
             for x in self.polymarket_weather_cities.split(",")
             if x.strip()
         )
+
+    # --- fee realism (#138) ---
+    @property
+    def effective_paper_fee_bps(self) -> float:
+        """Taker bps charged on a paper fill and used as the paper leg of the
+        research fee: the PAPER_FEE_TIER taker, or PAPER_FEE_BPS when the tier
+        is ``modelled``."""
+
+        from traderstack.fee_tiers import effective_taker_bps
+
+        return effective_taker_bps(self.paper_fee_tier, paper_fee_bps=self.paper_fee_bps)
 
 
 # Modes the continuous service may actually run. `live` is accepted by Settings

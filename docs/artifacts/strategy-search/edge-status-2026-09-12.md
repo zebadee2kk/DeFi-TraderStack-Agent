@@ -1437,3 +1437,25 @@ hurt); the other `mvrvz_p80` names `hurts`; `nupl_075` never bound (NUPL
 never exceeded 0.75 on either print → `neutral`). No new pin. The runtime
 gate (`ONCHAIN_REGIME_GATE_ENABLED`) stays off by default and can only
 withhold new longs. See `onchain-regime.md`.
+## Addendum 2026-09-15 — #140 wide-universe top-k (first print)
+
+`traderstack-xs-topk` scored the frozen long-only top-k catalog (12
+baskets + `ew_bh_universe` control) on the Kraken public daily print
+(568 names, 2024-09-24 → 2026-09-14,
+one era). Dual-print passers: **0** — one venue × one era cannot
+dual-print by construction. Single-print bar passers at the pilot
+cost: 0. No new pin; `PAPER_PROMOTE_*` defaults
+unchanged; `RiskEngine` limits documented, not widened. Second venue
+/ older eras wait on #133; DSR / PBO on #135. See `xs-topk.md`.
+## Addendum 2026-09-13 (#134)
+
+Second-venue PIT basis is no longer UNAVAILABLE: OKX
+`history-mark-price-candles − history-index-candles` (`1Dutc`) and
+Binance Vision `markPriceKlines − indexPriceKlines` (sha256-verified
+zips) give two independent daily mark−index tapes from 2020-01-01 with
+2429 / 2443 aligned days on BTC / ETH. `carry_hedged_sign` re-scored
+basis-aware on the live Kraken 720 (HL×OKX, HTX×Vision) at 10+5 and
+80+5 bps: still the only dual-print passer, hard gates true on both,
+basis effect ≈ +0.05 pp full-sample. `can_promote=true` is a report
+field; no `PAPER_PROMOTE_*` default changed, no pin added. See
+`pit-basis-second-venue.md`, `funding-carry-basis.md`.

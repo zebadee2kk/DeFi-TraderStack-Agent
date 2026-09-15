@@ -225,7 +225,8 @@ def build_pretrade_gate(settings: Settings) -> PreTradeBacktestGate:
     backtester = BaselineBacktester(
         ensemble=ensemble,
         starting_equity=settings.paper_starting_nav_usd,
-        fee_bps=research_fee_bps(settings.pretrade_fee_bps, settings.paper_fee_bps),
+        # --- fee realism (#138) --- PAPER_FEE_TIER taker (PAPER_FEE_BPS when modelled)
+        fee_bps=research_fee_bps(settings.pretrade_fee_bps, settings.effective_paper_fee_bps),
         slippage_bps=settings.pretrade_slippage_bps,
     )
     return PreTradeBacktestGate(
@@ -571,7 +572,8 @@ def build_service(
             connector_name=settings.hummingbot_connector_name,
             client=venue_client,  # paper-trading acceptance (Epic 10)
             # --- paper fees (#66) ---
-            paper_fee_bps=settings.paper_fee_bps,
+            # --- fee realism (#138) --- PAPER_FEE_TIER taker (PAPER_FEE_BPS when modelled)
+            paper_fee_bps=settings.effective_paper_fee_bps,
         )
         # Local paper fills are the book of record when PAPER_SIMULATE_FILLS
         # is on. Comparing that NAV to a Hummingbot paper account that may
@@ -615,7 +617,8 @@ def build_service(
                 min_notional_usd=settings.execution_min_notional_usd,
                 max_slippage_bps=settings.execution_max_slippage_bps,
             ),
-            paper_fee_bps=settings.paper_fee_bps,
+            # --- fee realism (#138) --- PAPER_FEE_TIER taker (PAPER_FEE_BPS when modelled)
+            paper_fee_bps=settings.effective_paper_fee_bps,
             paper_slippage_bps=settings.paper_slippage_bps,
             trading_mode=trading_mode,
         )
@@ -626,6 +629,8 @@ def build_service(
     if trading_mode == "paper" and settings.paper_perp_hedge:
         paper_perp_book = PaperPerpBook(
             trading_mode=trading_mode,
+            # --- fee realism (#138) --- stays PAPER_FEE_BPS: the perp stub prices
+            # Hyperliquid/HTX mids and a Kraken spot tier would be an invented perp fee.
             paper_fee_bps=settings.paper_fee_bps,
             paper_slippage_bps=settings.paper_slippage_bps,
             kill_switch=kill_switch,
