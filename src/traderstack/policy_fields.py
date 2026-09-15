@@ -60,6 +60,10 @@ NON_POLICY_FIELDS: tuple[str, ...] = (
     # Endpoints. Where a service lives, not what it is allowed to do.
     "binance_liq_url",
     "book_ticker_url",
+    # On-chain regime gate (#139). Where the Coin Metrics community series is
+    # read from; the gate's verdict-deciding fields are control plane in
+    # risk.py, but the host it talks to changes no decision.
+    "coinmetrics_base_url",
     "crucix_base_url",
     "database_url",
     "hummingbot_account_name",

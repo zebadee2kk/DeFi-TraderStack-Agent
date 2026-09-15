@@ -149,6 +149,14 @@ def test_policy_version_moves_with_every_declared_risk_limit() -> None:
         "trading_mode": "shadow",
         "paper_simulate_fills": False,
         "paper_slippage_bps": 50.0,
+        # --- on-chain regime gate (#139) ---
+        # A withhold-only pre-trade gate, but one that changes whether a BUY is
+        # built at all, so all three verdict-deciding fields are control plane
+        # and must each move the digest (see policy_fields.py for why the
+        # endpoint is not).
+        "onchain_regime_gate_enabled": True,
+        "onchain_regime_max_percentile": 0.5,
+        "onchain_regime_source_asset": "eth",
     }
     # Exhaustive over everything hashed into policy_version, not just the
     # risk-engine half (#69).

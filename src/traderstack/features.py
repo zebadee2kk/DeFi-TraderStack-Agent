@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,16 @@ class MarketFeatures(BaseModel):
 class OnChainFeatures(BaseModel):
     exchange_netflow_z: float | None = None
     large_wallet_accumulation: float | None = Field(default=None, ge=-1, le=1)
+    # --- on-chain regime gate (#139) ---
+    # Coin Metrics community derived valuation regime (onchain-regime-v1).
+    # RiskEngine does not read these. The pipeline's opt-in BUY-only gate
+    # reads mvrv_z_percentile only to ADD a rejection reason; nothing here
+    # sizes, sides, or authorises. None = not available this cycle.
+    mvrv_z: float | None = Field(default=None, ge=-10, le=10)
+    mvrv_z_percentile: float | None = Field(default=None, ge=0, le=1)
+    nupl: float | None = Field(default=None, ge=-5, le=1)
+    regime_as_of: date | None = None
+    regime_version: str | None = None
 
 
 class NarrativeFeatures(BaseModel):
