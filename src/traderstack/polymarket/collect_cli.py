@@ -242,7 +242,9 @@ class PolymarketWeatherTapeCollector:
                     continue
                 await self.tape.append(
                     TapeObservation(
-                        event_id=str(payload.get("eventId") or payload.get("id") or ""),
+                        # Only a real event id: the market's own ``id`` would
+                        # be a duplicate wearing the wrong label.
+                        event_id=str(payload.get("eventId") or payload.get("event_id") or ""),
                         market_id=market.market_id,
                         condition_id=market.condition_id,
                         city_slug=city.slug,
