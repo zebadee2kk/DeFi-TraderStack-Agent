@@ -49,6 +49,31 @@
 - [x] lookahead-bias test
 - [x] walk-forward evaluator
 - [x] performance attribution report
+- [x] selection-bias evidence in search reports (#135): pre-registered era
+      prints (2016-2019 / 2020-2022 / 2022-2024 / 2024-2026), Deflated Sharpe
+      (Bailey & Lopez de Prado), probability of backtest overfitting via CSCV,
+      and percentile-bootstrap CIs on Sharpe and expectancy replacing the fixed
+      trade-count floor. Vendored in pure Python (`research/overfitting.py`) —
+      no new dependency. Wired through the shared `run_harder_gates` path, so
+      the eleven dual-print families carry it, as do `-second-print` and
+      `-honesty-pack` (both score through `run_harder_gates`; second-print had
+      been computing the block and discarding it), and `-miles-search` (K is
+      the frozen catalog length it already publishes; an import cycle through
+      `selection_evidence` had to be broken first).
+      `-strategy-search` carries it behind an opt-in (its rows needed an
+      `interval` field recorded and a `per_series` alias; a guard test pins the
+      two row models field-for-field). `-daily-robustness`, `-liq-regime-search`
+      and `-funding-carry` do **not** carry it and are **not** wiring: they never
+      call `run_harder_gates`, so each needs a decision about what its trial
+      set is, and a wrong trial count silently weakens the DSR rather than
+      failing loudly. Additional withholding gate: it can only remove a
+      promotion, never grant one.
+- [x] multi-year candle fetchers (#133): `traderstack-download-candles --venue
+      coinbase|binance_vision|kraken_archive`, past Kraken's 720-bar REST cap,
+      with gap detection, checksum-verified Binance Vision months and a
+      cross-venue daily-close divergence flag. **Parse path tested offline
+      only** — all three hosts are egress-blocked from the build environment,
+      so no live multi-year pull has been performed.
 
 ## Epic 6 — Agent Runtime
 - [x] Claude model abstraction
@@ -70,6 +95,18 @@
 - [x] strategy circuit breaker (`circuit_breaker.py`)
 - [x] kill-switch API (`killswitch.py`; sentinel file, Redis key, SIGUSR1, setting)
 - [x] immutable risk-decision audit trail (`risk_audit.py`; SHA-256 chained JSONL)
+- [x] externally anchored chain head (#68): `{sequence, head_hash,
+      policy_version, anchored_at}` published every `AUDIT_ANCHOR_EVERY`
+      records and on shutdown to sinks outside the audit file, so a
+      regenerate-from-genesis rewrite — which passes `verify_chain` perfectly —
+      is caught by `traderstack-verify-audit`, and a divergent anchor halts the
+      service at startup through the #67 durable-state gate. Publishing never
+      blocks a cycle (failures counted on
+      `traderstack_audit_anchor_failures_total`); verification fails closed.
+      **Detection, not prevention**: a WORM/append-only sink is still the
+      unticked half, and anchors are not yet signed with an operator-held key,
+      so compromising both the trail and an anchor store still yields a
+      consistent pair.
 - [x] stale-state shutdown
 - [x] policy versioning derived from the risk limits in force
 
@@ -84,6 +121,18 @@ and reason string behind each control.
 - [x] order/fill state machine
 - [x] venue reconciliation
 - [x] retry/timeout handling
+
+The reducing-only quantity clamp that stops a protective exit overselling
+after adverse slippage (#130) is now enforced on **both** execution paths:
+`PaperFillSimulator` reads the cap from the in-memory paper book, and
+`IdempotentSubmitter` takes it from `PaperRuntime`, which passes the held
+quantity from the same `PortfolioSnapshot` the risk engine and the exit rules
+used for that cycle. A resumed `SUBMISSION_UNCERTAIN` order contributes its
+already-planned quantity as a second ceiling, so a replan at a moved price can
+only hold or shrink a reducing order. When no position view is supplied the
+order is left unclamped rather than refused — refusing a protective exit for
+want of a position view would reproduce #130's actual harm, a stop-loss that
+does not reduce risk. Covered by `tests/security/test_submitter_reduce_only.py`.
 
 ## Epic 9 — Observability
 - [x] OpenTelemetry traces

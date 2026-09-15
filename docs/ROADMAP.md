@@ -136,6 +136,29 @@ volume-confirmed breakout (price breakout **and** a volume
 gate; not a Donchian N retune) on that same dual-print bar.
 SOL is reported, not a gate. Paper-executable on Kraken
 spot. Empty dual-print is success.
+`traderstack-download-candles --venue coinbase|binance_vision|
+kraken_archive` is the post-#132 data slice (#133): multi-year
+history beyond Kraken's 720-bar REST cap, into the existing
+candle JSON format, with per-series venue/first/last/bar-count/
+gap/fetch-time report headers and a Kraken-vs-Coinbase daily
+close divergence flag at `MAX_REFERENCE_DIVERGENCE_BPS`. Gaps
+stay gaps and a 429 or a failed Binance Vision checksum is a
+whole-series skip, never a partial tape. **Not yet validated
+against a live response:** all three hosts are blocked by
+egress policy from the build environment, so the parse path is
+tested offline and the first real pull's report header is the
+verification record.
+The #135 evidence block (era prints, Deflated Sharpe, PBO)
+rides the shared `run_harder_gates` scoring path, so every
+report built on it carries print kind, trial count, DSR,
+catalog PBO, bootstrap CIs on Sharpe and expectancy, and a
+bootstrap trade floor. It is an **additional** withholding
+gate applied after combined promotion: it can only take a
+promotion away, never grant one, and nothing is promoted in
+the withheld name's place. A single-venue, single-era print
+withholds by default. The bars (DSR >= 0.95, PBO <= 0.50) are
+module constants, not `Settings` fields — a pre-registered
+test an operator cannot move after seeing PnL.
 **Freqtrade
 integration was not built** — a purpose-built research harness was
 implemented instead; revisit only if Freqtrade's own connector/strategy

@@ -24,7 +24,7 @@ Honesty rules (also written into every report):
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
@@ -36,6 +36,9 @@ from traderstack.research.candidates import (
     default_price_candidates,
     feature_candidates,
 )
+
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import SelectionEvidence, build_selection_evidence
 from traderstack.signal_registry import version_of
 from traderstack.strategies import StrategyEnsemble
 from traderstack.walkforward import WalkForwardEvaluator, WalkForwardReport
@@ -48,6 +51,12 @@ SELECTION_RULE = "pre_registered_top1"
 
 class AssetCandidateMetrics(BaseModel):
     asset: str
+    # --- era prints / DSR / PBO (#135) ---
+    # Recorded, not inferred: _score_asset already holds the candles. Makes
+    # this structurally identical to miles_search.SeriesCandidateMetrics, which
+    # is what the evidence builder reads. Defaulted so reports written before
+    # this field stay loadable (they simply carry no evidence).
+    interval: str = "unknown"
     candle_count: int
     research_bars: int
     holdout_bars: int
@@ -68,6 +77,18 @@ class CandidateSearchResult(BaseModel):
     requires_feature: str | None = None
     skipped_reason: str | None = None
     per_asset: list[AssetCandidateMetrics] = Field(default_factory=list)
+
+    @property
+    def per_series(self) -> list[AssetCandidateMetrics]:
+        """Alias read by the #135 evidence builder.
+
+        ``AssetCandidateMetrics`` and ``miles_search.SeriesCandidateMetrics``
+        carry the same fields; ``_fold_returns`` duck-types on ``.asset``,
+        ``.interval`` and ``.walkforward``. An alias keeps one list rather than
+        copying every row into a second model just to rename the attribute.
+        """
+        return self.per_asset
+
     mean_wf_excess_return: float | None = None
     mean_wf_total_return: float | None = None
     total_wf_trades: int = 0
@@ -101,6 +122,11 @@ class StrategySearchReport(BaseModel):
     require_holdout_confirmation: bool
     selection_rule: str
     multiple_testing: dict[str, Any]
+    # --- era prints / DSR / PBO (#135) ---
+    # Off unless the caller asks: run_search is called in a loop by
+    # funding_carry and liq_regime_search, and computing the bootstrap on every
+    # one of those would multiply cost for a block those reports do not carry.
+    selection_evidence: SelectionEvidence | None = None
     skipped_feature_families: list[dict[str, str]]
     history_notes: list[dict[str, str]] = Field(default_factory=list)
     edge_notes: list[dict[str, str]] = Field(default_factory=list)
@@ -209,11 +235,13 @@ def evaluate_candidate_on_asset(
     holdout_fraction: float,
 ) -> AssetCandidateMetrics:
     asset = candles[0].symbol if candles else "unknown"
+    interval = candles[0].interval if candles else "unknown"
     try:
         research, holdout = split_holdout(candles, holdout_fraction=holdout_fraction)
     except ValueError as exc:
         return AssetCandidateMetrics(
             asset=asset,
+            interval=interval,
             candle_count=len(candles),
             research_bars=0,
             holdout_bars=0,
@@ -264,6 +292,7 @@ def evaluate_candidate_on_asset(
 
     return AssetCandidateMetrics(
         asset=asset,
+        interval=interval,
         candle_count=len(candles),
         research_bars=len(research),
         holdout_bars=len(holdout),
@@ -297,6 +326,11 @@ def run_search(
     require_wf_total_return: bool = True,
     require_holdout_confirmation: bool = True,
     candidates: tuple[SearchCandidate, ...] | None = None,
+    # --- era prints / DSR / PBO (#135) ---
+    # Opt-in: funding_carry and liq_regime_search call run_search in a loop and
+    # do not carry an evidence block, so they must not pay for one.
+    # traderstack-strategy-search passes True.
+    include_selection_evidence: bool = False,
     liquidation: tuple[tuple[datetime, float], ...] | None = None,
     liquidation_by_symbol: dict[str, tuple[tuple[datetime, float], ...]] | None = None,
     funding: tuple[tuple[datetime, float], ...] | None = None,
@@ -449,8 +483,37 @@ def run_search(
     if selected is None or not selected.promoted:
         honesty += " No candidate cleared the bar on this data; paper promotion must stay off."
 
+    # --- era prints / DSR / PBO (#135) ---
+    # K is `k`, the frozen catalog length already published as
+    # multiple_testing["n_candidates"], so the deflation term is the real
+    # trial count. One venue is scored here, so the print is single and
+    # withholds.
+    evidence = None
+    if include_selection_evidence:
+        from traderstack.research.daily_robustness import kraken_daily_candles
+
+        evidence_interval = next(
+            (candles[0].interval for candles in histories.values() if candles), "1d"
+        )
+        evidence = build_selection_evidence(
+            # Structurally, not nominally, the row type the builder declares:
+            # it reads only `candidate_id` and `per_series`, and
+            # AssetCandidateMetrics carries the same fields as
+            # miles_search.SeriesCandidateMetrics. The two models are held to
+            # that equivalence by
+            # test_strategy_search_rows_stay_shape_compatible_with_the_evidence_builder,
+            # which fails if either grows a field the other lacks.
+            cast("Any", rows),
+            primary_candles=kraken_daily_candles(histories, "BTC/USD", interval=evidence_interval),
+            primary_venue="scored_venue",
+            interval=evidence_interval,
+            test_size=test_size,
+            configured_min_trades=min_trades,
+        )
+
     return StrategySearchReport(
         generated_at=now or datetime.now(UTC),
+        selection_evidence=evidence,
         symbols=sorted(histories),
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
@@ -620,4 +683,8 @@ def render_search_markdown(report: StrategySearchReport) -> str:
                 f"(WF excess={wf}, holdout excess={ho}; blocked by: {reasons})."
             )
     lines.append("")
+    # --- era prints / DSR / PBO (#135) ---
+    from traderstack.research.selection_evidence import render_evidence_lines
+
+    lines.extend(render_evidence_lines(report.selection_evidence))
     return "\n".join(lines)

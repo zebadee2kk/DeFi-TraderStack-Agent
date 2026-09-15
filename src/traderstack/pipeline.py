@@ -32,6 +32,11 @@ class PaperOrderIntent(BaseModel):
     side: Side
     notional_usd: float = Field(gt=0)
     venue: str = "kraken_paper_trade"
+    # --- protective-exit sizing (#130) ---
+    # Set only by the deterministic exit path. The execution boundary may
+    # clamp such an order DOWN to the held quantity (never up); entry orders
+    # leave it False so the clamp can never resize an entry.
+    reduce_only: bool = False
 
 
 class PipelineResult(BaseModel):
@@ -386,6 +391,8 @@ class VerticalSlicePipeline:
                 asset=signal.asset,
                 side=signal.side,
                 notional_usd=risk_result.approved_notional_usd,
+                # --- protective-exit sizing (#130) ---
+                reduce_only=True,
             )
         return PipelineResult(
             accepted_market_data=True,

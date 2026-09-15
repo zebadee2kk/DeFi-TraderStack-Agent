@@ -20,7 +20,7 @@ from traderstack.circuit_breaker import StrategyCircuitBreaker
 from traderstack.config import Settings
 from traderstack.killswitch import KillSwitch
 from traderstack.models import PortfolioSnapshot, RiskDecision, Side, TradeProposal
-from traderstack.risk import RISK_LIMIT_FIELDS, RiskEngine, risk_limits
+from traderstack.risk import POLICY_FIELDS, RiskEngine, risk_limits
 
 
 def _proposal(notional: float = 100.0) -> TradeProposal:
@@ -137,8 +137,22 @@ def test_policy_version_moves_with_every_declared_risk_limit() -> None:
         "exit_trailing_stop_pct": 0.01,
         "exit_time_stop_bars": 12,
         "exit_on_thesis_invalidation": True,
+        # --- policy-version coverage (#69 / SEC-2026-09-18) ---
+        "intelligence_required": True,
+        "intelligence_block_on_adverse_news": False,
+        "meta_agent_mode": "off",
+        "reconcile_interval_seconds": 5.0,
+        "execution_submit_timeout_seconds": 99.0,
+        "execution_max_retries": 7,
+        "robinhood_chain_allowed_routers": "0xdeadbeef",
+        "robinhood_chain_allowed_tokens": "0xfeedface",
+        "trading_mode": "shadow",
+        "paper_simulate_fills": False,
+        "paper_slippage_bps": 50.0,
     }
-    assert set(changes) == set(RISK_LIMIT_FIELDS)
+    # Exhaustive over everything hashed into policy_version, not just the
+    # risk-engine half (#69).
+    assert set(changes) == set(POLICY_FIELDS)
     for field, value in changes.items():
         altered = Settings(**{"kill_switch": False, field: value})  # type: ignore[arg-type]
         assert RiskEngine(altered).policy_version != baseline, field
