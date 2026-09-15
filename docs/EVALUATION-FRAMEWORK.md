@@ -429,12 +429,23 @@ family that scores through `dual_print_search._score`:
 `traderstack-calendar-seasonality`, `traderstack-lead-lag`,
 `traderstack-volume-breakout`.
 
-**Not yet carrying the block:** `traderstack-strategy-search`,
+`traderstack-honesty-pack` also carries it: it scores through
+`run_harder_gates` and now surfaces that report's block.
+
+`traderstack-second-print` was listed here as covered before it was: the
+scorer computed the evidence and `_score_histories` discarded the report,
+returning rows only. It now returns both, and
+`test_second_print_surfaces_the_selection_evidence_block` pins that, as
+`test_honesty_pack_surfaces_the_selection_evidence_block` does for the pack.
+
+**Not carrying the block:** `traderstack-strategy-search`,
 `traderstack-miles-search`, `traderstack-daily-robustness`,
-`traderstack-liq-regime-search`, `traderstack-funding-carry` and
-`traderstack-honesty-pack`, which build their reports on
-`research.search` / `research.miles_search` / `research.daily_robustness`
-rather than on the harder-gates path. Extending
-`build_selection_evidence` to those report models is the next slice; it
-needs no new statistics, only wiring. This is the first slice of #48 and
-does not close it.
+`traderstack-liq-regime-search` and `traderstack-funding-carry`. These build
+their reports on `research.search` / `research.miles_search` /
+`research.daily_robustness` and never call `run_harder_gates`, so — contrary
+to what this section previously claimed — extending the block to them is
+**not** wiring. Each needs a decision about what its trial set is, and the
+trial count is the deflation term: a wrong K silently *weakens* the DSR
+rather than failing loudly, which is worse than reporting no DSR at all. So
+they stay uncovered until that is designed per CLI, not guessed. This is the
+first slice of #48 and does not close it.

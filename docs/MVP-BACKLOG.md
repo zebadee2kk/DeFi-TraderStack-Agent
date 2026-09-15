@@ -55,11 +55,15 @@
       and percentile-bootstrap CIs on Sharpe and expectancy replacing the fixed
       trade-count floor. Vendored in pure Python (`research/overfitting.py`) —
       no new dependency. Wired through the shared `run_harder_gates` path, so
-      the eleven dual-print families carry it; `traderstack-strategy-search`,
-      `-miles-search`, `-daily-robustness`, `-liq-regime-search`,
-      `-funding-carry`, `-honesty-pack` and `-second-print` do **not** yet
-      surface it (wiring only, no new statistics). Additional withholding gate:
-      it can only remove a promotion, never grant one.
+      the eleven dual-print families carry it, as do `-second-print` and
+      `-honesty-pack` (both score through `run_harder_gates`; second-print had
+      been computing the block and discarding it). `traderstack-strategy-search`,
+      `-miles-search`, `-daily-robustness`, `-liq-regime-search` and
+      `-funding-carry` do **not** carry it and are **not** wiring: they never
+      call `run_harder_gates`, so each needs a decision about what its trial
+      set is, and a wrong trial count silently weakens the DSR rather than
+      failing loudly. Additional withholding gate: it can only remove a
+      promotion, never grant one.
 - [x] multi-year candle fetchers (#133): `traderstack-download-candles --venue
       coinbase|binance_vision|kraken_archive`, past Kraken's 720-bar REST cap,
       with gap detection, checksum-verified Binance Vision months and a
