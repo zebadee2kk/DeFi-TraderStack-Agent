@@ -23,6 +23,7 @@ from traderstack.config import (
     PAPER_PROMOTE_UNIVERSE_SYMBOLS,
     Settings,
 )
+from traderstack.fee_tiers import MODELLED_FEE_TIER_ID, PILOT_FEE_TIER_ID, resolve_fee_tier
 from traderstack.market.crucix import crucix_effective_base_url, crucix_should_register
 
 
@@ -1010,7 +1011,9 @@ def build_report(settings: Settings) -> ConfigReport:
                 else "ignored"
             ),
             (
-                f"mid ± {settings.paper_slippage_bps:g} bps; fee {settings.paper_fee_bps:g} bps; "
+                # --- fee realism (#138) --- PAPER_FEE_TIER taker (PAPER_FEE_BPS when modelled)
+                f"mid ± {settings.paper_slippage_bps:g} bps; fee "
+                f"{settings.effective_paper_fee_bps:g} bps ({settings.paper_fee_tier}); "
                 "no Hummingbot required"
                 if settings.trading_mode == "paper" and settings.paper_simulate_fills
                 else (
@@ -1125,6 +1128,32 @@ def build_report(settings: Settings) -> ConfigReport:
         warnings.append(
             "POLYMARKET_WEATHER_ENABLED=true but POLYMARKET_WEATHER_CITIES is empty: "
             "the weather CLI fails closed (no cities to research)."
+        )
+
+    # --- fee realism (#138) ---
+    fee_tier = resolve_fee_tier(settings.paper_fee_tier)
+    items.append(
+        CheckItem(
+            "Paper fee tier",
+            settings.paper_fee_tier,
+            (
+                f"maker {fee_tier.maker_bps:g} / taker {fee_tier.taker_bps:g} bps; paper "
+                "fills, no-venue-fee reconcile fallback and research charge taker "
+                f"{settings.effective_paper_fee_bps:g} bps (research fee = max(PRETRADE_FEE_BPS "
+                f"{settings.pretrade_fee_bps:g}, taker) = "
+                f"{max(settings.pretrade_fee_bps, settings.effective_paper_fee_bps):g}); "
+                "maker not assumed (no post-only fill-rate evidence); PAPER_FEE_BPS "
+                f"{settings.paper_fee_bps:g} only when PAPER_FEE_TIER=modelled and on the "
+                f"paper perp stub; source {fee_tier.source} read {fee_tier.read_on}"
+            ),
+        )
+    )
+    if settings.paper_fee_tier == MODELLED_FEE_TIER_ID:
+        warnings.append(
+            f"PAPER_FEE_TIER=modelled: research and paper fills use the pre-#138 "
+            f"PAPER_FEE_BPS={settings.paper_fee_bps:g} bps model, four to eight times "
+            "optimistic versus Kraken Pro Tier 1 (taker 80 bps). Set "
+            f"PAPER_FEE_TIER={PILOT_FEE_TIER_ID} for a pilot-sized account."
         )
 
     return ConfigReport(items=items, warnings=warnings)

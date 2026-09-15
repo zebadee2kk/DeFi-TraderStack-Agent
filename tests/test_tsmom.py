@@ -547,3 +547,75 @@ def test_cli_defaults_and_writes(tmp_path: Path) -> None:
     assert "Keep every `PAPER_PROMOTE_*=false`" in text
     assert settings().paper_promote_ema_9_21 is False
     assert settings().paper_promote_ema_9_21_adx15 is False
+
+
+# --- fee realism (#138) ---
+def _tsmom_cli_payload(tmp_path: Path, extra: list[str]) -> tuple[dict, str]:
+    primary = datetime(2024, 9, 22, tzinfo=UTC)
+    older = datetime(2022, 10, 3, tzinfo=UTC)
+    btc = tmp_path / "btc.json"
+    eth = tmp_path / "eth.json"
+    btc_usdt = tmp_path / "btcusdt.json"
+    eth_usdt = tmp_path / "ethusdt.json"
+    write_candles(btc, downtrend(240, symbol="BTC/USD", start=primary))
+    write_candles(eth, downtrend(240, symbol="ETH/USD", start=primary))
+    write_candles(btc_usdt, downtrend(720, symbol="BTCUSDT", start=older))
+    write_candles(eth_usdt, downtrend(720, symbol="ETHUSDT", start=older))
+    out_json = tmp_path / "ops" / "tsmom.json"
+    out_md = tmp_path / "ops" / "tsmom.md"
+    parsed = build_parser().parse_args(
+        [
+            "--candles",
+            str(btc),
+            "--candles",
+            str(eth),
+            "--binance-candles",
+            str(btc_usdt),
+            "--binance-candles",
+            str(eth_usdt),
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+            "--train-size",
+            "80",
+            "--test-size",
+            "40",
+            "--step-size",
+            "40",
+            "--min-trades",
+            "1",
+            *extra,
+        ]
+    )
+    written_json, written_md = run(parsed, settings=settings(), candidates=_tiny_catalog())
+    return json.loads(written_json.read_text()), written_md.read_text()
+
+
+def test_cli_default_fee_is_the_pilot_tier_taker_and_the_report_says_so(tmp_path: Path) -> None:
+    payload, markdown = _tsmom_cli_payload(tmp_path, [])
+    assert payload["fee_bps"] == 80.0
+    assert payload["fee_tier"]["tier_id"] == "kraken_pro_spot_t1"
+    assert payload["fee_tier"]["taker_bps"] == 80.0
+    assert payload["fee_tier"]["maker_bps"] == 40.0
+    assert payload["fee_tier"]["role"] == "taker"
+    assert "Baseline costs: fee=80 bps + slippage=5 bps" in markdown
+    assert "Fee tier: Tier 1 ($0+ 30d) maker 40 / taker 80 bps" in markdown
+    assert "not assumed" in markdown
+
+
+def test_cli_fee_tier_flag_selects_tier_three(tmp_path: Path) -> None:
+    payload, markdown = _tsmom_cli_payload(tmp_path, ["--fee-tier", "kraken_pro_spot_t3"])
+    assert payload["fee_bps"] == 38.0
+    assert payload["fee_tier"]["tier_id"] == "kraken_pro_spot_t3"
+    assert "Fee tier: Tier 3 ($10K+ 30d) maker 22 / taker 38 bps" in markdown
+
+
+def test_cli_explicit_fee_bps_is_stamped_explicit(tmp_path: Path) -> None:
+    payload, markdown = _tsmom_cli_payload(
+        tmp_path, ["--fee-bps", "10", "--fee-tier", "kraken_pro_spot_t3"]
+    )
+    assert payload["fee_bps"] == 10.0
+    assert payload["fee_tier"]["tier_id"] == "explicit"
+    assert payload["fee_tier"]["fee_bps_used"] == 10.0
+    assert "Fee tier: --fee-bps 10" in markdown

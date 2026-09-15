@@ -284,9 +284,11 @@ ContinuousPaperService.run()  (loops until stopped or unhealthy)
         if paper_order is still set (risk ALLOW/REDUCE, meta-agent did not veto,
         kill switch not engaged) and durable/reconcile gates are clear: plan at
         primary mid ± PAPER_SLIPPAGE_BPS (adverse), write the ledger (idempotent
-        paper-fill:<client_order_id>), apply_fill with PAPER_FEE_BPS
-        (fee_source=modelled), set execution_status=paper_filled. Does not call
-        a venue. Compose app.command has no --submit; this is how NAV moves.
+        paper-fill:<client_order_id>), apply_fill charging the PAPER_FEE_TIER
+        taker bps (#138; default kraken_pro_spot_t1 = 80 bps; PAPER_FEE_BPS only
+        when PAPER_FEE_TIER=modelled) (fee_source=modelled), set
+        execution_status=paper_filled. Does not call a venue. Compose
+        app.command has no --submit; this is how NAV moves.
         A kill switch, reconciliation block, or torn ledger withholds.
         OPPORTUNITY_DIAGNOSTIC_MODE=true (#131) withholds here too, AFTER every
         upstream control has had its say (execution_status=diagnostic_withheld;
@@ -462,7 +464,8 @@ silent fresh start — that would forget every in-flight order and license a
 double submission. See `docs/RUNBOOK.md`, "Corrupt or torn checkpoint / ledger".
 
 Venue fills carry `fee_usd` and `fee_source` (`venue` when the venue reported
-a fee, `modelled` when `PAPER_FEE_BPS` was charged instead).
+a fee, `modelled` when the `PAPER_FEE_TIER` taker bps — `PAPER_FEE_BPS` only
+when `PAPER_FEE_TIER=modelled` — was charged instead; #138).
 `InMemoryPortfolioBook.apply_fill` debits cash and realized PnL by the fee so
 NAV, daily loss and drawdown — the numbers the risk engine's breakers read —
 are not systematically optimistic.
@@ -471,9 +474,13 @@ are not systematically optimistic.
 `make run-paper` do not pass `--submit`, so `IdempotentSubmitter` is never
 constructed and `execution_status` used to stay null. `PAPER_SIMULATE_FILLS`
 (default true on paper) books the fill in-process after risk allow: mid ±
-`PAPER_SLIPPAGE_BPS`, ledger row, `apply_fill` with `PAPER_FEE_BPS`. No venue
-API. `--submit` + Hummingbot remains an optional alternate; a Hummingbot
-receipt is still not a fill (`_reconcile_trades` is). When the local paper
+`PAPER_SLIPPAGE_BPS`, ledger row, `apply_fill` with the `PAPER_FEE_TIER` taker
+bps (default Kraken Pro Tier 1 = 80 bps; `PAPER_FEE_BPS` only when
+`PAPER_FEE_TIER=modelled`; #138). A paper fill is always a *taker* fill — the
+simulator fills at mid plus adverse slippage — so maker fees are never charged
+on a paper fill; the maker path is #73's post-only order type, which does not
+exist yet. No venue API. `--submit` + Hummingbot remains an optional
+alternate; a Hummingbot receipt is still not a fill (`_reconcile_trades` is). When the local paper
 fill is the book of record, Hummingbot NAV reconcile is not wired (it would
 drift) and venue trade rows for an already-`FILLED` modelled order are
 ignored so they cannot double-apply.

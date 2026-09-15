@@ -554,6 +554,56 @@ def test_candidate_result_defaults_are_not_promoted() -> None:
     assert row.eligible is False
 
 
+# --- fee realism (#138) ---
+def test_fee_tier_does_not_move_risk_policy_version() -> None:
+    a = settings(paper_fee_tier="modelled", paper_fee_bps=10.0)
+    b = settings(paper_fee_tier="kraken_pro_spot_t12")
+    c = settings(paper_fee_tier="kraken_pro_spot_t1")
+    assert derive_policy_version(a) == derive_policy_version(b) == derive_policy_version(c)
+
+
+def test_research_fee_is_the_conservative_of_pretrade_and_effective_paper_fee() -> None:
+    default = settings()
+    assert research_fee_bps(default.pretrade_fee_bps, default.effective_paper_fee_bps) == 80.0
+    modelled = settings(paper_fee_tier="modelled", paper_fee_bps=5.0)
+    assert research_fee_bps(modelled.pretrade_fee_bps, modelled.effective_paper_fee_bps) == 10.0
+    tier_twelve = settings(paper_fee_tier="kraken_pro_spot_t12", pretrade_fee_bps=25.0)
+    assert (
+        research_fee_bps(tier_twelve.pretrade_fee_bps, tier_twelve.effective_paper_fee_bps) == 25.0
+    )
+
+
+def test_search_cli_stamps_the_fee_tier(tmp_path: Path) -> None:
+    candles_path = tmp_path / "btc.json"
+    write_candles(candles_path, downtrend(360))
+    out_json = tmp_path / "ops" / "report.json"
+    out_md = tmp_path / "ops" / "report.md"
+    args = build_parser().parse_args(
+        [
+            "--candles",
+            str(candles_path),
+            "--output-json",
+            str(out_json),
+            "--output-md",
+            str(out_md),
+            "--train-size",
+            "80",
+            "--test-size",
+            "40",
+            "--step-size",
+            "40",
+            "--fee-tier",
+            "kraken_pro_spot_t2",
+        ]
+    )
+    run(args, settings=settings())
+    payload = json.loads(out_json.read_text())
+    assert payload["fee_bps"] == 60.0
+    assert payload["fee_tier"]["tier_id"] == "kraken_pro_spot_t2"
+    assert "PAPER_FEE_TIER taker" in payload["cost_note"]
+    assert "Fee tier: Tier 2 ($2.5K+ 30d) maker 30 / taker 60 bps" in out_md.read_text()
+
+
 def test_strategy_search_rows_stay_shape_compatible_with_the_evidence_builder() -> None:
     """Guard for the structural assumption `run_search` relies on (#135).
 

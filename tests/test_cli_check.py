@@ -640,3 +640,44 @@ def test_main_exits_zero_on_safe_defaults(monkeypatch, capsys) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main()
     assert exc_info.value.code == 0
+
+
+# --- fee realism (#138) ---
+def test_paper_fee_tier_default_is_pilot_tier_and_safe() -> None:
+    report = build_report(settings())
+    item = next(item for item in report.items if item.label == "Paper fee tier")
+    assert item.value == "kraken_pro_spot_t1"
+    assert "taker 80" in item.detail
+    assert "maker 40" in item.detail
+    assert "maker not assumed" in item.detail
+    assert "kraken.com/features/fee-schedule" in item.detail
+    assert report.safe
+    assert not any("PAPER_FEE_TIER" in warning for warning in report.warnings)
+
+
+def test_paper_fee_tier_modelled_warns() -> None:
+    report = build_report(settings(paper_fee_tier="modelled"))
+    item = next(item for item in report.items if item.label == "Paper fee tier")
+    assert item.value == "modelled"
+    assert "taker 10" in item.detail
+    warning = next(warning for warning in report.warnings if "PAPER_FEE_TIER=modelled" in warning)
+    assert "optimistic" in warning
+    assert "kraken_pro_spot_t1" in warning
+
+
+def test_paper_fee_tier_renders_in_the_report(capsys) -> None:
+    report = build_report(settings(paper_fee_tier="kraken_pro_spot_t3"))
+    print(render_report(report, app_env="development"))
+    out = capsys.readouterr().out
+    assert "Paper fee tier" in out
+    assert "kraken_pro_spot_t3" in out
+    assert "taker 38" in out
+
+
+def test_paper_simulate_fills_item_prints_the_effective_tier_fee() -> None:
+    report = build_report(settings())
+    simulate = next(item for item in report.items if item.label == "Paper simulate fills")
+    assert "fee 80 bps (kraken_pro_spot_t1)" in simulate.detail
+    modelled = build_report(settings(paper_fee_tier="modelled"))
+    simulate = next(item for item in modelled.items if item.label == "Paper simulate fills")
+    assert "fee 10 bps (modelled)" in simulate.detail

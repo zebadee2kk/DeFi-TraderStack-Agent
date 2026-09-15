@@ -2251,3 +2251,88 @@ not alpha. The eval CLI implements the calculator for gates 1 / 4 / 5 in
 Gates 2 (walk-forward parameter fit) and 3 (a full season of live paper
 A/B) are still not claimed. Do not promote this module toward live CLOB
 trading from paper intents or a single fixture pack.
+
+## Fee realism (Kraken Pro tier) (#138)
+
+Research used to score every candidate at `PRETRADE_FEE_BPS=10` +
+`PRETRADE_SLIPPAGE_BPS=5` per leg (gate C at 20+10), and paper fills
+charged `PAPER_FEE_BPS=10`. Kraken's published Pro spot schedule
+(kraken.com/features/fee-schedule, read 2026-09-13, frozen in
+`src/traderstack/fee_tiers.py`) starts far above that:
+
+| `PAPER_FEE_TIER` | 30-day volume | maker bps | taker bps | round trip taker |
+| --- | --- | ---: | ---: | ---: |
+| `kraken_pro_spot_t1` (default, pilot) | $0+ | 40 | 80 | 160 |
+| `kraken_pro_spot_t2` | $2.5K+ | 30 | 60 | 120 |
+| `kraken_pro_spot_t3` | $10K+ | 22 | 38 | 76 |
+| `kraken_pro_spot_t8` | ~$500K+ | 8 | 20 | 40 |
+| `kraken_pro_spot_t12` | $10M+ | 0 | 10 | 20 |
+| `modelled` | n/a | `PAPER_FEE_BPS` | `PAPER_FEE_BPS` | 2× `PAPER_FEE_BPS` |
+
+What the tier changes:
+
+- **Paper fills** (`execution_status=paper_filled`), the no-venue-fee
+  fallback in `HummingbotExecutionReconciler`, and the paper pre-trade
+  backtest gate all charge the tier's **taker** leg
+  (`Settings.effective_paper_fee_bps`). Default Tier 1 = 80 bps per leg.
+  Wherever an earlier section of this runbook says "`PAPER_FEE_BPS`"
+  for a paper fill or a `fee_source=modelled` ledger fee, read
+  "`PAPER_FEE_TIER` taker (`PAPER_FEE_BPS` only when
+  `PAPER_FEE_TIER=modelled`)". `PAPER_FEE_BPS` still applies to the
+  paper perp stub (`PAPER_PERP_HEDGE`): a Kraken spot tier would be an
+  invented perp fee.
+- **Every research CLI** (`traderstack-research`,
+  `traderstack-strategy-search`, `traderstack-miles-search`,
+  `traderstack-daily-robustness`, `traderstack-harder-gates`,
+  `traderstack-honesty-pack`, `traderstack-second-print`,
+  `traderstack-dual-print-search`, `traderstack-liq-regime-search`,
+  `traderstack-intraday-dual-print`, `traderstack-relative-value`,
+  `traderstack-xs-momentum`, `traderstack-donchian-breakout`,
+  `traderstack-tsmom`, `traderstack-bollinger-fade`,
+  `traderstack-calendar-seasonality`, `traderstack-lead-lag`,
+  `traderstack-volume-breakout`) takes `--fee-tier <id>` and scores at
+  `max(PRETRADE_FEE_BPS, tier taker)` + `PRETRADE_SLIPPAGE_BPS`.
+  Precedence: explicit `--fee-bps N` (report stamped `explicit`) >
+  `--fee-tier` > `PAPER_FEE_TIER`. Wherever an earlier section says
+  `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)`, read
+  `max(PRETRADE_FEE_BPS, PAPER_FEE_TIER taker)`. Gate C stays 2× the
+  tier (160+10 bps per leg at Tier 1).
+  `traderstack-funding-carry` is the one research CLI without
+  `--fee-tier` yet: `research/funding_carry_cli.py` is owned by #134
+  (basis-aware carry) in this wave, so it still scores at
+  `max(PRETRADE_FEE_BPS, PAPER_FEE_BPS)` and prints no `fee_tier`
+  block; it gains the flag once #134 lands.
+- **Every report and `report.json` names the tier**: a `fee_tier` block
+  (`tier_id`, `maker_bps`, `taker_bps`, `role=taker`, `fee_bps_used`,
+  `source`, `read_on`) and a markdown line directly under the costs
+  line, e.g. `Fee tier: Tier 1 ($0+ 30d) maker 40 / taker 80 bps
+  (kraken_pro_spot_t1); scored at taker 80 bps. Maker bps shown for
+  information only, not assumed: no paper post-only fill-rate evidence
+  exists yet.` Reports generated before #138 have no `fee_tier` block
+  and were scored at 10+5; they still load.
+- **Maker fees are never assumed.** There is no `--fee-role`, no
+  `PAPER_MAKER_FEE_BPS`, and `FeeTierStamp.role` can only be `taker`.
+  Post-only limit orders are #73's planner design; one month of paper
+  fill-rate data must exist before any report may score at maker bps.
+- `traderstack-check-config` prints a `Paper fee tier` line and warns
+  when `PAPER_FEE_TIER=modelled` (four to eight times optimistic versus
+  Tier 1). `modelled` is the documented way back to pre-#138 numbers,
+  not a recommendation.
+
+What the tier does **not** change: it is not a risk limit
+(`RiskEngine` never reads it; it is not in `RISK_LIMIT_FIELDS` and does
+not move `policy_version`), it cannot size a trade upward or pick a
+side, and it never flips a `PAPER_PROMOTE_*` flag. A higher fee only
+debits NAV, which the daily-loss and drawdown breakers already read, so
+it can only withhold. Expect the #131 funnel to show `pretrade` as the
+dominant blocking gate at Tier 1 and near-zero paper fills — that is
+honest. An empty catalog at Tier 1 is a successful research result; the
+committed pre-#138 catalogs are re-scored on the new default by #136,
+not regenerated here.
+
+```bash
+.venv/bin/traderstack-tsmom --live                                   # Tier 1 taker (default)
+.venv/bin/traderstack-tsmom --live --fee-tier kraken_pro_spot_t3     # $10K+ 30d account
+.venv/bin/traderstack-tsmom --live --fee-bps 10                      # stamped "explicit"
+PAPER_FEE_TIER=modelled .venv/bin/traderstack-check-config           # warns
+```

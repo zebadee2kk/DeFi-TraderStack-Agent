@@ -63,7 +63,10 @@ def test_build_service_wires_the_execution_stack(tmp_path: Path) -> None:
     assert service.portfolio_reconciler is None
     assert isinstance(service.paper_fill_simulator, PaperFillSimulator)
     assert service.paper_perp_book is None
-    assert service.paper_fill_simulator.paper_fee_bps == pytest.approx(settings.paper_fee_bps)
+    # --- fee realism (#138) --- PAPER_FEE_TIER taker (PAPER_FEE_BPS when modelled)
+    assert service.paper_fill_simulator.paper_fee_bps == pytest.approx(
+        settings.effective_paper_fee_bps
+    )
     assert service.paper_fill_simulator.paper_slippage_bps == pytest.approx(
         settings.paper_slippage_bps
     )
@@ -81,7 +84,9 @@ def test_build_service_wires_the_execution_stack(tmp_path: Path) -> None:
     assert submitter.planner.lot_step == pytest.approx(0.001)
     assert submitter.planner.min_notional_usd == pytest.approx(25.0)
     assert submitter.planner.max_slippage_bps == pytest.approx(20.0)
-    assert service.execution_reconciler.paper_fee_bps == pytest.approx(settings.paper_fee_bps)
+    assert service.execution_reconciler.paper_fee_bps == pytest.approx(
+        settings.effective_paper_fee_bps
+    )
 
 
 def test_build_service_wires_paper_perp_stub_when_opted_in(tmp_path: Path) -> None:
@@ -216,3 +221,61 @@ def test_build_service_promote_ema_forces_daily_candle_interval(tmp_path: Path) 
     assert gate.compare_full_history_drawdown is False
     assert gate.walkforward is not None
     assert gate.walkforward.train_warmup is True
+
+
+# --- fee realism (#138) ---
+def test_build_service_charges_the_tier_taker_on_paper_fills(tmp_path: Path) -> None:
+    settings = settings_for_paper_submission()
+    assert settings.paper_fee_tier == "kraken_pro_spot_t1"
+    service = build_service(
+        settings,
+        submit=True,
+        cycle_seconds=1.0,
+        portfolio=InMemoryPortfolioBook(starting_nav_usd=10_000),
+        on_result=_noop,
+        checkpoint_store=JsonPortfolioCheckpointStore(tmp_path / "portfolio.json"),
+        execution_ledger=ExecutionLedger(),
+        ledger_store=JsonExecutionLedgerStore(tmp_path / "execution_ledger.json"),
+    )
+    assert isinstance(service.paper_fill_simulator, PaperFillSimulator)
+    assert service.paper_fill_simulator.paper_fee_bps == pytest.approx(80.0)
+    assert isinstance(service.execution_reconciler, HummingbotExecutionReconciler)
+    assert service.execution_reconciler.paper_fee_bps == pytest.approx(80.0)
+
+
+def test_build_service_modelled_tier_restores_paper_fee_bps(tmp_path: Path) -> None:
+    settings = settings_for_paper_submission().model_copy(
+        update={"paper_fee_tier": "modelled", "paper_fee_bps": 12.5}
+    )
+    service = build_service(
+        settings,
+        submit=True,
+        cycle_seconds=1.0,
+        portfolio=InMemoryPortfolioBook(starting_nav_usd=10_000),
+        on_result=_noop,
+        checkpoint_store=JsonPortfolioCheckpointStore(tmp_path / "portfolio.json"),
+        execution_ledger=ExecutionLedger(),
+        ledger_store=JsonExecutionLedgerStore(tmp_path / "execution_ledger.json"),
+    )
+    assert isinstance(service.paper_fill_simulator, PaperFillSimulator)
+    assert service.paper_fill_simulator.paper_fee_bps == pytest.approx(12.5)
+    assert isinstance(service.execution_reconciler, HummingbotExecutionReconciler)
+    assert service.execution_reconciler.paper_fee_bps == pytest.approx(12.5)
+
+
+def test_paper_perp_stub_keeps_paper_fee_bps_not_the_spot_tier(tmp_path: Path) -> None:
+    settings = settings_for_paper_submission().model_copy(
+        update={"paper_perp_hedge": True, "paper_fee_bps": 10.0}
+    )
+    service = build_service(
+        settings,
+        submit=False,
+        cycle_seconds=1.0,
+        portfolio=InMemoryPortfolioBook(starting_nav_usd=10_000),
+        on_result=_noop,
+        checkpoint_store=JsonPortfolioCheckpointStore(tmp_path / "portfolio.json"),
+    )
+    assert isinstance(service.paper_perp_book, PaperPerpBook)
+    assert service.paper_perp_book.paper_fee_bps == pytest.approx(10.0)
+    assert isinstance(service.paper_fill_simulator, PaperFillSimulator)
+    assert service.paper_fill_simulator.paper_fee_bps == pytest.approx(80.0)
