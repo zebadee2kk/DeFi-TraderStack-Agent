@@ -40,7 +40,7 @@ currently reaches it" is not.
 | SEC-2026-09-15 | Low | `execution/robinhood_chain.py` | `EvmJsonRpcClient` opens a **new** `httpx.AsyncClient` per call when no client is injected, so the `eth_chainId` verification is not bound to the connection that later runs `eth_estimateGas`/`eth_call`/`eth_getTransactionCount`. A load-balanced or rebound endpoint could answer the check and the simulation from different chains. Impact is bounded because nothing signs. | **Open** | `test_robinhood_chain_boundary.py::test_the_chain_id_is_verified_on_the_same_connection_that_subscribes` (asserts the *feed* does bind them) |
 | SEC-2026-09-16 | Low | `execution/robinhood_chain.py` | `prepare_swap` allowlists the router (`to`) but passes `calldata` and `value_wei` through entirely unvalidated — no method-selector allowlist, no recipient check, no `minAmountOut`/deadline check, and `value_wei` is not bounded by `max_notional_usd`. Scaffolding only (nothing calls it), but it is the file the future signer will consume. | **Open** | — |
 | SEC-2026-09-17 | Low | `market/adapters.py`, `runtime.py` | `KrakenTickerProvider` does not filter ticks by the requested symbol (`KrakenBookProvider` does), and `PaperRuntime._next_tick` returns the first tick the stream yields. A venue that answers a `BTC/USD` subscription with an `ETH/USD` tick would have the pipeline derive its asset from `tick.symbol`. It fails closed downstream — reference prices are fetched for the *requested* asset, so the mismatch trips `no_independent_reference_price` — but it fails closed by accident rather than by check. | **Fixed** | `test_kraken_resilience.py::test_ticker_ignores_ticks_for_unsubscribed_symbols`, `test_shadow_live.py::test_runtime_rejects_a_tick_for_the_wrong_symbol` |
-| SEC-2026-09-18 | Low | `risk.py`, `risk_audit.py` | `RISK_LIMIT_FIELDS` covers every limit the `RiskEngine` itself enforces (verified exhaustively by test), but `policy_version` does not cover the limits enforced *around* it: `pretrade_*`, `execution_min_notional_usd`, `execution_lot_step`, `execution_max_slippage_bps`, `max_nav_drift_bps`, `max_reference_divergence_bps`, `max_market_data_age_seconds`, `robinhood_chain_max_*`. Two audit records with identical `policy_version` can therefore come from runs with the pre-trade gate on and off. | **Fixed** | `test_halt_controls_cannot_be_bypassed.py::test_policy_version_moves_with_every_declared_risk_limit` |
+| SEC-2026-09-18 | Low | `risk.py`, `risk_audit.py` | `RISK_LIMIT_FIELDS` covers every limit the `RiskEngine` itself enforces (verified exhaustively by test), but `policy_version` does not cover the limits enforced *around* it: `pretrade_*`, `execution_min_notional_usd`, `execution_lot_step`, `execution_max_slippage_bps`, `max_nav_drift_bps`, `max_reference_divergence_bps`, `max_market_data_age_seconds`, `robinhood_chain_max_*`. Two audit records with identical `policy_version` can therefore come from runs with the pre-trade gate on and off. | **Fixed** (completed #69: the first pass added the named `pretrade_*` / execution / market-data / chain fields but still left `meta_agent_mode`, `intelligence_required`, `intelligence_block_on_adverse_news`, `reconcile_interval_seconds`, `trading_mode`, `paper_simulate_fills`, `paper_slippage_bps`, `execution_max_retries`, `execution_submit_timeout_seconds` and the chain allowlists out of the digest; coverage is now default-deny over the whole `Settings` surface rather than an include-list) | `test_halt_controls_cannot_be_bypassed.py::test_policy_version_moves_with_every_declared_risk_limit`, `test_policy_version_covers_every_setting.py::test_every_settings_field_is_explicitly_classified` |
 | SEC-2026-09-19 | Low | `market/robinhood_chain_feed.py` | A single malformed log kills the feed for good: `log["data"]` raises `KeyError`, `bytes.fromhex` raises `ValueError`, `int(str(...), 16)` raises `ValueError`, and none are caught (unlike the Kraken feed's reconnect loop). Fail-closed, but a hostile endpoint can end the venue feed with one message. | **Fixed** | `test_robinhood_chain_feed.py::test_feed_skips_a_malformed_log_and_keeps_streaming` |
 | SEC-2026-09-20 | Low | `eventing.py` | `runtime_events.symbol` is `String(32)` while `MarketTick.symbol` comes from the venue unbounded. An over-long venue symbol fails the insert, which fails the sink, which fails the cycle. Fail-closed, but it is a provider-controlled string reaching a schema constraint. | **Fixed** | `test_eventing.py::test_bounded_event_symbol_truncates_venue_authored_names` |
 | SEC-2026-09-21 | Informational | `cli_check.py` | `traderstack-check-config` still reports `ANTHROPIC_API_KEY` as "not yet wired into the continuous runtime (Epic 6)" and altFINS as "no adapter wired yet". Both are now wired. Operator-facing output that understates what is live. (Flagged to the docs/consistency agent rather than changed here.) | **Fixed** (integration pass: `cli_check.py` now reports meta-agent mode/model/budgets, altFINS, provider quotas, execution settings and every kill-switch channel) | `tests/test_cli_check.py` |
@@ -372,12 +372,29 @@ explicitly accepted before any real money reaches this system.
     surrounding pretrade / execution / market-data / chain-policy settings now
     move the digest. Two audit records with the same version can no longer come
     from a run with the pre-trade gate on and a run with it off.
-12. **The audit trail is append-only by convention, not by permission.** The
-    hash chain detects tampering after the fact; nothing prevents a process with
-    write access from truncating the file and starting a fresh valid chain. A
-    genuinely immutable sink (append-only filesystem attribute, WORM object
-    storage, or an external log service) is required before the trail can be
-    treated as evidence.
+    **Completed in #69.** The first pass covered the names the finding listed
+    but was still an include-list, so it had missed `meta_agent_mode` — the
+    setting that decides whether a meta-agent veto suppresses an order at all —
+    along with the intelligence gates, `trading_mode`, `reconcile_interval_seconds`,
+    the paper fill/slippage settings and the chain allowlists. Coverage is now
+    default-deny: `policy_fields.NON_POLICY_FIELDS` names every excluded field
+    with a reason, and a `Settings` field in none of the three tuples fails
+    `test_policy_version_covers_every_setting.py`. That closes the structural
+    risk that this finding recurs under a field name no pattern anticipated.
+12. **The audit trail is append-only by convention, not by permission.**
+    **Partly addressed in #68.** The hash chain detects tampering after the
+    fact; nothing prevents a process with write access from truncating the file
+    and starting a fresh valid chain. That rewrite is now *detectable*: the
+    chain head is anchored outside the file and `traderstack-verify-audit`
+    cross-checks the trail against every published anchor, naming the sequence
+    where they diverge, and a divergent anchor halts the service at startup
+    through the #67 durable-state gate rather than appending onto a forked
+    chain. Detection is not prevention: a genuinely immutable sink (append-only
+    filesystem attribute, WORM object storage, or an external log service) is
+    still required before the trail can be treated as evidence, and the anchors
+    themselves are not yet signed with a key the runtime does not hold, so an
+    attacker who compromises both the trail and an anchor store can still
+    produce a consistent pair.
 
 ---
 

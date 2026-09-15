@@ -41,12 +41,68 @@ it is relied upon.
 ### Backtest data
 
 - **Binance Vision** monthly 1m klines + aggTrades: free, bulk, since 2017. Best
-  free minute-bar archive.
+  free minute-bar archive. **Wired** as `traderstack-download-candles --venue
+  binance_vision` (#133) — see "Multi-year candle fetchers" below.
 - **Kraken quarterly OHLCVT CSV** for our actual execution venue, topped up with a
   Kraken REST `Trades` walk (`since` in ns, 1000/call) to cover the gap since the
-  last quarterly drop.
-- **Coinbase public candles** (350/call, paginate by start/end).
+  last quarterly drop. **Wired** as `--venue kraken_archive` (local file loader).
+- **Coinbase public candles** — **300** per call, paginate by start/end. (An
+  earlier note in this file said 350; 300 is the documented cap and is what the
+  adapter uses.) **Wired** as `--venue coinbase`.
 - **Tardis.dev** only if order-book replay becomes necessary (trial first; paid).
+
+#### Multi-year candle fetchers (#133) [V, shape from vendor docs — see the reachability caveat]
+
+Before #133 every strategy catalog was scored on Kraken's 720-bar public REST
+cap (~2 years daily) plus one older Binance.US 720 — one regime, and less
+history than the #96+A+B+C gates ask for. These three adapters are the backtest
+stack named above, finally implemented. All are research-only: they never run
+on the trading cycle, the `RiskEngine` never reads them, and they flip no
+`PAPER_PROMOTE_*` flag. Operator usage is in `RUNBOOK.md`, "Multi-year candle
+archives (#133)".
+
+| Source | Module | Shape | Limits |
+|---|---|---|---|
+| Coinbase Exchange public candles | `research/candles_coinbase.py` | `GET /products/{id}/candles?granularity=&start=&end=`; rows are `[time, low, high, open, close, volume]` (**not** OHLC order), descending, `time` in unix seconds | 300 candles/request; granularities `{60,300,900,3600,21600,86400}` only — **no native 4h**, so 4h is rolled up from complete 1h buckets; public limit 10 req/s/IP (bursts 15) |
+| Binance Vision monthly spot klines | `research/candles_binance_vision.py` | `/data/spot/monthly/klines/{SYM}/{iv}/{SYM}-{iv}-{YYYY}-{MM}.zip` plus a `.CHECKSUM` sibling holding `sha256  filename` | spot from 2017-08; quote is **USDT**, not USD; newer files carry a CSV header row and microsecond timestamps (both handled per-row); delisted symbols are *sometimes* retained (LUNAUSDT 2022-04 was present at issue time) — verify per symbol, never assume |
+| Kraken official OHLCVT archive | `research/candles_kraken_archive.py` | headerless `{PAIR}_{minutes}.csv`, columns `timestamp,open,high,low,close,volume,trades`; Kraken asset codes (**XBT**, not BTC) | quarterly Google Drive zips (support article 360047124832) = **manual download**, so this is a local-file loader and makes no network call; 8 timeframes |
+
+Safety properties these adapters hold, tested in `tests/test_candle_archives.py`:
+
+- `status` is `ok` or `skipped`, matching the funding adapters. A skip carries
+  **no candles** — a partial series is never returned.
+- Missing bars are **gaps**, counted in the report header, never interpolated,
+  forward-filled or zero-filled. Timestamps must sit exactly on the UTC
+  interval grid.
+- An HTTP **429 from Coinbase is a skip, not a retry** — no backoff loop, no
+  retry storm against a public endpoint.
+- Binance Vision checksums are verified **before** parsing and **fail closed**:
+  a mismatch (or data present with no published `.CHECKSUM`) discards the whole
+  series, including months that already verified.
+- The Kraken archive loader **refuses a partial or unparsable file outright**,
+  reporting the offending line rather than the rows that happened to parse.
+- Cross-venue sanity: `--cross-check` flags any shared daily bar whose closes
+  disagree by more than `MAX_REFERENCE_DIVERGENCE_BPS` (the existing
+  version-controlled `Settings` limit, read only). Flagged bars are listed in
+  the report and never silently used; venues are never averaged.
+
+**Survivorship-bias caveat (Kraken OHLCVT archive).** The quarterly drop ships
+**active pairs only** — pairs Kraken has delisted are absent. A universe or
+catalog built from that archive alone sees only survivors and will read better
+than the venue actually traded. Treat it as one venue's long tape, not a
+bias-free universe. The loader attaches this caveat as a note on every series
+it returns.
+
+**Reachability caveat (honest).** The session that implemented #133 could not
+reach any of these hosts: the agent egress proxy answered `403` to `CONNECT`
+for `api.exchange.coinbase.com`, `data.binance.vision` **and**
+`api.kraken.com` (organisation egress policy, not a vendor block). The row
+shapes and limits above come from the vendor documentation and the live
+probes recorded in issue #133 on 2026-09-13; the adapters have **not** been
+run against a live response from that environment. Re-verify the live shapes
+from an environment with egress before trusting a first real pull, and treat
+the first pull's report header (bar counts, first/last bar, gaps) as the
+verification record.
 - Freqtrade's `download-data` already handles Kraken's 720-candle REST cap.
 - **Funding-rate history (research only):** OKX
   `GET /api/v5/public/funding-rate-history` is typically ~90d of 8h

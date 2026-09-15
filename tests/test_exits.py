@@ -4,9 +4,11 @@ import pytest
 
 from traderstack.circuit_breaker import StrategyCircuitBreaker
 from traderstack.config import Settings
+from traderstack.execution.paper_fill import adverse_fill_price_usd
 from traderstack.exits import (
     ExitReason,
     evaluate_position_exits,
+    exit_sizing_price_usd,
     exit_strategy_id,
     is_exit_strategy_id,
 )
@@ -70,8 +72,33 @@ def test_stop_loss_fires_when_mark_is_below_average_cost() -> None:
     assert signal is not None
     assert signal.reason is ExitReason.STOP_LOSS
     assert signal.side is Side.SELL
-    assert signal.requested_notional_usd == pytest.approx(0.1 * 19_500)
+    # --- protective-exit sizing (#130) --- sized at the worst-case execution
+    # price (mark less PAPER_SLIPPAGE_BPS), not at the mark: the planner
+    # divides by the adverse sell price and a mark-priced notional would ask
+    # for more quantity than is held.
+    assert signal.requested_notional_usd == pytest.approx(0.1 * 19_500 * (1 - 5 / 10_000))
+    assert signal.requested_notional_usd < 0.1 * 19_500
     assert exit_strategy_id(signal.reason) == "exit-stop_loss"
+
+
+def test_exit_notional_is_sized_at_the_worst_case_execution_price() -> None:
+    # The planner's notional -> quantity conversion must land at or below the
+    # held quantity once the paper fill applies adverse slippage.
+    quantity, mark, slippage_bps = 0.1, 19_500.0, 25.0
+    signal = evaluate(held(quantity=quantity), mark=mark, paper_slippage_bps=slippage_bps)
+    assert signal is not None
+    fill_price = adverse_fill_price_usd(Side.SELL, mark, slippage_bps)
+    assert signal.requested_notional_usd / fill_price == pytest.approx(quantity)
+
+
+def test_exit_sizing_never_prices_a_protective_exit_at_zero() -> None:
+    # An absurd slippage configuration must not silently drop a stop-loss; the
+    # reducing-only clamp at the planner boundary is the backstop instead.
+    assert exit_sizing_price_usd(settings(paper_slippage_bps=20_000.0), 100.0) == 100.0
+    assert exit_sizing_price_usd(settings(), 0.0) == 0.0
+    signal = evaluate(held(), mark=19_500, paper_slippage_bps=20_000.0)
+    assert signal is not None
+    assert signal.requested_notional_usd == pytest.approx(0.1 * 19_500)
 
 
 def test_take_profit_fires_when_mark_is_above_target() -> None:
@@ -263,6 +290,9 @@ def test_pipeline_emits_stop_loss_before_discretionary_and_ignores_adverse_news(
     assert result.proposal.side is Side.SELL
     assert result.proposal.strategy_id == "exit-stop_loss"
     assert result.paper_order is not None
+    # --- protective-exit sizing (#130) --- the execution boundary may clamp an
+    # exit down to the held quantity; entry orders are never marked this way.
+    assert result.paper_order.reduce_only is True
     assert "adverse_news_event" not in result.rejection_reasons
 
 

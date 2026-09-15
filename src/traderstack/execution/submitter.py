@@ -31,7 +31,12 @@ from traderstack.execution.ledger import (
     ExecutionOrder,
     OrderLifecycleState,
 )
-from traderstack.execution.planner import ExecutionPlan, ExecutionPlanner, ExecutionPlanRejected
+from traderstack.execution.planner import (
+    ExecutionPlan,
+    ExecutionPlanner,
+    ExecutionPlanRejected,
+    ExitSizingRejected,
+)
 from traderstack.models import Side
 from traderstack.pipeline import PaperOrderIntent
 
@@ -66,6 +71,12 @@ class SubmissionStatus(StrEnum):
     REJECTED = "rejected"
     #: Venue truth unknown. No retry until reconciliation resolves it.
     UNCERTAIN = "uncertain"
+    # --- protective-exit sizing (#130) ---
+    #: A reducing-only order could not be sized at or below the held quantity.
+    #: Distinct from PLAN_REJECTED (lot/notional/slippage) so an operator can
+    #: tell invalid exit sizing apart from a venue/data refusal, matching
+    #: PaperFillStatus.INVALID_EXIT_SIZE on the paper-fill path.
+    INVALID_EXIT_SIZE = "invalid_exit_size"
 
 
 @dataclass(frozen=True)
@@ -100,6 +111,20 @@ class IdempotentSubmitter:
         *,
         execution_price_usd: float,
         reference_price_usd: float,
+        # --- protective-exit sizing (#130) ---
+        # Held quantity for a reducing-only intent, supplied by the caller that
+        # already holds the position view for this cycle (``PaperRuntime``
+        # passes it from the same ``PortfolioSnapshot`` the risk engine and the
+        # exit rules used). Passed straight to the planner, which may clamp the
+        # order DOWN to it but never up.
+        #
+        # ``None`` leaves the order unclamped. That is deliberate rather than a
+        # fail-closed refusal: refusing to submit a protective exit whose
+        # position view is unavailable would reproduce #130's actual harm — a
+        # stop-loss that does not reduce risk. An unclamped reducing order is
+        # still covered by conservative sizing at origin (``exit_sizing_price_usd``)
+        # and by the venue's own balance checks.
+        max_quantity: float | None = None,
     ) -> SubmissionOutcome:
         resumed = self._resumable_order(intent.decision_id)
         if resumed is None and self.ledger.has_order_for_decision(intent.decision_id):
@@ -118,7 +143,18 @@ class IdempotentSubmitter:
                 intent,
                 execution_price_usd=execution_price_usd,
                 reference_price_usd=reference_price_usd,
+                # --- protective-exit sizing (#130) ---
+                # Folded in *before* planning, not corrected afterwards: the
+                # venue is sent ``plan.quantity``, so a cap applied to the
+                # ledger row alone would not bound what is actually submitted.
+                max_quantity=self._reduce_only_cap(intent, max_quantity, resumed),
             )
+        except ExitSizingRejected as exc:
+            # --- protective-exit sizing (#130) ---
+            if resumed is not None:
+                self._transition(resumed, OrderLifecycleState.REJECTED, exc.reason)
+                await self._persist()
+            return SubmissionOutcome(status=SubmissionStatus.INVALID_EXIT_SIZE, reason=exc.reason)
         except ExecutionPlanRejected as exc:
             if resumed is not None:
                 self._transition(resumed, OrderLifecycleState.REJECTED, exc.reason)
@@ -145,6 +181,9 @@ class IdempotentSubmitter:
         order = resumed if resumed is not None else self._register(plan)
         if resumed is not None:
             # Re-planned at the current price after the venue disowned the order.
+            # For a reducing-only intent the plan is already bounded by the
+            # previously planned quantity (see ``_reduce_only_cap``), so this
+            # can only ever hold or shrink the row.
             order.requested_quantity = plan.quantity
         await self._persist()
         return await self._submit_with_retries(intent, plan, order)
@@ -257,6 +296,34 @@ class IdempotentSubmitter:
                 quantity=plan.quantity,
                 client_order_id=plan.client_order_id,
             )
+
+    # --- protective-exit sizing (#130) ---
+    @staticmethod
+    def _reduce_only_cap(
+        intent: PaperOrderIntent,
+        max_quantity: float | None,
+        resumed: ExecutionOrder | None,
+    ) -> float | None:
+        """Reducing-only cap for this intent, or ``None`` when it does not apply.
+
+        Mirrors ``PaperFillSimulator._reduce_only_cap``: the cap exists only to
+        hold a reducing order at or below the position it is closing, so it is
+        unavailable to every order that is not a protective exit and can never
+        become a way to resize an entry.
+
+        A resumed (``SUBMISSION_UNCERTAIN``) order contributes its already
+        planned quantity as a second ceiling, so re-planning at a moved price
+        can only hold or shrink a reducing order, never grow one. Both ceilings
+        narrow; neither can widen the other.
+        """
+
+        if not intent.reduce_only or intent.side is not Side.SELL:
+            return None
+        if resumed is None:
+            return max_quantity
+        if max_quantity is None:
+            return resumed.requested_quantity
+        return min(max_quantity, resumed.requested_quantity)
 
     def _resumable_order(self, decision_id: str) -> ExecutionOrder | None:
         for order in self.ledger.orders_for_decision(decision_id):
