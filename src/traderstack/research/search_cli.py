@@ -296,6 +296,10 @@ def run(args: argparse.Namespace, settings: Settings | None = None) -> tuple[Pat
 
     report = run_search(
         histories,
+        # --- era prints / DSR / PBO (#135) ---
+        # This CLI is the report consumer, so it opts in; the loop callers
+        # (funding_carry, liq_regime_search) leave it off.
+        include_selection_evidence=True,
         fee_bps=fee_bps,
         fee_tier=costs.stamp,
         slippage_bps=slippage_bps,

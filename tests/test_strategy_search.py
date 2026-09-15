@@ -24,6 +24,7 @@ from traderstack.research.promotion import (
     row_clears_gate,
 )
 from traderstack.research.search import (
+    AssetCandidateMetrics,
     CandidateSearchResult,
     render_search_markdown,
     research_fee_bps,
@@ -601,3 +602,51 @@ def test_search_cli_stamps_the_fee_tier(tmp_path: Path) -> None:
     assert payload["fee_tier"]["tier_id"] == "kraken_pro_spot_t2"
     assert "PAPER_FEE_TIER taker" in payload["cost_note"]
     assert "Fee tier: Tier 2 ($2.5K+ 30d) maker 30 / taker 60 bps" in out_md.read_text()
+
+
+def test_strategy_search_rows_stay_shape_compatible_with_the_evidence_builder() -> None:
+    """Guard for the structural assumption `run_search` relies on (#135).
+
+    `build_selection_evidence` declares `miles_search.CandidateSearchResult`,
+    but reads only `candidate_id` and `per_series`. `search.py` satisfies that
+    duck-typed, so the call site casts. This fails loudly if either model grows
+    a field the other lacks, rather than letting the cast quietly go stale.
+    """
+
+    from traderstack.research.miles_search import SeriesCandidateMetrics
+
+    asset_fields = set(AssetCandidateMetrics.model_fields)
+    series_fields = set(SeriesCandidateMetrics.model_fields)
+    assert asset_fields == series_fields, (
+        "AssetCandidateMetrics and SeriesCandidateMetrics have diverged; the "
+        "cast in run_search is no longer safe. "
+        f"only in search: {sorted(asset_fields - series_fields)}; "
+        f"only in miles: {sorted(series_fields - asset_fields)}"
+    )
+
+
+def test_strategy_search_surfaces_the_selection_evidence_block() -> None:
+    """Opt-in so the loop callers do not pay for it; on for this CLI."""
+
+    kwargs: dict[str, object] = {
+        "fee_bps": 10.0,
+        "slippage_bps": 5.0,
+        "train_size": 120,
+        "test_size": 60,
+        "step_size": 60,
+        "holdout_fraction": 0.2,
+        "min_trades": 1,
+    }
+    histories = {"BTC/USD": downtrend(360)}
+
+    off = run_search(histories, **kwargs)  # type: ignore[arg-type]
+    assert off.selection_evidence is None, "loop callers must not pay for the block"
+
+    on = run_search(histories, include_selection_evidence=True, **kwargs)  # type: ignore[arg-type]
+    assert on.selection_evidence is not None
+    # K must be the frozen catalog length the report already publishes.
+    assert on.selection_evidence.trial_count == on.multiple_testing["n_candidates"]
+    # The interval is recorded from the candles, not inferred.
+    assert all(row.per_asset[0].interval == downtrend(2)[0].interval for row in on.candidates)
+    rendered = render_search_markdown(on)
+    assert "## Selection evidence (#135)" in rendered

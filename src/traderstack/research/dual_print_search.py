@@ -67,6 +67,12 @@ from traderstack.research.second_print import (
     slice_ending_before,
 )
 
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import (
+    SelectionEvidence,
+    render_evidence_lines,
+)
+
 RANKING_KEY = "mean_holdout_excess_among_dual_print_passers"
 SELECTION_RULE = "pre_registered_top1_mean_holdout_excess_among_dual_print_passers"
 MULTI_VENUE_BAR_PREREGISTERED = True
@@ -138,6 +144,20 @@ class DualPrintRow(BaseModel):
     binance_gate_c: bool = False
     selected: bool = False
     can_promote: bool = False
+    # --- era prints / DSR / PBO (#135) ---
+    # Copied off the Kraken (primary) harder-gates row by `_merge_row`,
+    # so every family that builds rows through `_merge_row` carries them.
+    print_kind: str | None = None
+    trial_count: int | None = None
+    deflated_sharpe: float | None = None
+    catalog_pbo: float | None = None
+    sharpe_ci_low: float | None = None
+    sharpe_ci_high: float | None = None
+    expectancy_ci_low: float | None = None
+    expectancy_ci_high: float | None = None
+    bootstrap_trade_floor: int | None = None
+    evidence_gate_pass: bool = False
+    evidence_gate_reasons: list[str] = Field(default_factory=list)
 
 
 class DualPrintReport(BaseModel):
@@ -174,6 +194,8 @@ class DualPrintReport(BaseModel):
     any_dual_print_passer: bool = False
     honesty: str
     recommendation: str
+    # --- era prints / DSR / PBO (#135) ---
+    selection_evidence: SelectionEvidence | None = None
     rules: str = DUAL_PRINT_RULES
     gates_note: str = HARDER_GATES_NOTE
     fee_note: str = BINANCE_TAKER_BPS_NOTE
@@ -226,6 +248,9 @@ def _score(
     min_trades: int,
     candidates: tuple[SearchCandidate, ...],
     now: datetime,
+    # --- era prints / DSR / PBO (#135) ---
+    venue_print_available: bool = False,
+    venue_label: str = "scored_venue",
 ) -> HarderGatesReport:
     return run_harder_gates(
         histories,
@@ -240,6 +265,9 @@ def _score(
         candidates=candidates,
         catalog_name="custom",
         now=now,
+        # --- era prints / DSR / PBO (#135) ---
+        venue_print_available=venue_print_available,
+        venue_label=venue_label,
     )
 
 
@@ -339,6 +367,18 @@ def _merge_row(
         binance_gate_c=binance_row.gate_c_pass,
         selected=False,
         can_promote=False,
+        # --- era prints / DSR / PBO (#135) ---
+        print_kind=kraken_row.print_kind,
+        trial_count=kraken_row.trial_count,
+        deflated_sharpe=kraken_row.deflated_sharpe,
+        catalog_pbo=kraken_row.catalog_pbo,
+        sharpe_ci_low=kraken_row.sharpe_ci_low,
+        sharpe_ci_high=kraken_row.sharpe_ci_high,
+        expectancy_ci_low=kraken_row.expectancy_ci_low,
+        expectancy_ci_high=kraken_row.expectancy_ci_high,
+        bootstrap_trade_floor=kraken_row.bootstrap_trade_floor,
+        evidence_gate_pass=kraken_row.evidence_gate_pass,
+        evidence_gate_reasons=list(kraken_row.evidence_gate_reasons),
     )
 
 
@@ -446,6 +486,9 @@ def run_dual_print_search(
         min_trades=min_trades,
         candidates=catalog,
         now=generated,
+        # --- era prints / DSR / PBO (#135) ---
+        venue_print_available=binance_meta.available,
+        venue_label="kraken_spot",
     )
     kraken_by_id = {row.candidate_id: row for row in kraken_report.candidates}
 
@@ -515,6 +558,8 @@ def run_dual_print_search(
         )
 
     return DualPrintReport(
+        # --- era prints / DSR / PBO (#135) ---
+        selection_evidence=kraken_report.selection_evidence,
         generated_at=generated,
         ranking_key=RANKING_KEY,
         selection_rule=SELECTION_RULE,
@@ -788,6 +833,8 @@ def render_dual_print_markdown(report: DualPrintReport) -> str:
             f"{_pct(row.kraken_mean_holdout_excess)} | "
             f"{_pct(row.binance_mean_holdout_excess)} |"
         )
+    # --- era prints / DSR / PBO (#135) ---
+    lines.extend(render_evidence_lines(report.selection_evidence))
     lines.extend(
         [
             "",

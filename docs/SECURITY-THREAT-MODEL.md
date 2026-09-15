@@ -49,8 +49,45 @@ Exchange API credentials and on-chain signing. Isolated from the agent runtime.
 - transaction simulation before on-chain execution
 - hardware/isolated signing where feasible
 - rate/spend limits at wallet or smart-account layer
-- immutable audit logs
+- immutable audit logs, with the chain head anchored outside the file (below)
 - emergency kill switch outside the LLM runtime
+
+### Audit-trail root of trust (#68)
+
+The risk-decision trail is SHA-256 hash-chained, which makes any edited,
+removed or reordered *line* detectable. It does not make a whole-file rewrite
+detectable, because the chain's only root of trust is the file itself: an
+attacker — or a well-meaning operator — with write access to `var/audit/` can
+regenerate the chain from genesis with different content and it verifies
+perfectly. Since this threat model assumes the host may be compromised, that
+gap sat directly under the system's central claim of "a complete auditable
+decision trail".
+
+The boundary is now the anchor: `{sequence, head_hash, policy_version,
+anchored_at}` is published periodically, and on shutdown, to sinks outside the
+audit file. `traderstack-verify-audit` verifies the chain **and** cross-checks
+every anchor against it, reporting the sequence number of divergence. To forge
+a trail an attacker must now also forge every anchor in every channel.
+
+Where the anchor lives determines how much it is worth:
+
+| Sink | Root of trust |
+|---|---|
+| local JSONL (`JsonlAuditAnchorStore`) | same host, same process — two files to forge instead of one. Fine for tests and local runs; not a real boundary |
+| Redis / Postgres with an insert-only grant for the app role | off-process. The trading process can append an anchor but cannot rewrite one |
+| operator-held remote receiver | off-host. The strongest of the three, and the only one that survives full host compromise |
+
+Two postures apply, deliberately opposite. **Publishing** is evidence, so a
+sink being down is counted on `traderstack_audit_anchor_failures_total` and
+never blocks a trading cycle. **Verification** fails closed: a divergent
+anchor, an unreadable trail, or no anchors at all is a failure, because an
+intact chain with nothing to check it against proves only internal
+consistency.
+
+Not yet closed: anchors are not themselves signed with a key the runtime does
+not hold, so an attacker who compromises both the trail and an anchor store
+can still produce a consistent pair. Signing to an operator-held key is the
+remaining step (#68, item 4).
 
 ## Prompt Injection Boundary
 

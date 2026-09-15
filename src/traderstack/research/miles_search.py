@@ -42,6 +42,9 @@ from traderstack.research.miles_candidates import (
     apply_garch_size,
     default_miles_candidates,
 )
+
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import SelectionEvidence, build_selection_evidence
 from traderstack.signal_registry import version_of
 from traderstack.strategies import Regime, RegimeClassifier
 from traderstack.walkforward import WalkForwardFold, WalkForwardReport
@@ -141,6 +144,10 @@ class MilesSearchReport(BaseModel):
     selection_rule: str
     multiple_testing: dict[str, Any]
     candidates: list[CandidateSearchResult]
+    # --- era prints / DSR / PBO (#135) ---
+    # K is the frozen catalog length, which this report already tracks as
+    # multiple_testing["n_candidates"], so the deflation term is not a guess.
+    selection_evidence: SelectionEvidence | None = None
     selected_candidate_id: str | None = None
     promoted_candidate_ids: list[str] = Field(default_factory=list)
     any_promoted: bool = False
@@ -550,6 +557,25 @@ def run_miles_search(
 
     symbols = sorted({candles[0].symbol for candles in histories.values() if candles})
     intervals = sorted({candles[0].interval for candles in histories.values() if candles})
+
+    # --- era prints / DSR / PBO (#135) ---
+    # K is `count`, the frozen catalog length this report already publishes as
+    # multiple_testing["n_candidates"], so the deflation term is the real
+    # number of trials rather than a guess. Imported at call time because
+    # daily_robustness imports this module; see selection_evidence for the
+    # same note. venue_print_available stays False: one venue is scored here,
+    # and a single print withholds.
+    from traderstack.research.daily_robustness import kraken_daily_candles
+
+    evidence_interval = promotion_interval or "1d"
+    evidence = build_selection_evidence(
+        rows,
+        primary_candles=kraken_daily_candles(histories, "BTC/USD", interval=evidence_interval),
+        primary_venue="scored_venue",
+        interval=evidence_interval,
+        test_size=test_size,
+        configured_min_trades=min_trades,
+    )
     return MilesSearchReport(
         generated_at=now or datetime.now(UTC),
         symbols=symbols,
@@ -571,6 +597,8 @@ def run_miles_search(
         garch_refit_every=garch_refit_every,
         garch_target_vol_ann=garch_target_vol_ann,
         selection_rule=SELECTION_RULE,
+        # --- era prints / DSR / PBO (#135) ---
+        selection_evidence=evidence,
         multiple_testing={
             "method": SELECTION_RULE,
             "n_candidates": count,
@@ -770,4 +798,8 @@ def render_miles_markdown(report: MilesSearchReport) -> str:
                 f"(WF total={wf}, holdout excess={ho}; blocked by: {reasons})."
             )
     lines.append("")
+    # --- era prints / DSR / PBO (#135) ---
+    from traderstack.research.selection_evidence import render_evidence_lines
+
+    lines.extend(render_evidence_lines(report.selection_evidence))
     return "\n".join(lines)

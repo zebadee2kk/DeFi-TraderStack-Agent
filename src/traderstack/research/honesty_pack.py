@@ -42,6 +42,9 @@ from traderstack.research.harder_gates import (
 )
 from traderstack.research.miles_candidates import SearchCandidate
 from traderstack.research.miles_search import SeriesCandidateMetrics
+
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import SelectionEvidence, render_evidence_lines
 from traderstack.research.yahoo_daily import YAHOO_PERIOD1_ISO, YAHOO_PERIOD1_UNIX
 
 DEFAULT_CANDIDATE_ID = "ema_9_21_adx15"
@@ -104,6 +107,10 @@ class SeriesHonestyRow(BaseModel):
 
 
 class HonestyPackReport(BaseModel):
+    # --- era prints / DSR / PBO (#135) ---
+    # `run_harder_gates` already computes this for the Kraken histories this
+    # pack reprints; surfacing it is the whole of #135's gap for this CLI.
+    selection_evidence: SelectionEvidence | None = None
     generated_at: datetime
     candidate_id: str
     promote_flag: str
@@ -418,6 +425,8 @@ def run_honesty_pack(
         honesty += f" `{candidate_id}` does not clear combined on this reprint."
 
     return HonestyPackReport(
+        # --- era prints / DSR / PBO (#135) ---
+        selection_evidence=harder.selection_evidence,
         generated_at=generated,
         candidate_id=candidate_id,
         promote_flag=flag,
@@ -695,4 +704,6 @@ def render_honesty_pack_markdown(report: HonestyPackReport) -> str:
             "",
         ]
     )
+    # --- era prints / DSR / PBO (#135) ---
+    lines.extend(render_evidence_lines(report.selection_evidence))
     return "\n".join(lines)

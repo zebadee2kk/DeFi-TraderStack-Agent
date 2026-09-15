@@ -20,6 +20,14 @@ from traderstack.agents.review import (
 )
 from traderstack.agents.specialists import SpecialistCommittee
 from traderstack.audit import JsonlAuditSink
+from traderstack.audit_anchor import (
+    AuditAnchorPublisher,
+    AuditAnchorSink,
+    FanoutAuditAnchorSink,
+    JsonlAuditAnchorStore,
+    RedisAuditAnchorStore,
+    assert_trail_matches_anchors,
+)
 from traderstack.backtest import BaselineBacktester
 from traderstack.candle_store import PostgresCandleStore  # persistence (Epic 2)
 from traderstack.candles import Candle  # persistence (Epic 2)
@@ -918,6 +926,33 @@ async def _main_async(args: argparse.Namespace) -> None:
     if durable_error is not None:
         service.submit = False
         service.health.record_durable_state_failure(durable_error)
+    # --- audit anchoring (#68) ---
+    # The chain head is published outside the audit file so a whole-file
+    # rewrite is detectable (verify with `traderstack-verify-audit`). The
+    # startup check is fail-closed and reuses the #67 durable-state halt: an
+    # audit file that disagrees with an anchor was restored, truncated or
+    # regenerated, and appending to it would fork the chain silently.
+    if settings.audit_anchor_enabled:
+        anchor_sinks: dict[str, AuditAnchorSink] = {
+            "local": JsonlAuditAnchorStore(Path(settings.audit_anchor_path))
+        }
+        if settings.audit_anchor_redis_enabled:
+            anchor_sinks["redis"] = RedisAuditAnchorStore(
+                Redis.from_url(settings.redis_url, decode_responses=True),
+                key=settings.audit_anchor_redis_key,
+            )
+        anchor_sink = FanoutAuditAnchorSink(anchor_sinks)
+        anchor_check = await assert_trail_matches_anchors(Path(args.risk_audit_path), anchor_sink)
+        if not anchor_check.valid:
+            service.submit = False
+            service.health.record_durable_state_failure(
+                f"risk audit trail disagrees with its published anchors: {anchor_check.error}"
+            )
+        service.audit_anchors = AuditAnchorPublisher(
+            sink=anchor_sink,
+            path=Path(args.risk_audit_path),
+            anchor_every=settings.audit_anchor_every,
+        )
     # --- opportunity funnel (#131) ---
     service.opportunity_funnel_path = Path(args.funnel_path)
     try:

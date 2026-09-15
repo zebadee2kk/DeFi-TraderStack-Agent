@@ -66,6 +66,12 @@ from traderstack.research.second_print import (
     slice_ending_before,
 )
 
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import (
+    SelectionEvidence,
+    render_evidence_lines,
+)
+
 RANKING_KEY = "mean_holdout_excess_among_dual_print_passers"
 SELECTION_RULE = "pre_registered_top1_mean_holdout_excess_among_dual_print_passers"
 MULTI_VENUE_BAR_PREREGISTERED = True
@@ -193,6 +199,8 @@ class IntradayDualPrintReport(BaseModel):
     can_average_venues: bool = False
     can_enter_promotion_average: bool = False
     keep_flag_false: bool = True
+    # --- era prints / DSR / PBO (#135) ---
+    selection_evidence: SelectionEvidence | None = None
     rows: list[IntradayDualPrintRow] = Field(default_factory=list)
     dual_print_passer_ids: list[str] = Field(default_factory=list)
     kraken_combined_passer_ids: list[str] = Field(default_factory=list)
@@ -258,6 +266,9 @@ def _score(
     min_trades: int,
     candidates: tuple[SearchCandidate, ...],
     now: datetime,
+    # --- era prints / DSR / PBO (#135) ---
+    venue_print_available: bool = False,
+    venue_label: str = "scored_venue",
 ) -> HarderGatesReport:
     return run_harder_gates(
         histories,
@@ -273,6 +284,9 @@ def _score(
         catalog_name="custom",
         now=now,
         promotion_interval=interval,
+        # --- era prints / DSR / PBO (#135) ---
+        venue_print_available=venue_print_available,
+        venue_label=venue_label,
     )
 
 
@@ -493,6 +507,9 @@ def run_intraday_dual_print(
         min_trades=min_trades,
         candidates=catalog,
         now=generated,
+        # --- era prints / DSR / PBO (#135) ---
+        venue_print_available=binance_meta.available,
+        venue_label="kraken_spot",
     )
     kraken_by_id = {row.candidate_id: row for row in kraken_report.candidates}
 
@@ -561,6 +578,8 @@ def run_intraday_dual_print(
         )
 
     return IntradayDualPrintReport(
+        # --- era prints / DSR / PBO (#135) ---
+        selection_evidence=kraken_report.selection_evidence,
         generated_at=generated,
         interval=interval,
         ranking_key=RANKING_KEY,
@@ -860,6 +879,8 @@ def render_intraday_dual_print_markdown(report: IntradayDualPrintReport) -> str:
             f"{_pct(row.kraken_mean_holdout_excess)} | "
             f"{_pct(row.binance_mean_holdout_excess)} |"
         )
+    # --- era prints / DSR / PBO (#135) ---
+    lines.extend(render_evidence_lines(report.selection_evidence))
     lines.extend(
         [
             "",

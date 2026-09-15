@@ -90,6 +90,12 @@ from traderstack.research.second_print import (
     remap_binance_for_scoring,
     slice_ending_before,
 )
+
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import (
+    SelectionEvidence,
+    render_evidence_lines,
+)
 from traderstack.strategies import Regime, StrategySignal
 
 XS_LOOKBACKS: tuple[int, ...] = (21, 63, 126)
@@ -464,6 +470,8 @@ class CrossSectionalMomentumReport(BaseModel):
     can_average_venues: bool = False
     can_enter_promotion_average: bool = False
     keep_flag_false: bool = True
+    # --- era prints / DSR / PBO (#135) ---
+    selection_evidence: SelectionEvidence | None = None
     rows: list[DualPrintRow] = Field(default_factory=list)
     dual_print_passer_ids: list[str] = Field(default_factory=list)
     kraken_combined_passer_ids: list[str] = Field(default_factory=list)
@@ -610,6 +618,9 @@ def run_cross_sectional_momentum_search(
         min_trades=min_trades,
         candidates=catalog,
         now=generated,
+        # --- era prints / DSR / PBO (#135) ---
+        venue_print_available=binance_meta.available,
+        venue_label="kraken_spot",
     )
     kraken_by_id = {row.candidate_id: row for row in kraken_report.candidates}
 
@@ -704,6 +715,8 @@ def run_cross_sectional_momentum_search(
         )
 
     return CrossSectionalMomentumReport(
+        # --- era prints / DSR / PBO (#135) ---
+        selection_evidence=kraken_report.selection_evidence,
         generated_at=generated,
         ranking_key=RANKING_KEY,
         selection_rule=SELECTION_RULE,
@@ -1067,6 +1080,8 @@ def render_cross_sectional_momentum_markdown(
             f"{_pct(row.binance_mean_holdout_excess)} | "
             f"{_pct(row.kraken_sol_holdout)} |"
         )
+    # --- era prints / DSR / PBO (#135) ---
+    lines.extend(render_evidence_lines(report.selection_evidence))
     lines.extend(
         [
             "",

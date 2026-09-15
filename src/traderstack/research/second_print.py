@@ -66,6 +66,9 @@ from traderstack.research.harder_gates import (
 )
 from traderstack.research.miles_candidates import SearchCandidate
 
+# --- era prints / DSR / PBO (#135) ---
+from traderstack.research.selection_evidence import SelectionEvidence, render_evidence_lines
+
 DEFAULT_CANDIDATE_ID = "ema_9_21_adx15"
 DEFAULT_PROMOTE_FLAG = "PAPER_PROMOTE_EMA_9_21_ADX15"
 # #99/#100 combined-passers, frozen before this second print is scored.
@@ -223,6 +226,20 @@ class PrintCandidateRow(BaseModel):
     gate_b_reasons: list[str] = Field(default_factory=list)
     gate_c_reasons: list[str] = Field(default_factory=list)
     can_promote: bool = False
+    # --- era prints / DSR / PBO (#135) ---
+    # Denormalised off CandidateHarderResult, same set and spelling as
+    # DualPrintRow so a reader comparing the two reports sees one vocabulary.
+    print_kind: str | None = None
+    trial_count: int | None = None
+    deflated_sharpe: float | None = None
+    catalog_pbo: float | None = None
+    sharpe_ci_low: float | None = None
+    sharpe_ci_high: float | None = None
+    expectancy_ci_low: float | None = None
+    expectancy_ci_high: float | None = None
+    bootstrap_trade_floor: int | None = None
+    evidence_gate_pass: bool = False
+    evidence_gate_reasons: list[str] = Field(default_factory=list)
 
 
 class SliceMeta(BaseModel):
@@ -263,6 +280,9 @@ class SecondPrintReport(BaseModel):
     binance_source: str | None = None
     kraken_prefix_rows: list[PrintCandidateRow] = Field(default_factory=list)
     binance_rows: list[PrintCandidateRow] = Field(default_factory=list)
+    # --- era prints / DSR / PBO (#135) ---
+    # From the Kraken prefix slice, which is this report's primary print.
+    selection_evidence: SelectionEvidence | None = None
     target_prefix: PrintCandidateRow | None = None
     target_binance: PrintCandidateRow | None = None
     binance_combined_pass: bool = False
@@ -306,6 +326,18 @@ def _row_from_harder(
         gate_b_reasons=list(row.gate_b_reasons),
         gate_c_reasons=list(row.gate_c_reasons),
         can_promote=False,
+        # --- era prints / DSR / PBO (#135) ---
+        print_kind=row.print_kind,
+        trial_count=row.trial_count,
+        deflated_sharpe=row.deflated_sharpe,
+        catalog_pbo=row.catalog_pbo,
+        sharpe_ci_low=row.sharpe_ci_low,
+        sharpe_ci_high=row.sharpe_ci_high,
+        expectancy_ci_low=row.expectancy_ci_low,
+        expectancy_ci_high=row.expectancy_ci_high,
+        bootstrap_trade_floor=row.bootstrap_trade_floor,
+        evidence_gate_pass=row.evidence_gate_pass,
+        evidence_gate_reasons=list(row.evidence_gate_reasons),
     )
 
 
@@ -323,9 +355,14 @@ def _score_histories(
     candidates: tuple[SearchCandidate, ...],
     now: datetime,
     venue: str,
-) -> list[PrintCandidateRow]:
+    # --- era prints / DSR / PBO (#135) ---
+    # Truthful per call: this scores ONE venue slice, so a second venue print
+    # exists only when the caller actually has the other slice. Same signal
+    # dual_print_search passes (binance_meta.available); the default withholds.
+    venue_print_available: bool = False,
+) -> tuple[list[PrintCandidateRow], SelectionEvidence | None]:
     if not histories:
-        return []
+        return [], None
     report = run_harder_gates(
         histories,
         fee_bps=fee_bps,
@@ -339,8 +376,14 @@ def _score_histories(
         candidates=candidates,
         catalog_name="custom",
         now=now,
+        venue_print_available=venue_print_available,
     )
-    return [_row_from_harder(row, venue=venue) for row in report.candidates]
+    # The evidence block was already computed here; returning it instead of
+    # dropping it is the whole of #135's gap for this CLI.
+    return (
+        [_row_from_harder(row, venue=venue) for row in report.candidates],
+        report.selection_evidence,
+    )
 
 
 def _kraken_only(histories: dict[str, tuple[Candle, ...]]) -> dict[str, tuple[Candle, ...]]:
@@ -535,12 +578,13 @@ def run_second_print(
 
     catalog = second_print_candidates(candidate_ids=candidate_ids)
     prefix_rows: list[PrintCandidateRow] = []
+    prefix_evidence: SelectionEvidence | None = None
     if prefix_available:
         prefix_histories = {
             "BTC/USD@1d": prefix_btc,
             "ETH/USD@1d": prefix_eth,
         }
-        prefix_rows = _score_histories(
+        prefix_rows, prefix_evidence = _score_histories(
             prefix_histories,
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
@@ -553,11 +597,12 @@ def run_second_print(
             candidates=catalog,
             now=generated,
             venue=kraken_prefix.venue,
+            venue_print_available=binance_slice.available,
         )
 
     binance_rows: list[PrintCandidateRow] = []
     if binance_available:
-        binance_rows = _score_histories(
+        binance_rows, _ = _score_histories(
             remapped,
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
@@ -624,6 +669,8 @@ def run_second_print(
         binance_source=binance_source,
         kraken_prefix_rows=prefix_rows,
         binance_rows=binance_rows,
+        # --- era prints / DSR / PBO (#135) ---
+        selection_evidence=prefix_evidence,
         target_prefix=target_prefix,
         target_binance=target_binance,
         binance_combined_pass=binance_combined,
@@ -817,6 +864,8 @@ def render_second_print_markdown(report: SecondPrintReport) -> str:
         ]
     )
     lines.extend(_passer_table(report.kraken_prefix_rows))
+    # --- era prints / DSR / PBO (#135) ---
+    lines.extend(render_evidence_lines(report.selection_evidence))
     lines.extend(
         [
             "",
