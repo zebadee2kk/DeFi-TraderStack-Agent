@@ -2588,3 +2588,8 @@ than taped: without a typed asset and strike there is nothing honest to record.
 - A quota refusal or open circuit breaker shows up as `no_two_sided_book` /
   `no_option_probability` counts and a chain-error line, not as a crash and not
   as a zero.
+
+The day-zero shakedown (two live cycles, what each venue answered, and the first
+wedge sample) is committed at
+`docs/artifacts/strategy-search/polymarket-crypto-wedge-collector.md`. It is a
+reachability record, not a print.
