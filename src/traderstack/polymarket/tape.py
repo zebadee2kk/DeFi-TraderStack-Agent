@@ -209,7 +209,12 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
         text = line.strip()
         if not text:
             continue
-        payload = json.loads(text)
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            # A torn line (process killed mid-append) is a skipped observation,
+            # never a crash of the daily resolver and never an invented row.
+            continue
         if not isinstance(payload, dict):
             raise TypeError(f"{path}: each tape line must be a JSON object")
         rows.append(payload)

@@ -2777,5 +2777,6 @@ are polite one-request-per-station-per-day reads.
 | `station_unverified` | No verified IEM network/station pair for the city (e.g. Denver/Buckley's GHCN id). |
 | `unparsed` | Not a "highest temperature" bucket market (includes every "lowest temperature" event). |
 | `book_one_sided` | `/book` had no bid or no ask, so there is no decision-time mid to record. |
+| `book_unavailable` | `/book` did not answer (HTTP error, timeout, quota or breaker), so nothing was recorded for that market this cycle. |
 | `forecast_missing` | Open-Meteo did not answer for that city/date. |
 | `closed` | The local close (or the forecast's issue time) is already past. |
