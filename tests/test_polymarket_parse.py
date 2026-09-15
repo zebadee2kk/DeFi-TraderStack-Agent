@@ -131,3 +131,84 @@ def test_catalog_defaults_are_warm_climates() -> None:
     assert "humid_continental" not in climates
     assert "new_york" in CITY_CATALOG
     assert "new_york" not in DEFAULT_CITY_SLUGS
+
+
+# --- polymarket weather PIT tape (#141) ---
+
+import json as _json
+from pathlib import Path as _Path
+
+_TAPE_FIXTURES = _Path(__file__).parent / "fixtures" / "polymarket" / "tape"
+
+
+def _live_events() -> list[dict]:
+    return _json.loads((_TAPE_FIXTURES / "events.json").read_text(encoding="utf-8"))
+
+
+def _catalog_allowlist():
+    return tuple(CITY_CATALOG.values())
+
+
+def test_or_below_bucket_parses_as_threshold_or_lower() -> None:
+    payload = {
+        "id": "m-low",
+        "question": "Will the highest temperature in Miami be 77°F or below on September 17?",
+        "clobTokenIds": '["yes-token", "no-token"]',
+        "conditionId": "0xfeed",
+    }
+    market = parse_temperature_market(payload, allowlist=_allowlist(), today=date(2026, 9, 15))
+    assert market is not None
+    assert market.contract is TemperatureContract.THRESHOLD_OR_LOWER
+    assert market.threshold_f == 77.0
+    assert market.condition_id == "0xfeed"
+
+
+def test_lowest_temperature_market_is_refused() -> None:
+    payload = {
+        "id": "m-lowest",
+        "question": "Will the lowest temperature in Miami be 70°F or below on September 17?",
+        "clobTokenIds": '["yes-token", "no-token"]',
+    }
+    assert (
+        parse_temperature_market(payload, allowlist=_allowlist(), today=date(2026, 9, 15)) is None
+    )
+
+
+def test_market_not_accepting_orders_is_refused() -> None:
+    payload = {
+        "id": "m-closed",
+        "question": "Will the highest temperature in Miami be 96°F or higher on September 17?",
+        "clobTokenIds": '["yes-token", "no-token"]',
+        "acceptingOrders": False,
+    }
+    assert (
+        parse_temperature_market(payload, allowlist=_allowlist(), today=date(2026, 9, 15)) is None
+    )
+
+
+def test_live_miami_event_parses_all_eleven_buckets() -> None:
+    event = next(e for e in _live_events() if e["title"].startswith("Highest temperature in Miami"))
+    parsed = [
+        parse_temperature_market(m, allowlist=_allowlist(), today=date(2026, 9, 15))
+        for m in event["markets"]
+    ]
+    assert all(market is not None for market in parsed)
+    contracts = [market.contract for market in parsed if market is not None]
+    assert contracts.count(TemperatureContract.THRESHOLD_OR_LOWER) == 1
+    assert contracts.count(TemperatureContract.THRESHOLD_OR_HIGHER) == 1
+    assert contracts.count(TemperatureContract.BUCKET) == 9
+
+
+def test_single_degree_celsius_buckets_stay_unparsed() -> None:
+    event = next(
+        e for e in _live_events() if e["title"].startswith("Highest temperature in Toronto")
+    )
+    middle = [m for m in event["markets"] if "or below" not in m["question"]]
+    assert middle, "fixture should carry a single-degree °C bucket"
+    for market in middle:
+        assert (
+            parse_temperature_market(
+                market, allowlist=_catalog_allowlist(), today=date(2026, 9, 15)
+            )
+            is None
+        )

@@ -1212,6 +1212,29 @@ def build_report(settings: Settings) -> ConfigReport:
             f"PAPER_FEE_TIER={PILOT_FEE_TIER_ID} for a pilot-sized account."
         )
 
+    # --- polymarket weather PIT tape (#141) ---
+    items.append(
+        CheckItem(
+            "  PIT tape collector / resolver",
+            "observations only (no intents, no CLOB orders)",
+            "traderstack-polymarket-weather-collect -> "
+            f"{settings.polymarket_weather_tape_path}; "
+            "traderstack-polymarket-weather-resolve -> "
+            f"{settings.polymarket_weather_resolved_path}; IEM primary + GHCN "
+            "cross-check; look-ahead guard forecast_issued_at < close_at; "
+            "Celsius cities skipped (unit_unsupported); no "
+            "PAPER_PROMOTE_POLYMARKET_WEATHER pin",
+        )
+    )
+    items.append(
+        CheckItem(
+            "  PIT tape settle lag",
+            f"{settings.polymarket_weather_settle_lag_hours:g} h",
+            f"official highs from {settings.polymarket_weather_iem_base_url} "
+            f"(primary) and {settings.polymarket_weather_ghcn_base_url} (cross-check)",
+        )
+    )
+
     return ConfigReport(items=items, warnings=warnings)
 
 

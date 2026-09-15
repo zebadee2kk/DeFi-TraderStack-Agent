@@ -52,6 +52,8 @@ without activating the venv.
 | `traderstack-xs-topk` | Paper-only **long-only top-k cross-sectional momentum on the point-in-time Kraken USD spot universe** (#140). Universe: the current Kraken `AssetPairs` listing (online, USD-quoted, frozen exclusion list for stablecoins / fiat / commodities / wrapped duplicates; survivorship caveat stated), then monthly top-20 by trailing 30-day median dollar volume using only bars before each snapshot. Frozen grid: N in {21, 63, 126} with a 7-day skip, k in {3, 5}, equal or inverse-vol weights, weekly Monday-UTC rebalance (decide on close t, fill next open). Portfolio bar on era prints (local era constant pending #135; DSR/PBO printed as not computed); turnover and fee drag at research 10+5 bps **and** the Kraken tier-1 pilot taker cost (80+5 bps); `ew_bh_universe` control cannot promote. Dual print needs two independent covered cells (venues or eras) — a Kraken-only 720-day print is one venue × one era and cannot promote by construction. `--live` pulls Kraken; `--candles-dir VENUE DIR` scores any daily candle JSON (the `traderstack-download-candles` format, or #133 fetcher output) as a second print. Writes `docs/artifacts/strategy-search/xs-topk.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field; `RiskEngine` limits are documented, not widened. Empty dual-print set is success. Not a #117 top-1 reprint. |
 | `traderstack-ensemble-trend` | Paper-only ensemble trend (#137): long-only multi-lookback Donchian-on-close (N in {5, 10, 20, 30, 60, 90, 150, 250, 360}; bar t never sets its own level) with a trailing stop at max(prior stop, prior close-channel midpoint), equal-weight across open lookbacks, 25% annualised vol target on 90-day realised vol, capped at 1.0 (no leverage), on a frozen `CANDIDATE_UNIVERSE` of Kraken USD pairs with a monthly point-in-time top-20 snapshot (≥ 365 prior bars or 720-cap, median 30-day close×volume ≥ $2M; non-members forced flat). Not a Donchian N retune (#118). Same #96+A+B+C dual-print bar as #104 (Kraken public Spot daily 720 **and** the #102 Binance.US older-720). Multi-asset rule (frozen): BTC and ETH signs; SOL reported, not a gate. Ranking is Kraken mean holdout excess among dual-print passers. Fees from the frozen Kraken Pro tier table (`--kraken-tier`, default tier 1 = 80 bps taker per side) unless `--fee-bps` is explicit. Reports gross attribution by asset and by lookback. `era_prints_available=false` / `dsr_pbo_available=false` until #133 / #135 land (not invented). Accepts `traderstack-download-candles` JSON via `--candles`. Writes `docs/artifacts/strategy-search/ensemble-trend.md`. Never flips `PAPER_PROMOTE_*`; adds no Settings field. Empty dual-print set is success. |
 | `traderstack-download-basis` | Second-venue point-in-time basis (#134). Downloads daily **mark close − index close, over index** from OKX (`history-mark-price-candles` − `history-index-candles`, `bar=1Dutc`, `confirm==1` rows only, serial pagination with backoff on 403/429) and Binance Vision (`markPriceKlines` − `indexPriceKlines` monthly + trailing-month daily zips, sha256 `.CHECKSUM` verified per zip, fail closed on mismatch) into `var/research/basis/<venue>/<SYMBOL>_basis_1d.json` (the `[{opened_at, value}]` shape `traderstack-funding-carry --basis-dir` reads) and writes the probe table `docs/artifacts/strategy-search/pit-basis-second-venue.md` (first/last/days/gaps per series; OKX×Vision aligned days). Funding premium, last-trade candles and funding-implied basis are refused in code. A missing day is a skip, never a zero; an unreachable venue is a recorded skip and the command still exits 0. Quote is USDT on both venues. Network only, no credentials. Never flips `PAPER_PROMOTE_*`. |
+| `traderstack-polymarket-weather-collect` | **Paper-only** point-in-time tape collector (#141). Every 30-60 min it appends the decision-time CLOB top of book (`/book`, GET) plus the as-issued Open-Meteo high for each open, allowlisted, Fahrenheit-resolved temperature market to `POLYMARKET_WEATHER_TAPE_PATH`. Emits **observations, not intents**: nothing is sized, sided or submitted, so it consults no kill switch and writes no paper ledger. Gamma paging is offset-based with `/events/keyset` available. Requires `TRADING_MODE=paper`. |
+| `traderstack-polymarket-weather-resolve` | **Paper-only** daily resolver (#141). Pairs each tape market past `close_at + POLYMARKET_WEATHER_SETTLE_LAG_HOURS` with the official station high (IEM ASOS primary, NCEI GHCN-Daily cross-check), appends `POLYMARKET_WEATHER_RESOLVED_PATH`, and emits one `ResolvedWeatherRow` JSON array per calendar month for `traderstack-polymarket-weather-eval --resolved`. Writes `var/ops/polymarket_weather_tape.md` (pass `--output-md docs/artifacts/strategy-search/polymarket-weather-tape.md` deliberately when refreshing the committed snapshot, which carries hand-written evidence below the generated tables). Computes no PnL, writes no `PAPER_PROMOTE_*` pin; an empty tape is a successful run. |
 
 ## Zero to paper trading
 
@@ -1378,6 +1380,7 @@ specifically:
 | `--audit-path` (default `var/audit/runtime.jsonl`) | `JsonlAuditSink` | One line per symbol cycle: the full `RuntimeResult` — tick, references, pipeline result (including the pre-trade backtest/walk-forward check), risk result, meta-agent review, execution receipt/status. The complete, replayable decision trail. | No — plain JSONL, easy to `jq`, not hash-chained. |
 | `--risk-audit-path` (default `var/audit/risk_decisions.jsonl`) | `JsonlRiskAuditTrail` | One line per risk decision *that actually reached the risk engine* (no line at all for cycles rejected upstream by market-data/intelligence/pre-trade gates): the full `TradeProposal`, the full `RiskResult`, the risk limits in force (inline and hashed), the meta-agent review and execution outcome from the *same* cycle, plus a SHA-256 hash chained to the previous record. | **Yes** — this is the record built specifically to survive an "did the agent secretly relax risk" audit. |
 | `POLYMARKET_WEATHER_LEDGER_PATH` (default `var/audit/polymarket_weather_paper.jsonl`) | `PolymarketWeatherPaperLedger` | One line per weather-market observation or would-trade intent from `traderstack-polymarket-weather-paper`. Always `venue_submitted=false`. Isolated from the crypto audit files so a weather run cannot rewrite crypto risk history. | No — plain JSONL research ledger. |
+| `POLYMARKET_WEATHER_TAPE_PATH` / `POLYMARKET_WEATHER_RESOLVED_PATH` (defaults `var/audit/polymarket_weather_tape.jsonl`, `var/audit/polymarket_weather_resolved.jsonl`) | `PolymarketWeatherTape` / `PolymarketWeatherResolvedTape` (#141) | One line per point-in-time observation (decision-time book + as-issued forecast + local `close_at`) and one line per resolved market (official station high + cross-check + mismatch). Always `venue_submitted=false`, always `trading_mode=paper`. Research evidence, isolated from the crypto audit files; the paper loop, the risk engine and the meta-agent never read them. | No — plain JSONL research tapes, not hash-chained. |
 
 ```bash
 tail -f var/audit/runtime.jsonl | jq .
@@ -2697,3 +2700,83 @@ not regenerated here.
 .venv/bin/traderstack-tsmom --live --fee-bps 10                      # stamped "explicit"
 PAPER_FEE_TIER=modelled .venv/bin/traderstack-check-config           # warns
 ```
+
+## Polymarket weather point-in-time tape (collector / resolver) (#141)
+
+The `#44` evaluator has never scored a row, because scoring needs something
+this repository did not have: a *decision-time* CLOB mid recorded next to the
+forecast that existed at that moment, paired afterwards with the official
+station high. Settlement prices are not a substitute — reading a resolved
+market's `outcomePrices` back as a mid is look-ahead, and the evaluator
+refuses it. The two CLIs below build that tape.
+
+Both are paper-only, GET-only and emit **observations, not intents**. Nothing
+in either path is sized, sided or submitted, so neither consults the kill
+switch; `traderstack-polymarket-weather-paper` remains the only intent path
+and its kill-switch withholding is unchanged. **Do not route intents through
+the collector.**
+
+### Operator cadence
+
+```bash
+# every 30-60 minutes while markets are open (cron / systemd timer)
+TRADING_MODE=paper .venv/bin/traderstack-polymarket-weather-collect \
+  --cities miami,new_york,chicago,houston,dallas,austin \
+  --max-pages 6
+
+# once a day, after the settle lag has passed
+TRADING_MODE=paper .venv/bin/traderstack-polymarket-weather-resolve
+
+# only once two monthly prints exist, each with >= 20 eligible rows
+.venv/bin/traderstack-polymarket-weather-eval \
+  --resolved var/ops/polymarket_weather_prints/2026-09.json \
+  --resolved var/ops/polymarket_weather_prints/2026-10.json
+```
+
+A 6-city allowlist is about 66 CLOB GETs per cycle, roughly 3.5 minutes at the
+existing `POLYMARKET_WEATHER_CALLS_PER_MINUTE=20` registry quota. IEM and NCEI
+are polite one-request-per-station-per-day reads.
+
+### Rules the tape is built to (pre-registered, not per run)
+
+| Rule | Value |
+|---|---|
+| `close_at` | End of the event's **local calendar day** in the city's timezone — *not* Gamma's `endDate`, which is 12:00Z while the market keeps `acceptingOrders` all day. |
+| Decision row | The latest observation with `lead_hours >= --min-lead-hours` (default 0), one per market. |
+| Look-ahead guard | `observed_at < close_at` **and** `forecast_issued_at < close_at`, enforced by the tape writer, again by the resolver's converter, and a third time by `eval._row_reason`. |
+| Station match | IEM ASOS daily maximum (primary, `resolution_source=iem_asos`) cross-checked against NCEI GHCN-Daily `TMAX`. Disagreement beyond `--station-tolerance-f` (default 1 °F), or either source missing, drops the row as `station_unmatched`. |
+| Prints | One per calendar month of event dates, so independence is disjoint dates — never the same rows re-scored against a second resolution source. |
+| Universe | Fahrenheit-resolved cities only. |
+
+### Warnings
+
+* **Never use Gamma `outcomePrices` as a mid.** On a closed market they are
+  the settlement (`["1","0"]`). Using them as a decision-time price is
+  look-ahead and would manufacture an edge out of nothing.
+* **Celsius cities are skipped** (`unit_unsupported`): London, Seoul,
+  Toronto, Singapore, Zhengzhou and friends quote single-degree °C buckets,
+  which do not fit the integer-°F `[low, high+1)` bucket model in `edge.py`
+  or `yes_won` in `eval.py`. They are catalogued so the skip names a city
+  instead of silently dropping an unknown one.
+* **The two free station sources do not always agree.** Verified on
+  2026-09-15: Miami 2025-06-01..03 read 85/89/78 °F at IEM and 86/92/78 °F at
+  GHCN. Polymarket itself resolves on the NOAA WRH hourly `Temp` maximum at
+  the named airport. The resolver therefore fails closed rather than picking
+  whichever source flatters the row.
+* **`rows = 0` is a successful run.** The committed status artifact is
+  `docs/artifacts/strategy-search/polymarket-weather-tape.md`. Nothing is
+  back-filled, and `PAPER_PROMOTE_POLYMARKET_WEATHER` is still not a
+  `Settings` field.
+
+### Collector skip reasons
+
+| Reason | Meaning |
+|---|---|
+| `city_blocked` | The market names a catalogued city that is not on this run's allowlist. |
+| `unit_unsupported` | The city resolves in °C. |
+| `station_unverified` | No verified IEM network/station pair for the city (e.g. Denver/Buckley's GHCN id). |
+| `unparsed` | Not a "highest temperature" bucket market (includes every "lowest temperature" event). |
+| `book_one_sided` | `/book` had no bid or no ask, so there is no decision-time mid to record. |
+| `book_unavailable` | `/book` did not answer (HTTP error, timeout, quota or breaker), so nothing was recorded for that market this cycle. |
+| `forecast_missing` | Open-Meteo did not answer for that city/date. |
+| `closed` | The local close (or the forecast's issue time) is already past. |

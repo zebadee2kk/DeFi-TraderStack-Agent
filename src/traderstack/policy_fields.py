@@ -190,4 +190,16 @@ NON_POLICY_FIELDS: tuple[str, ...] = (
     # tests/security/test_fee_tier_cannot_relax_costs.py::test_fee_tier_is_not_risk_engine_policy,
     # which pins that every tier id yields an identical policy_version.
     "paper_fee_tier",
+    # --- polymarket weather PIT tape (#141) ---
+    # Paths and base URLs for the paper-only Polymarket weather research
+    # tapes, plus how long the resolver waits after a market's local close
+    # before asking IEM/NCEI for the official high. None of them is read by
+    # the crypto paper loop, RiskEngine.evaluate or the pre-trade gate: they
+    # cannot build, size, side or submit anything, so they must not move the
+    # digest stamped on a risk decision.
+    "polymarket_weather_tape_path",
+    "polymarket_weather_resolved_path",
+    "polymarket_weather_iem_base_url",
+    "polymarket_weather_ghcn_base_url",
+    "polymarket_weather_settle_lag_hours",
 )

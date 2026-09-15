@@ -48,6 +48,17 @@ _THRESHOLD = re.compile(
     r"\s*(?:or\s+(?:higher|above|more|greater)|and\s+(?:higher|above)|or\s+warmer)",
     re.IGNORECASE,
 )
+# --- polymarket weather PIT tape (#141) ---
+# "Lowest temperature in <city>" is a different contract family (daily low).
+# Guarded out rather than mis-parsed as a high-temperature bucket.
+_LOWEST = re.compile(r"\blowest\s+temperature\b", re.IGNORECASE)
+# Polymarket's bottom bucket: "77°F or below" / "or lower" / "or less".
+_THRESHOLD_LOWER = re.compile(
+    r"(?:at\s+most\s+|be\s+)?"
+    r"(?P<value>\d+(?:\.\d+)?)\s*°?\s*(?P<unit>f|c|fahrenheit|celsius)"
+    r"\s*(?:or\s+(?:below|lower|less|colder)|and\s+below)",
+    re.IGNORECASE,
+)
 _BUCKET = re.compile(
     r"(?P<low>\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(?P<high>\d+(?:\.\d+)?)\s*°?\s*"
     r"(?P<unit>f|c|fahrenheit|celsius)\b",
@@ -123,11 +134,18 @@ def parse_temperature_market(
         return None
     if payload.get("closed") is True or payload.get("active") is False:
         return None
+    # --- polymarket weather PIT tape (#141) ---
+    # A market that no longer accepts orders has no decision-time mid.
+    if payload.get("acceptingOrders") is False:
+        return None
 
     question = payload.get("question") or payload.get("title") or ""
     if not isinstance(question, str) or not question.strip():
         return None
     question = " ".join(question.split())
+    # --- polymarket weather PIT tape (#141) ---
+    if _LOWEST.search(question):
+        return None
 
     city = match_city(question, allowlist)
     if city is None:
@@ -143,9 +161,13 @@ def parse_temperature_market(
 
     market_id = str(payload.get("id") or payload.get("conditionId") or token_ids[0])
     end_at = _parse_datetime(payload.get("endDate") or payload.get("end_date_iso"))
+    # --- polymarket weather PIT tape (#141) ---
+    raw_condition = payload.get("conditionId") or payload.get("condition_id") or ""
+    condition_id = str(raw_condition) if isinstance(raw_condition, str) else ""
 
     bucket = _BUCKET.search(question)
     threshold = _THRESHOLD.search(question)
+    threshold_lower = _THRESHOLD_LOWER.search(question)
     if bucket:
         unit = bucket.group("unit")
         low = _as_fahrenheit(float(bucket.group("low")), unit)
@@ -164,6 +186,24 @@ def parse_temperature_market(
             yes_token_id=token_ids[0],
             no_token_id=token_ids[1],
             end_at=end_at,
+            condition_id=condition_id,
+        )
+    # --- polymarket weather PIT tape (#141) ---
+    if threshold_lower:
+        unit = threshold_lower.group("unit")
+        value = _as_fahrenheit(float(threshold_lower.group("value")), unit)
+        return ParsedTemperatureMarket(
+            market_id=market_id,
+            question=question,
+            city_slug=city.slug,
+            city_name=city.name,
+            event_date=event_date,
+            contract=TemperatureContract.THRESHOLD_OR_LOWER,
+            threshold_f=value,
+            yes_token_id=token_ids[0],
+            no_token_id=token_ids[1],
+            end_at=end_at,
+            condition_id=condition_id,
         )
     if threshold:
         unit = threshold.group("unit")
@@ -179,5 +219,6 @@ def parse_temperature_market(
             yes_token_id=token_ids[0],
             no_token_id=token_ids[1],
             end_at=end_at,
+            condition_id=condition_id,
         )
     return None

@@ -81,3 +81,17 @@ def test_check_config_warns_when_enabled_with_non_paper_mode() -> None:
     assert not report.safe
     assert any("POLYMARKET_WEATHER_ENABLED" in warning for warning in report.warnings)
     assert any("Live Polymarket" in warning for warning in report.warnings)
+
+
+# --- polymarket weather PIT tape (#141) ---
+
+
+def test_check_config_reports_the_pit_tape_collector_and_resolver() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if "PIT tape collector" in i.label)
+    assert "no intents" in item.value
+    assert "traderstack-polymarket-weather-collect" in item.detail
+    assert "traderstack-polymarket-weather-resolve" in item.detail
+    assert "PAPER_PROMOTE_POLYMARKET_WEATHER" in item.detail
+    lag = next(i for i in report.items if "PIT tape settle lag" in i.label)
+    assert lag.value == "24 h"
