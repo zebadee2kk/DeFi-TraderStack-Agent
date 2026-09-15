@@ -75,7 +75,7 @@ jobs:
         run: traderstack-soak --preset ci --workdir var/soak-ci
       - name: Archive machine-readable soak report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: soak-ci-report
           path: var/soak-ci/report.json
