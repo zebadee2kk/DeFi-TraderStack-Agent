@@ -229,3 +229,45 @@ async def test_each_row_is_stamped_with_its_own_read_time(tmp_path: Path) -> Non
     assert WedgeRowStatus.STALE_POLYMARKET in statuses
     assert report.rows[0].observed_at == NOW
     assert report.rows[-1].observed_at == NOW + timedelta(seconds=300)
+
+
+async def test_an_unanswered_gamma_is_counted_apart_from_a_missing_event(
+    tmp_path: Path,
+) -> None:
+    """An outage must not read as "the daily event does not exist"."""
+
+    import httpx
+
+    from traderstack.market.deribit import DeribitPublicClient
+    from traderstack.polymarket.clob import ClobPublicClient
+    from traderstack.polymarket.gamma import GammaClient
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "upstream"})
+
+    cfg = settings()
+    async with httpx.AsyncClient(
+        base_url="https://example.invalid", transport=httpx.MockTransport(handler)
+    ) as client:
+        made = PolymarketCryptoWedgeCollector(
+            settings=cfg,
+            tape=CryptoWedgeTape(tmp_path / "tape.jsonl"),
+            kill_switch=KillSwitch.from_settings(cfg),
+            gamma=GammaClient(client=client),
+            clob=ClobPublicClient(client=client),
+            deribit=DeribitPublicClient(client=client),
+            clock=lambda: NOW,
+        )
+        report = await made.run_once()
+
+    assert report.events_error == report.slugs_requested == 6
+    assert report.events_missing == 0
+    assert report.rows_written == 0
+    assert not (tmp_path / "tape.jsonl").exists()
+
+
+async def test_unknown_assets_are_named_in_the_report(tmp_path: Path) -> None:
+    report = await collector(tmp_path, polymarket_crypto_assets="BTC,DOGE").run_once()
+    assert report.unknown_assets == ("DOGE",)
+    assert "DOGE" in report.render()
+    assert report.assets == ("BTC",)

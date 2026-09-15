@@ -82,6 +82,7 @@ class CryptoWedgeCycleReport:
     assets: tuple[str, ...]
     slugs_requested: int
     events_missing: int
+    events_error: int
     markets_seen: int
     parsed: int
     unparsed: int
@@ -90,6 +91,7 @@ class CryptoWedgeCycleReport:
     status_counts: dict[str, int]
     crucix_status: dict[str, str]
     chain_errors: dict[str, str]
+    unknown_assets: tuple[str, ...] = ()
     rows: list[CryptoWedgeRow] = field(default_factory=list)
 
     def render(self) -> str:
@@ -109,6 +111,7 @@ class CryptoWedgeCycleReport:
             ),
             (
                 f"slugs={self.slugs_requested} events_missing={self.events_missing} "
+                f"events_error={self.events_error} "
                 f"markets_seen={self.markets_seen} parsed={self.parsed} "
                 f"unparsed={self.unparsed} rows_written={self.rows_written} "
                 f"rows_ok={self.rows_ok}"
@@ -116,6 +119,11 @@ class CryptoWedgeCycleReport:
             f"row status: {statuses}",
             f"crucix stand-aside: {crucix}",
         ]
+        if self.unknown_assets:
+            lines.append(
+                "  skipped (no daily Polymarket event and/or no Deribit chain): "
+                + ", ".join(self.unknown_assets)
+            )
         if self.chain_errors:
             for asset, error in sorted(self.chain_errors.items()):
                 lines.append(f"  deribit chain unavailable for {asset}: {error} (rows skipped)")
@@ -264,11 +272,15 @@ class PolymarketCryptoWedgeCollector:
 
         slugs = event_slugs(assets, now.date(), self.settings.polymarket_crypto_lookahead_days)
         events_missing = 0
+        events_error = 0
         markets_seen = 0
         parsed_markets: list[ParsedCryptoThresholdMarket] = []
         unparsed = 0
         for slug in slugs:
-            events = await self._events(slug)
+            events, discovery_error = await self._events(slug)
+            if discovery_error is not None:
+                events_error += 1
+                continue
             if not events:
                 events_missing += 1
                 continue
@@ -299,9 +311,6 @@ class PolymarketCryptoWedgeCollector:
             rows.append(row)
             status_counts[row.status.value] = status_counts.get(row.status.value, 0) + 1
 
-        for name in unknown:
-            crucix_status.setdefault(f"{name} (unknown asset, skipped)", "skipped")
-
         return CryptoWedgeCycleReport(
             trading_mode=self.settings.trading_mode,
             kill_switch_engaged=self.kill_switch.engaged,
@@ -310,6 +319,7 @@ class PolymarketCryptoWedgeCollector:
             assets=tuple(asset.value for asset in assets),
             slugs_requested=len(slugs),
             events_missing=events_missing,
+            events_error=events_error,
             markets_seen=markets_seen,
             parsed=len(parsed_markets),
             unparsed=unparsed,
@@ -318,6 +328,7 @@ class PolymarketCryptoWedgeCollector:
             status_counts=status_counts,
             crucix_status=crucix_status,
             chain_errors=chain_errors,
+            unknown_assets=unknown,
             rows=rows,
         )
 
@@ -407,18 +418,22 @@ class PolymarketCryptoWedgeCollector:
             reasons=reasons,
         )
 
-    async def _events(self, slug: str) -> tuple[dict[str, Any], ...]:
+    async def _events(self, slug: str) -> tuple[tuple[dict[str, Any], ...], str | None]:
+        """Return (events, error). An empty list with no error means the daily
+        event does not exist yet; an error means Gamma did not answer. The two
+        are counted separately so an outage never reads as "nothing listed"."""
+
         if self.fixtures is not None:
             rows = self.fixtures.events.get(slug)
             if not isinstance(rows, list):
-                return ()
-            return tuple(row for row in rows if isinstance(row, dict))
+                return (), None
+            return tuple(row for row in rows if isinstance(row, dict)), None
         if self.gamma is None:
             raise RuntimeError("Gamma client is not configured")
         try:
-            return await self.gamma.list_events_by_slug(slug=slug)
-        except Exception:  # noqa: BLE001 - an unreachable Gamma is a skip, not a crash.
-            return ()
+            return await self.gamma.list_events_by_slug(slug=slug), None
+        except Exception as exc:  # noqa: BLE001 - an unreachable Gamma is a skip.
+            return (), type(exc).__name__
 
     async def _book(self, token_id: str) -> ClobBook:
         if self.fixtures is not None:

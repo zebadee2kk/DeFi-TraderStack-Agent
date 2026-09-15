@@ -2499,7 +2499,9 @@ One invocation does exactly this:
    over today plus `POLYMARKET_CRYPTO_LOOKAHEAD_DAYS`
    (`bitcoin-above-on-september-16-2026`, `ethereum-above-on-…`).
 2. `GET /events?slug=…` on Gamma. A slug that does not exist yet returns `[]`
-   and is counted as `events_missing` — a skip, never an invented row.
+   and is counted as `events_missing` — a skip, never an invented row. A Gamma
+   that does not *answer* is counted separately as `events_error`, so an outage
+   never reads as "there was nothing listed".
 3. Parse each market: only `Will the price of <Bitcoin|Ethereum> be above $K on
    <Month D>?` with an `endDate`, two CLOB token ids, an open book and a
    description naming the Binance 1-minute candle is accepted. Anything else
