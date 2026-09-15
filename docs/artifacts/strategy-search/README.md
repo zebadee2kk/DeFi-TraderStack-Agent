@@ -832,3 +832,61 @@ On the 2026-09-12 live run (catalog committed first):
 
 See `volume-breakout.md`.
 
+
+## Long-only top-k cross-sectional momentum (`traderstack-xs-topk`, #140)
+
+#117 ranked three names and picked one. This command scores a
+**long-only top-k basket** (k in {3, 5}) on a point-in-time Kraken
+USD universe (monthly top-20 by trailing 30-day median dollar volume
+within a frozen dated listing) on a **pre-registered portfolio bar**
+against an equal-weight buy-and-hold control of the same universe. It
+is not a #117 reprint and it does not edit the #117 catalog.
+
+| print | rule | can enter ranking average? |
+| --- | --- | --- |
+| Kraken public OHLC 1d (720-bar cap) | one venue, one era (2024-2026); bar needs every covered era to pass at the pilot cost; dual print needs two independent covered cells | pilot-cost era excess only |
+| second venue / older era | #133 fetcher JSON via `--candles-dir`; not yet available | n/a |
+
+Catalog is frozen (K=13): `xs_topk_{ew|iv}_{21,63,126}_k{3,5}`
+plus informational `ew_bh_universe` (cannot promote). Monday-UTC
+decide on close t, fill next open, 7-day skip, fewer than 10 rankable
+names is a flat week. Costs at research 10+5 bps **and** the Kraken
+tier-1 pilot taker cost (80+5 bps); the bar and the ranking use the
+pilot print. DSR / PBO: `not_computed_pending_135`. `RiskEngine`
+limits documented, not widened. Empty dual-print set is success.
+`PAPER_PROMOTE_*` stays false. No new pin.
+
+On the 2026-09-15 live run (catalog committed first):
+
+- Universe listing: Kraken `AssetPairs` fetched 2026-09-15T11:29:37Z,
+  581 online USD pairs after the frozen
+  exclusion list (a *current* listing — survivorship stated in the
+  report header).
+- Kraken daily print: 568 names loaded,
+  13 skipped (short history / fetch error, listed
+  in the report); window 2024-09-24 → 2026-09-14
+  (720 bars max); 23 monthly
+  snapshots; 66 distinct names ever in
+  the top-20. Eras covered: 2024-2026 only.
+- Control `ew_bh_universe` net return: -48.97%
+  at 10+5 bps, -53.04% at the pilot cost.
+- Best basket at the pilot cost: `xs_topk_ew_21_k5`
+  -71.94% (vs
+  -46.51% at 10+5 bps); worst
+  `xs_topk_ew_63_k5` -86.32%.
+- Baskets beating the control on the full window: 2/12
+  at 10+5 bps, 0/12 at the pilot cost
+  (none).
+- One-way turnover per year across the twelve baskets:
+  10.2–29.5x; pilot-cost fee drag
+  15.6%–75.9% of starting equity over the window —
+  weekly rebalancing of a five-name basket at 80 bps a side is where
+  this family dies.
+- Single-print bar passers (informational, cannot promote):
+  **0**
+  (none).
+- Dual-print passers: **0** — one venue × one era cannot dual-print by
+  construction; a second venue or an older era from #133 is required.
+  No new `PAPER_PROMOTE_*` pin.
+
+See `xs-topk.md`.
