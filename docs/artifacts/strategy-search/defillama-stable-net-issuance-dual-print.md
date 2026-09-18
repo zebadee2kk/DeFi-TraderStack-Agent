@@ -54,3 +54,15 @@ Frozen ids: `stable_ni_fade_1_0`, `stable_ni_fade_1_5`, `stable_ni_fade_2_0`, `s
 ## Weather pivot
 
 Because live DefiLlama history is not PIT-safe, the documented parallel paper path remains Polymarket weather (`traderstack-polymarket-weather-collect` / `traderstack-polymarket-weather-eval` on main). Empty weather print is success; do not invent mids from settlement.
+
+## Forward unblocker (post-#166)
+
+Operator-dated snapshot collector recipe:
+`docs/artifacts/strategy-search/defillama-stable-pit-snapshot-recipe.md`
+
+Day-one status (no invented PnL):
+`docs/artifacts/strategy-search/defillama-stable-pit-snapshot-day1.md`
+
+CLI: `traderstack-defillama-stable-snapshot`. Dual-print remains unavailable until
+≥720 distinct `as_of` tip days exist. Do not backfill tips from one live chart.
+
