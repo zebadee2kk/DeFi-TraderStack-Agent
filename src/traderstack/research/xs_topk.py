@@ -106,6 +106,30 @@ TOPK_IDS: tuple[str, ...] = tuple(item[0] for item in TOPK_CATALOG)
 CONTROL_ID = "ew_bh_universe"
 CONTROL_IDS: frozenset[str] = frozenset({CONTROL_ID})
 CORE_IDS: tuple[str, ...] = TOPK_IDS + (CONTROL_ID,)
+
+LOWTURN_LOOKBACKS: tuple[int, ...] = (126, 252, 378)
+LOWTURN_KS: tuple[int, ...] = (3, 5)
+LOWTURN_WEIGHTS: tuple[str, ...] = ("ew", "iv")
+# Fresh lower-turnover catalog (new ids). Do not retune TOPK_CATALOG after PnL.
+LOWTURN_CATALOG: tuple[tuple[str, int, int, str], ...] = tuple(
+    (f"xs_topk_lt_{weighting}_{lookback}_k{k}", lookback, k, weighting)
+    for weighting in LOWTURN_WEIGHTS
+    for lookback in LOWTURN_LOOKBACKS
+    for k in LOWTURN_KS
+)
+LOWTURN_IDS: tuple[str, ...] = tuple(item[0] for item in LOWTURN_CATALOG)
+LOWTURN_CORE_IDS: tuple[str, ...] = LOWTURN_IDS + (CONTROL_ID,)
+LOWTURN_CATALOG_NOTE = (
+    f"Frozen lower-turnover catalog (K={len(LOWTURN_CORE_IDS)}): "
+    f"`xs_topk_lt_{{ew|iv}}_{{N}}_k{{3|5}}` for N in {list(LOWTURN_LOOKBACKS)} "
+    f"({len(LOWTURN_IDS)} baskets) plus informational control `{CONTROL_ID}` "
+    "(cannot promote). Distinct from the default K=13 TOPK_CATALOG - do not "
+    "retune either list after seeing PnL. PAPER_PROMOTE_* stays false."
+)
+CATALOGS: dict[str, tuple[tuple[str, int, int, str], ...]] = {
+    "default": TOPK_CATALOG,
+    "lowturn": LOWTURN_CATALOG,
+}
 FAMILY = "xs_topk"
 
 
@@ -1074,6 +1098,7 @@ class XsTopKReport(BaseModel):
     catalog_k_core: int = len(CORE_IDS)
     catalog_ids: list[str] = Field(default_factory=lambda: list(CORE_IDS))
     catalog_note: str = CATALOG_NOTE
+    catalog_name: str = "default"
     fee_bps: float
     slippage_bps: float
     pilot_fee_bps: float
@@ -1171,6 +1196,27 @@ def _recommendation(
     return "\n".join(lines)
 
 
+def resolve_catalog(name: str) -> tuple[tuple[str, int, int, str], ...]:
+    """Return a frozen named catalog. Unknown names raise."""
+    try:
+        return CATALOGS[name]
+    except KeyError as exc:
+        known = ", ".join(sorted(CATALOGS))
+        raise ValueError(f"unknown catalog {name!r}; known: {known}") from exc
+
+
+def catalog_core_ids(catalog: tuple[tuple[str, int, int, str], ...]) -> tuple[str, ...]:
+    return tuple(item[0] for item in catalog) + (CONTROL_ID,)
+
+
+def catalog_note_for(name: str) -> str:
+    if name == "lowturn":
+        return LOWTURN_CATALOG_NOTE
+    if name == "default":
+        return CATALOG_NOTE
+    return f"Named catalog {name!r}. PAPER_PROMOTE_* stays false."
+
+
 def build_xs_topk_report(
     prints: list[PrintResult],
     *,
@@ -1184,9 +1230,12 @@ def build_xs_topk_report(
     universe_listing_size: int = 0,
     now: datetime | None = None,
     data_notes: list[str] | None = None,
-    catalog: tuple[tuple[str, int, int, str], ...] = TOPK_CATALOG,
+    catalog: tuple[tuple[str, int, int, str], ...] | None = None,
+    catalog_name: str = "default",
 ) -> XsTopKReport:
     generated = now or datetime.now(UTC)
+    if catalog is None:
+        catalog = resolve_catalog(catalog_name)
     rows = dual_print_rows(prints, catalog=catalog)
     passers = rank_topk_passers(rows)
     selected = passers[0] if passers else None
@@ -1205,8 +1254,8 @@ def build_xs_topk_report(
     honesty = (
         XS_TOPK_RULES
         + " "
-        + CATALOG_NOTE
-        + f" This run scored K={len(catalog) + 1} (core ids frozen at {len(CORE_IDS)}) on "
+        + catalog_note_for(catalog_name)
+        + f" This run scored K={len(catalog) + 1} (core ids frozen at {len(catalog_core_ids(catalog))}) on "
         f"{len(prints)} print(s). Single-print bar passers (ex-control): {len(single_ids)}. "
         f"Dual-print passers: {len(dual_ids)}."
     )
@@ -1248,6 +1297,10 @@ def build_xs_topk_report(
             prints=prints,
         ),
         data_notes=list(data_notes or []),
+        catalog_k_core=len(catalog_core_ids(catalog)),
+        catalog_ids=list(catalog_core_ids(catalog)),
+        catalog_note=catalog_note_for(catalog_name),
+        catalog_name=catalog_name,
     )
 
 
@@ -1377,7 +1430,7 @@ def render_xs_topk_markdown(report: XsTopKReport) -> str:
         f"- Exclusion rule: {report.exclusion_rule}",
         f"- Liquidity filter: `{report.liquidity_filter_rule}` (monthly, point-in-time).",
         (
-            f"- Frozen grid: N in {list(TOPK_LOOKBACKS)} with a {TOPK_SKIP_DAYS}-day skip; "
+            f"- Catalog `{report.catalog_name}`: see catalog_note/ids below; skip {TOPK_SKIP_DAYS}d; default-grid reference N={list(TOPK_LOOKBACKS)} (K=13 untouched); "
             f"k in {list(TOPK_KS)}; weights {list(TOPK_WEIGHTS)}; rebalance "
             f"`{report.rebalance_rule}`; MIN_CROSS_SECTION={MIN_CROSS_SECTION}; "
             f"eligibility N+{MIN_HISTORY_MARGIN} bars."
