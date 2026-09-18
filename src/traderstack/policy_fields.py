@@ -123,6 +123,7 @@ NON_POLICY_FIELDS: tuple[str, ...] = (
     # test_promotion_settings_do_not_move_risk_policy_version pins that a
     # promotion flag must not move the risk digest.
     "paper_fee_bps",
+    "paper_carry_hedge_diagnostic",
     "paper_perp_hedge",
     "paper_pretrade_min_excess_return",
     "paper_pretrade_min_sharpe",

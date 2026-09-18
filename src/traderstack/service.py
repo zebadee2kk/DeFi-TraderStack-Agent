@@ -2,7 +2,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -10,9 +10,14 @@ import structlog
 
 from traderstack.audit_anchor import AuditAnchorPublisher
 from traderstack.config import Settings
-from traderstack.execution.ledger import ExecutionFill, ExecutionLedger, ExecutionOrder
+from traderstack.execution.ledger import ExecutionFill, ExecutionLedger, ExecutionOrder, FeeSource
 from traderstack.execution.paper_fill import PaperFillSimulator, PaperFillStatus
-from traderstack.execution.paper_perp import PaperPerpBook
+from traderstack.execution.paper_perp import (
+    CARRY_DIAGNOSTIC_NOTIONAL_USD,
+    CARRY_DIAGNOSTIC_SIGNAL,
+    PaperPerpBook,
+    carry_hedged_sign_spot_side,
+)
 from traderstack.execution.paper_perp_feed import PaperPerpFeed, PaperPerpVenueName
 from traderstack.execution.reconcile import ExecutionReconciliationResult
 from traderstack.health import RuntimeHealth
@@ -235,6 +240,7 @@ class ContinuousPaperService:
             # the risk trail see the fill on the same cycle.
             result = await self._maybe_apply_paper_fill(result)
             await self._maybe_apply_paper_perp_funding(symbol)
+            await self._maybe_open_carry_diagnostic_hedge(symbol)
             asset = (
                 result.pipeline.feature_vector.asset
                 if result.pipeline.feature_vector is not None
@@ -440,6 +446,130 @@ class ContinuousPaperService:
                 "execution_reason": outcome.reason,
             }
         )
+
+    async def _maybe_open_carry_diagnostic_hedge(self, symbol: str) -> None:
+        """Open a carry_hedged_sign paper hedge without a promote voter fill.
+
+        PAPER_CARRY_HEDGE_DIAGNOSTIC only. Synthetic spot fill is NOT booked
+        into the spot portfolio. Explicit venue mid required; never invents
+        funding or uses Kraken spot as perp mid. Not a promote path.
+        """
+
+        if (
+            self.settings is None
+            or not self.settings.paper_carry_hedge_diagnostic
+            or self.paper_perp_book is None
+            or self.paper_perp_feed is None
+        ):
+            return
+        if self.settings.trading_mode != "paper":
+            return
+        asset = symbol.split("/", 1)[0].upper()
+        if asset in self.paper_perp_book.positions:
+            return
+
+        try:
+            quote = await self.paper_perp_feed.fetch_mid(symbol)
+        except Exception as exc:  # noqa: BLE001 - skip, never invent a mid.
+            _log.warning(
+                "paper_carry_diag_skipped",
+                symbol=symbol,
+                reason="mid_fetch_failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return
+        if quote is None or quote.mid_usd <= 0:
+            _log.info(
+                "paper_carry_diag_skipped",
+                symbol=symbol,
+                reason="perp mid missing; refuse to invent",
+            )
+            return
+
+        since = datetime.now(UTC) - timedelta(hours=48)
+        try:
+            tape = await self.paper_perp_feed.fetch_funding_since(
+                symbol, venue=quote.venue, since=since
+            )
+        except Exception as exc:  # noqa: BLE001 - skip, never invent a rate.
+            _log.warning(
+                "paper_carry_diag_skipped",
+                symbol=symbol,
+                reason="funding_fetch_failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return
+        if not tape.settlements:
+            _log.info(
+                "paper_carry_diag_skipped",
+                symbol=symbol,
+                venue=quote.venue,
+                reason="no public funding settlements in lookback",
+            )
+            return
+
+        _ts, rate = tape.settlements[-1]
+        spot_side = carry_hedged_sign_spot_side(rate)
+        if spot_side is None:
+            _log.info(
+                "paper_carry_diag_skipped",
+                symbol=symbol,
+                venue=quote.venue,
+                reason="funding rate is zero; no harvest side",
+                rate=rate,
+            )
+            return
+
+        quantity = CARRY_DIAGNOSTIC_NOTIONAL_USD / quote.mid_usd
+        if quantity <= 0:
+            _log.info(
+                "paper_carry_diag_skipped",
+                symbol=symbol,
+                reason="non-positive diagnostic quantity",
+            )
+            return
+
+        decision_id = f"carry-diag-{self._cycle}-{asset}"
+        # Synthetic fill for the hedge book only — do not mutate spot NAV.
+        synthetic = ExecutionFill(
+            fill_id=f"carry-diag-fill:{decision_id}",
+            order_id=decision_id,
+            asset=asset,
+            side=spot_side,
+            quantity=quantity,
+            price_usd=quote.mid_usd,
+            fee_usd=0.0,
+            fee_source=FeeSource.MODELLED,
+        )
+        hedge = self.paper_perp_book.maybe_hedge_spot_fill(
+            synthetic,
+            perp_mid_usd=quote.mid_usd,
+            decision_id=decision_id,
+            ledger=self.execution_ledger,
+        )
+        if hedge.applied:
+            self._paper_perp_venue[asset] = quote.venue
+            self._paper_perp_last_funding_at[asset] = quote.observed_at
+            _log.info(
+                "paper_perp_hedged",
+                asset=asset,
+                venue=quote.venue,
+                source=quote.source,
+                mid_usd=quote.mid_usd,
+                signal=CARRY_DIAGNOSTIC_SIGNAL,
+                diagnostic=True,
+                funding_rate=rate,
+                spot_side=spot_side.value,
+                notional_usd=CARRY_DIAGNOSTIC_NOTIONAL_USD,
+            )
+        elif hedge.reason:
+            _log.info(
+                "paper_carry_diag_skipped",
+                asset=asset,
+                status=hedge.status.value,
+                reason=hedge.reason,
+                signal=CARRY_DIAGNOSTIC_SIGNAL,
+            )
 
     async def _maybe_hedge_paper_perp(
         self, result: RuntimeResult, fill: ExecutionFill, decision_id: str
