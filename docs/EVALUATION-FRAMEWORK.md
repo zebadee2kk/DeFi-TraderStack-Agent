@@ -541,10 +541,12 @@ row existed**, so the slice-2 evaluator cannot be tuned to the data it scores.
 - **Empty is success**: a cycle that finds no open event, and an evaluation
   with no qualifying rows, are both successful results and are reported as such.
 
-The evaluator (`traderstack-polymarket-crypto-eval`) and the two disjoint
-resolution sources (Binance Vision 1-minute closes and Gamma's settled
-`outcomePrices`) are the next slice. Until they ship, the tape is evidence
-only and no PnL is claimed anywhere.
+The evaluator (`traderstack-polymarket-crypto-eval`) scores operator-supplied
+tape + settlement packs (Binance Vision 1-minute closes and Gamma's settled
+`outcomePrices` as two disjoint sources). Without those packs, `--empty-live`
+is the honest outcome. Settlement is never a mid. `can_promote` stays false;
+no `PAPER_PROMOTE_*` default changes. Empty is success. Recipe:
+`docs/artifacts/strategy-search/polymarket-crypto-wedge-eval-recipe.md`.
 ### Polymarket weather — point-in-time tape now exists (#141)
 
 The statement above that this repository has **no** public point-in-time

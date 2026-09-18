@@ -40,6 +40,8 @@ NEW_SOURCES = (
     SRC / "market" / "deribit.py",
     SRC / "polymarket" / "crypto_service.py",
     SRC / "polymarket" / "crypto_cli.py",
+    SRC / "polymarket" / "crypto_eval.py",
+    SRC / "polymarket" / "crypto_eval_cli.py",
     SRC / "polymarket" / "crypto_gate.py",
     SRC / "polymarket" / "option_implied.py",
 )
