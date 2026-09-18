@@ -123,16 +123,67 @@ MAX_LEVERAGE = 1.0
 REBALANCE_THRESHOLD = 0.05
 ENTRY_RULE = "close_above_prior_n_max_close"
 STOP_RULE = "max_prior_stop_close_channel_midpoint"
-# (candidate_id, lookbacks, vol_target_annual or None for unit weight)
-ENSEMBLE_CATALOG: tuple[tuple[str, tuple[int, ...], float | None], ...] = (
-    ("ens_trend_9lb_vt25", ENSEMBLE_LOOKBACKS, VOL_TARGET_ANNUAL),
-    ("ens_trend_6lb_vt25", SHORT_LOOKBACKS, VOL_TARGET_ANNUAL),
-    ("ens_trend_9lb_unit", ENSEMBLE_LOOKBACKS, None),
+# (candidate_id, lookbacks, vol_target_annual or None, min_open)
+# min_open=0 preserves #137 open-fraction behaviour (no consensus floor).
+ENSEMBLE_CATALOG: tuple[tuple[str, tuple[int, ...], float | None, int], ...] = (
+    ("ens_trend_9lb_vt25", ENSEMBLE_LOOKBACKS, VOL_TARGET_ANNUAL, 0),
+    ("ens_trend_6lb_vt25", SHORT_LOOKBACKS, VOL_TARGET_ANNUAL, 0),
+    ("ens_trend_9lb_unit", ENSEMBLE_LOOKBACKS, None, 0),
 )
 ENSEMBLE_IDS: tuple[str, ...] = tuple(item[0] for item in ENSEMBLE_CATALOG)
 CONTROL_ID = "ma_cross_10_30"
 CONTROL_IDS: frozenset[str] = frozenset({CONTROL_ID})
 CORE_IDS: tuple[str, ...] = ENSEMBLE_IDS + (CONTROL_ID,)
+
+# --- ensemble-trend v2 consensus catalog (fresh ids; do not retune #137) ---
+V2_VOL_TARGET_ANNUAL = 0.15
+V2_MID_LOOKBACKS: tuple[int, ...] = (30, 60, 90, 150)
+V2_LONG_LOOKBACKS: tuple[int, ...] = (60, 90, 150, 250)
+V2_STRICT_LOOKBACKS: tuple[int, ...] = (20, 30, 60, 90, 150)
+V2_CATALOG: tuple[tuple[str, tuple[int, ...], float | None, int], ...] = (
+    ("ens_trend_v2_maj_mid_vt15", V2_MID_LOOKBACKS, V2_VOL_TARGET_ANNUAL, 2),
+    ("ens_trend_v2_maj_long_vt15", V2_LONG_LOOKBACKS, V2_VOL_TARGET_ANNUAL, 2),
+    ("ens_trend_v2_strict_mid_vt15", V2_STRICT_LOOKBACKS, V2_VOL_TARGET_ANNUAL, 3),
+)
+V2_IDS: tuple[str, ...] = tuple(item[0] for item in V2_CATALOG)
+V2_CORE_IDS: tuple[str, ...] = V2_IDS + (CONTROL_ID,)
+V2_CATALOG_NOTE = (
+    f"Frozen ensemble-trend v2 consensus catalog (K={len(V2_CORE_IDS)}): "
+    "`ens_trend_v2_maj_mid_vt15` (lookbacks {30,60,90,150}, min_open=2, 15% vol), "
+    "`ens_trend_v2_maj_long_vt15` (lookbacks {60,90,150,250}, min_open=2, 15% vol), "
+    "`ens_trend_v2_strict_mid_vt15` (lookbacks {20,30,60,90,150}, min_open=3, 15% vol), "
+    f"plus informational control `{CONTROL_ID}` (cannot promote). Distinct from the "
+    "#137 ENSEMBLE_CATALOG — do not retune either list after seeing PnL. "
+    "PAPER_PROMOTE_* stays false."
+)
+CATALOGS: dict[str, tuple[tuple[str, tuple[int, ...], float | None, int], ...]] = {
+    "default": ENSEMBLE_CATALOG,
+    "v2": V2_CATALOG,
+}
+SECOND_PRINT_CONCURRENT = "concurrent_venue_harder_gates"
+SECOND_PRINT_OLDER_720 = "older_720_ending_before_primary_first_bar"
+
+
+def resolve_catalog(name: str) -> tuple[tuple[str, tuple[int, ...], float | None, int], ...]:
+    """Return a frozen catalog by CLI name. Unknown names raise."""
+    try:
+        return CATALOGS[name]
+    except KeyError as exc:
+        raise ValueError(f"unknown catalog {name!r}; known: {sorted(CATALOGS)}") from exc
+
+
+def catalog_core_ids(name: str) -> tuple[str, ...]:
+    if name == "v2":
+        return V2_CORE_IDS
+    return CORE_IDS
+
+
+def catalog_note_for(name: str) -> str:
+    if name == "v2":
+        return V2_CATALOG_NOTE
+    return CATALOG_NOTE
+
+
 GATE_SYMBOLS: tuple[str, ...] = ("BTC/USD", "ETH/USD", "SOL/USD")
 PAPER_PATH_READY = True
 MULTI_ASSET_GATE_RULE = "btc_eth_signs_as_96_abc_sol_reported_not_required"
@@ -454,15 +505,20 @@ def ensemble_trend_series(
     lookbacks: tuple[int, ...] = ENSEMBLE_LOOKBACKS,
     vol_target: float | None = VOL_TARGET_ANNUAL,
     vol_lookback: int = VOL_LOOKBACK,
+    min_open: int = 0,
 ) -> tuple[tuple[datetime, float, int], ...]:
     """Point-in-time ``(opened_at, weight, open_count)`` per bar.
 
     Starts once every lookback has a prior channel (and the vol window
     exists when a target is set). Weight is in ``[0, MAX_LEVERAGE]``.
     A bar without a realised-vol estimate is skipped, never zero-filled.
+    When ``min_open > 0`` and ``open_count < min_open``, weight is forced
+    to 0 (v2 consensus floor); ``min_open=0`` preserves #137 behaviour.
     """
     if not lookbacks or any(item <= 0 for item in lookbacks):
         return ()
+    if min_open < 0:
+        raise ValueError(f"min_open must be >= 0, got {min_open}")
     total = len(lookbacks)
     start = max(lookbacks)
     if vol_target is not None:
@@ -483,7 +539,10 @@ def ensemble_trend_series(
         )
         if scalar is None:
             continue
-        weight = (open_count / total) * scalar
+        if min_open and open_count < min_open:
+            weight = 0.0
+        else:
+            weight = (open_count / total) * scalar
         weight = max(0.0, min(weight, MAX_LEVERAGE))
         out.append((ts, weight, open_count))
     return tuple(out)
@@ -571,6 +630,7 @@ def ensemble_attribution(
     *,
     lookbacks: tuple[int, ...] = ENSEMBLE_LOOKBACKS,
     vol_target: float | None = VOL_TARGET_ANNUAL,
+    min_open: int = 0,
     snapshots: dict[datetime, frozenset[str]] | None = None,
 ) -> tuple[dict[str, float], dict[int, float]]:
     """Gross close-to-close contribution by asset and by lookback (informational).
@@ -586,7 +646,9 @@ def ensemble_attribution(
         if not candles:
             continue
         symbol = _canonical(candles[0].symbol)
-        series = ensemble_trend_series(candles, lookbacks=lookbacks, vol_target=vol_target)
+        series = ensemble_trend_series(
+            candles, lookbacks=lookbacks, vol_target=vol_target, min_open=min_open
+        )
         if snapshots is not None:
             series = apply_membership(symbol, series, snapshots)
         if not series:
@@ -620,6 +682,7 @@ class EnsembleTrendVoter:
     strategy_id: str
     lookbacks: tuple[int, ...] = ENSEMBLE_LOOKBACKS
     vol_target: float | None = VOL_TARGET_ANNUAL
+    min_open: int = 0
     signals_by_symbol: tuple[tuple[str, tuple[tuple[datetime, float, int], ...]], ...] = ()
 
     def evaluate(self, candles: tuple[Candle, ...], regime: Regime) -> StrategySignal:
@@ -632,7 +695,10 @@ class EnsembleTrendVoter:
             source = "precomputed"
         else:
             computed = ensemble_trend_series(
-                candles, lookbacks=self.lookbacks, vol_target=self.vol_target
+                candles,
+                lookbacks=self.lookbacks,
+                vol_target=self.vol_target,
+                min_open=self.min_open,
             )
             found = None
             if computed and computed[-1][0] == cutoff:
@@ -691,13 +757,16 @@ def ensemble_trend_signals(
     *,
     lookbacks: tuple[int, ...],
     vol_target: float | None,
+    min_open: int = 0,
     snapshots: dict[datetime, frozenset[str]] | None = None,
 ) -> dict[str, tuple[tuple[datetime, float, int], ...]]:
     """Per-gate-asset assignments under membership. Missing assets omitted."""
     by_canonical = _histories_by_canonical(histories)
     per_asset: dict[str, tuple[tuple[datetime, float, int], ...]] = {}
     for asset, candles in by_canonical.items():
-        series = ensemble_trend_series(candles, lookbacks=lookbacks, vol_target=vol_target)
+        series = ensemble_trend_series(
+            candles, lookbacks=lookbacks, vol_target=vol_target, min_open=min_open
+        )
         if snapshots is not None:
             series = apply_membership(asset, series, snapshots)
         if series:
@@ -725,11 +794,17 @@ def _control_candidate() -> SearchCandidate:
     )
 
 
-def _book_label(*, lookbacks: tuple[int, ...], vol_target: float | None) -> str:
+def _book_label(
+    *,
+    lookbacks: tuple[int, ...],
+    vol_target: float | None,
+    min_open: int = 0,
+) -> str:
     sizing = f"{vol_target:.0%} vol target (90d)" if vol_target is not None else "unit weight"
+    consensus = f", min_open={min_open}" if min_open else ""
     return (
         f"long-only ensemble Donchian-on-close {{{','.join(str(n) for n in lookbacks)}}} "
-        f"+ trailing midpoint stop × {sizing}"
+        f"+ trailing midpoint stop × {sizing}{consensus}"
     )
 
 
@@ -738,15 +813,21 @@ def ensemble_trend_candidates(
     *,
     include_control: bool = True,
     snapshots: dict[datetime, frozenset[str]] | None = None,
+    catalog: tuple[tuple[str, tuple[int, ...], float | None, int], ...] | None = None,
 ) -> tuple[SearchCandidate, ...]:
-    """Instantiate the frozen catalog. Missing / short series → that name omitted."""
+    """Instantiate a frozen catalog. Missing / short series → that name omitted."""
     out: list[SearchCandidate] = []
     source = histories or {}
     if snapshots is None:
         snapshots = universe_snapshots(source)
-    for candidate_id, lookbacks, vol_target in ENSEMBLE_CATALOG:
+    active = catalog if catalog is not None else ENSEMBLE_CATALOG
+    for candidate_id, lookbacks, vol_target, min_open in active:
         mapping = ensemble_trend_signals(
-            source, lookbacks=lookbacks, vol_target=vol_target, snapshots=snapshots
+            source,
+            lookbacks=lookbacks,
+            vol_target=vol_target,
+            min_open=min_open,
+            snapshots=snapshots,
         )
         if not mapping:
             continue
@@ -755,11 +836,12 @@ def ensemble_trend_candidates(
             SearchCandidate(
                 candidate_id=candidate_id,
                 family="ensemble_trend",
-                label=_book_label(lookbacks=lookbacks, vol_target=vol_target),
+                label=_book_label(lookbacks=lookbacks, vol_target=vol_target, min_open=min_open),
                 params={
                     "lookbacks": list(lookbacks),
                     "vol_target_annual": vol_target,
                     "vol_lookback": VOL_LOOKBACK if vol_target is not None else None,
+                    "min_open": min_open,
                     "max_leverage": MAX_LEVERAGE,
                     "entry_rule": ENTRY_RULE,
                     "stop_rule": STOP_RULE,
@@ -771,9 +853,10 @@ def ensemble_trend_candidates(
                     strategy_id=candidate_id,
                     lookbacks=lookbacks,
                     vol_target=vol_target,
+                    min_open=min_open,
                     signals_by_symbol=by_symbol,
                 ),
-                # --- ensemble trend (#137): fractional long-only weight ---
+                # --- ensemble trend (#137 / v2): fractional long-only weight ---
                 weight_from_score=True,
             )
         )
@@ -786,13 +869,19 @@ def skipped_ensemble_families(
     histories: dict[str, tuple[Candle, ...]],
     *,
     snapshots: dict[datetime, frozenset[str]] | None = None,
+    catalog: tuple[tuple[str, tuple[int, ...], float | None, int], ...] | None = None,
 ) -> list[dict[str, str]]:
     skipped: list[dict[str, str]] = []
     if snapshots is None:
         snapshots = universe_snapshots(histories)
-    for candidate_id, lookbacks, vol_target in ENSEMBLE_CATALOG:
+    active = catalog if catalog is not None else ENSEMBLE_CATALOG
+    for candidate_id, lookbacks, vol_target, min_open in active:
         mapping = ensemble_trend_signals(
-            histories, lookbacks=lookbacks, vol_target=vol_target, snapshots=snapshots
+            histories,
+            lookbacks=lookbacks,
+            vol_target=vol_target,
+            min_open=min_open,
+            snapshots=snapshots,
         )
         if mapping:
             continue
@@ -804,8 +893,8 @@ def skipped_ensemble_families(
                 "family": "ensemble_trend",
                 "candidate_id": candidate_id,
                 "reason": (
-                    f"{_book_label(lookbacks=lookbacks, vol_target=vol_target)}: skipped — "
-                    f"need venue-local daily closes with at least {need} bars"
+                    f"{_book_label(lookbacks=lookbacks, vol_target=vol_target, min_open=min_open)}"
+                    f": skipped — need venue-local daily closes with at least {need} bars"
                     " (warmup-limited on the 720-bar cap). Skip rather than invent "
                     "or zero-fill closes."
                 ),
@@ -994,6 +1083,49 @@ def _universe_summary(
     )
 
 
+def _concurrent_slice_meta(
+    *,
+    raw_second: dict[str, tuple[Candle, ...]],
+    scored: dict[str, tuple[Candle, ...]],
+    venue_source: str | None,
+    min_bars: int = 365,
+) -> SliceMeta:
+    """Same-window second venue (Coinbase): overlap with primary is allowed."""
+    score_btc = scored.get("BTC/USD@1d")
+    score_eth = scored.get("ETH/USD@1d")
+    score_sol = scored.get("SOL/USD@1d")
+    short = (
+        score_btc is None
+        or score_eth is None
+        or len(score_btc) < min_bars
+        or len(score_eth) < min_bars
+    )
+    first = score_btc[0].opened_at.isoformat() if score_btc else None
+    last = score_btc[-1].opened_at.isoformat() if score_btc else None
+    if not raw_second:
+        reason = "second venue daily missing or failed (empty print is success)"
+    elif short:
+        reason = (
+            f"second venue shorter than {min_bars} committed bars "
+            f"(BTC={len(score_btc or ())}, ETH={len(score_eth or ())}); fail closed"
+        )
+    else:
+        reason = None
+    return SliceMeta(
+        rule=SECOND_PRINT_CONCURRENT,
+        venue=venue_source or "coinbase",
+        available=reason is None and not short,
+        bars_btc=len(score_btc or ()),
+        bars_eth=len(score_eth or ()),
+        bars_sol=len(score_sol or ()),
+        first=first,
+        last=last,
+        overlaps_primary_window=True,
+        overlaps_primary_holdout=False,
+        fail_closed_reason=reason,
+    )
+
+
 def run_ensemble_trend_search(
     kraken_histories: dict[str, tuple[Candle, ...]],
     binance_histories: dict[str, tuple[Candle, ...]] | None = None,
@@ -1013,11 +1145,25 @@ def run_ensemble_trend_search(
     universe_skipped: list[str] | None = None,
     now: datetime | None = None,
     data_notes: list[str] | None = None,
+    catalog_name: str = "default",
+    second_print_mode: str | None = None,
 ) -> EnsembleTrendReport:
-    """Score the frozen catalog on both prints. ``kraken_histories`` may hold
+    """Score a frozen catalog on both prints. ``kraken_histories`` may hold
     the whole candidate universe; only BTC/ETH/SOL are harness-scored, the
-    rest feed the point-in-time membership snapshot."""
+    rest feed the point-in-time membership snapshot.
+
+    ``catalog_name`` selects ``default`` (#137) or ``v2`` (consensus).
+    ``second_print_mode`` defaults to older-720 for default catalog and
+    concurrent Coinbase harder-gates for v2.
+    """
     generated = now or datetime.now(UTC)
+    active_spec = resolve_catalog(catalog_name)
+    note = catalog_note_for(catalog_name)
+    core_ids = catalog_core_ids(catalog_name)
+    mode = second_print_mode or (
+        SECOND_PRINT_CONCURRENT if catalog_name == "v2" else SECOND_PRINT_OLDER_720
+    )
+
     kraken = _score_symbols_only(kraken_histories)
     if not kraken:
         raise ValueError("no Kraken BTC/ETH/SOL daily histories provided")
@@ -1032,22 +1178,33 @@ def run_ensemble_trend_search(
     catalog = (
         candidates
         if candidates is not None
-        else ensemble_trend_candidates(kraken_histories, snapshots=snapshots)
+        else ensemble_trend_candidates(kraken_histories, snapshots=snapshots, catalog=active_spec)
     )
-    skipped = skipped_ensemble_families(kraken_histories, snapshots=snapshots)
+    skipped = skipped_ensemble_families(kraken_histories, snapshots=snapshots, catalog=active_spec)
 
-    raw_binance = binance_histories or {}
-    sliced_binance = {
-        key: slice_ending_before(candles, before=primary_first)
-        for key, candles in raw_binance.items()
-    }
-    remapped = _score_symbols_only(remap_binance_for_scoring(sliced_binance))
-    binance_meta = _binance_slice_meta(
-        raw_binance=raw_binance,
-        remapped=remapped,
-        primary_first=primary_first,
-        binance_source=binance_source,
-    )
+    raw_second = binance_histories or {}
+    if mode == SECOND_PRINT_CONCURRENT:
+        # Concurrent venue (Coinbase): score USD symbols directly; overlap OK.
+        remapped = _score_symbols_only(raw_second)
+        if not remapped and raw_second:
+            remapped = _score_symbols_only(remap_binance_for_scoring(raw_second))
+        binance_meta = _concurrent_slice_meta(
+            raw_second=raw_second,
+            scored=remapped,
+            venue_source=binance_source or "coinbase",
+        )
+    else:
+        sliced_binance = {
+            key: slice_ending_before(candles, before=primary_first)
+            for key, candles in raw_second.items()
+        }
+        remapped = _score_symbols_only(remap_binance_for_scoring(sliced_binance))
+        binance_meta = _binance_slice_meta(
+            raw_binance=raw_second,
+            remapped=remapped,
+            primary_first=primary_first,
+            binance_source=binance_source,
+        )
 
     kraken_report = _score(
         kraken,
@@ -1069,11 +1226,9 @@ def run_ensemble_trend_search(
         if candidates is not None:
             binance_catalog = candidates
         else:
-            # Membership on the second print is computed from the three
-            # Binance series only (the universe is not pulled on Binance);
-            # BTC/ETH/SOL are top-20 on any month they qualify, so the gate
-            # symbols see the same rule.
-            binance_catalog = ensemble_trend_candidates(remapped)
+            # Membership on the second print is computed from the scored
+            # second-venue series only; BTC/ETH/SOL see the same rule.
+            binance_catalog = ensemble_trend_candidates(remapped, catalog=active_spec)
         binance_report = _score(
             remapped,
             fee_bps=fee_bps,
@@ -1126,9 +1281,13 @@ def run_ensemble_trend_search(
     attribution_by_asset: dict[str, dict[str, float]] = {}
     attribution_by_lookback: dict[str, dict[str, float]] = {}
     gate_histories = _histories_by_canonical(kraken)
-    for candidate_id, lookbacks, vol_target in ENSEMBLE_CATALOG:
+    for candidate_id, lookbacks, vol_target, min_open in active_spec:
         by_asset, by_lookback = ensemble_attribution(
-            gate_histories, lookbacks=lookbacks, vol_target=vol_target, snapshots=snapshots
+            gate_histories,
+            lookbacks=lookbacks,
+            vol_target=vol_target,
+            min_open=min_open,
+            snapshots=snapshots,
         )
         attribution_by_asset[candidate_id] = by_asset
         attribution_by_lookback[candidate_id] = {str(n): v for n, v in by_lookback.items()}
@@ -1136,9 +1295,10 @@ def run_ensemble_trend_search(
     honesty = (
         ENSEMBLE_RULES
         + " "
-        + CATALOG_NOTE
+        + note
+        + f" catalog_name={catalog_name}; second_print_mode={mode}."
         + f" This run scored K={len(catalog)} (core ids frozen at "
-        f"{len(CORE_IDS)}). Fees: {fee_bps:g} bps ({fee_source}"
+        f"{len(core_ids)}). Fees: {fee_bps:g} bps ({fee_source}"
         + (f", Kraken Pro tier {kraken_tier}" if kraken_tier is not None else "")
         + f") + slippage {slippage_bps:g} bps. "
         f"Kraken combined-passers (ex-control): {len(kraken_ids)}. "
@@ -1179,10 +1339,10 @@ def run_ensemble_trend_search(
         ranking_key=RANKING_KEY,
         selection_rule=SELECTION_RULE,
         multi_asset_gate_rule=MULTI_ASSET_GATE_RULE,
-        catalog_k_core=len(CORE_IDS),
+        catalog_k_core=len(core_ids),
         catalog_k_scored=len(catalog),
         catalog_ids=[item.candidate_id for item in catalog],
-        catalog_note=CATALOG_NOTE,
+        catalog_note=note,
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
         kraken_tier=kraken_tier,

@@ -32,11 +32,14 @@ from traderstack.research.daily_robustness import (
 from traderstack.research.download_candles import download_candles
 from traderstack.research.ensemble_trend import (
     CANDIDATE_UNIVERSE,
+    CATALOGS,
     DEFAULT_KRAKEN_TIER,
     KRAKEN_PRO_TIERS,
     RANKING_KEY,
+    SECOND_PRINT_CONCURRENT,
     fee_tier_taker_bps,
     render_ensemble_trend_markdown,
+    resolve_catalog,
     run_ensemble_trend_search,
 )
 from traderstack.research.miles_candidates import SearchCandidate
@@ -64,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
             "N retune. No live."
         )
     )
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group(required=False)
     source.add_argument(
         "--candles",
         type=Path,
@@ -89,6 +92,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         help="offline Binance JSON candle array (repeat; BTCUSDT/ETHUSDT/SOLUSDT)",
+    )
+    parser.add_argument(
+        "--candles-dir",
+        nargs=2,
+        action="append",
+        metavar=("VENUE", "DIR"),
+        default=None,
+        help=(
+            "venue label and candle directory (repeatable; for --catalog v2 "
+            "expect kraken + coinbase archive dirs; skip *.report.json)"
+        ),
+    )
+    parser.add_argument(
+        "--catalog",
+        choices=sorted(CATALOGS),
+        default="default",
+        help="Frozen catalog: default (#137 K=4) or v2 (consensus min_open; new ids).",
     )
     parser.add_argument(
         "--binance",
@@ -135,6 +155,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--stdout-md", action="store_true")
     return parser
+
+
+def load_candles_dir(directory: Path) -> tuple[dict[str, tuple[Candle, ...]], list[str]]:
+    """Load every ``*_1d.json`` candle array in ``directory`` (skip report sidecars)."""
+    histories: dict[str, tuple[Candle, ...]] = {}
+    notes: list[str] = []
+    if not directory.is_dir():
+        notes.append(f"{directory}: not a directory; skipped")
+        return histories, notes
+    for path in sorted(directory.glob("*.json")):
+        if path.name.endswith(".report.json") or ".report." in path.name:
+            continue
+        try:
+            candles = load_candles_from_json(path)
+        except (OSError, TypeError, ValueError) as exc:
+            notes.append(f"{path.name}: load failed ({exc}); skipped")
+            continue
+        if not candles:
+            notes.append(f"{path.name}: empty; skipped")
+            continue
+        key = _history_key(candles)
+        histories[key] = candles
+        notes.append(
+            f"loaded {len(candles)} {candles[0].interval} bars for "
+            f"{candles[0].symbol} from {path} (candles_dir)"
+        )
+    return histories, notes
 
 
 def _history_key(candles: tuple[Candle, ...]) -> str:
@@ -243,7 +290,39 @@ def run(
     settings = settings or Settings()
     universe_skipped: list[str] = []
     started = time.monotonic()
-    if args.live:
+    catalog_name = getattr(args, "catalog", "default") or "default"
+    resolve_catalog(catalog_name)  # fail fast on unknown
+    candle_dirs = list(args.candles_dir or [])
+
+    binance_histories: dict[str, tuple[Candle, ...]] = {}
+    binance_source: str | None = None
+    second_print_mode: str | None = None
+
+    if candle_dirs:
+        by_venue: dict[str, dict[str, tuple[Candle, ...]]] = {}
+        notes: list[str] = []
+        for venue, directory in candle_dirs:
+            loaded, extra = load_candles_dir(Path(directory))
+            by_venue[venue.lower()] = loaded
+            notes.extend(f"{venue}:{item}" for item in extra)
+        if "kraken" not in by_venue or not by_venue["kraken"]:
+            raise ValueError("--candles-dir requires a non-empty kraken venue dir")
+        kraken_histories = by_venue["kraken"]
+        notes.append(
+            f"candles-dir kraken: {len(kraken_histories)} series; "
+            f"venues={sorted(by_venue)} in {time.monotonic() - started:.0f}s"
+        )
+        for venue, histories in by_venue.items():
+            if venue == "kraken":
+                continue
+            binance_histories = histories
+            binance_source = venue
+            if venue == "coinbase" or catalog_name == "v2":
+                second_print_mode = SECOND_PRINT_CONCURRENT
+            break
+        if not binance_histories:
+            notes.append("second venue missing from --candles-dir; empty print is success")
+    elif getattr(args, "live", False):
         symbols = tuple(args.symbol) if args.symbol else CANDIDATE_UNIVERSE
         kraken_histories, notes, universe_skipped = asyncio.run(
             _pull_universe(symbols, max_candles=args.max_candles, pause_seconds=pause_seconds)
@@ -252,33 +331,43 @@ def run(
             f"universe pull: {len(kraken_histories)} of {len(symbols)} symbols in "
             f"{time.monotonic() - started:.0f}s; skipped={len(universe_skipped)}"
         )
-    else:
+    elif args.candles:
         kraken_histories, notes = _load_candle_files(list(args.candles))
+    else:
+        raise ValueError("provide --candles-dir, --candles, or --live")
+
     primary_first, source = primary_first_opened_at(kraken_histories)
     notes.append(f"primary first bar {primary_first.isoformat()} (source={source})")
     notes.append(
         "gate symbols=BTC/USD,ETH/USD (SOL/USD reported); remaining universe "
         "names feed point-in-time membership only (skip-not-invent)"
     )
+    notes.append(f"catalog={catalog_name}")
 
-    binance_histories: dict[str, tuple[Candle, ...]] = {}
-    binance_source: str | None = None
-    if args.binance_candles:
-        loaded, extra = _load_binance_files(args.binance_candles)
-        binance_histories.update(loaded)
-        notes.extend(extra)
-        binance_source = "binance_json"
-    elif args.binance and args.live:
-        fetched, binance_source, extra = _load_live_binance(primary_first)
-        binance_histories.update(fetched)
-        notes.extend(extra)
-    elif not args.binance:
-        notes.append("Binance Spot daily skipped (--no-binance); empty print is success")
-    else:
-        notes.append(
-            "Binance Spot daily not fetched (offline --candles without "
-            "--binance-candles); empty print is success"
-        )
+    if not candle_dirs:
+        if args.binance_candles:
+            loaded, extra = _load_binance_files(list(args.binance_candles))
+            binance_histories.update(loaded)
+            notes.extend(extra)
+            binance_source = "binance_json"
+        elif args.binance and args.live:
+            fetched, binance_source, extra = _load_live_binance(primary_first)
+            binance_histories.update(fetched)
+            notes.extend(extra)
+        elif not args.binance:
+            notes.append("Binance Spot daily skipped (--no-binance); empty print is success")
+        else:
+            notes.append(
+                "Binance Spot daily not fetched (offline --candles without "
+                "--binance-candles); empty print is success"
+            )
+
+    if catalog_name == "v2" and args.output_md == Path(
+        "docs/artifacts/strategy-search/ensemble-trend.md"
+    ):
+        args.output_md = Path("docs/artifacts/strategy-search/ensemble-trend-v2-dual-print.md")
+    if catalog_name == "v2" and args.output_json == Path("var/ops/ensemble_trend.json"):
+        args.output_json = Path("var/ops/ensemble_trend_v2_dual_print.json")
 
     fee_bps, fee_source, kraken_tier = resolve_fee_bps(args)
     slippage_bps = (
@@ -301,6 +390,8 @@ def run(
         fee_source=fee_source,
         universe_skipped=universe_skipped,
         data_notes=notes,
+        catalog_name=catalog_name,
+        second_print_mode=second_print_mode,
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)
