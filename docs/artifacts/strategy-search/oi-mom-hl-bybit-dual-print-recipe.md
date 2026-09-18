@@ -41,7 +41,8 @@ A name is a dual-print passer only if eligible on both Kraken and Coinbase under
 
 ## Exact command
 
-traderstack-oi-mom --live --fee-bps 80 --slippage-bps 5 --candles-dir kraken var/research/candles/kraken --candles-dir coinbase var/research/candles/coinbase --output-md docs/artifacts/strategy-search/oi-mom-hl-bybit-dual-print.md
+traderstack-oi-mom --hl-oi-json var/ops/oi_cache/asilletto81_oi.json --bybit-oi-json var/ops/oi_cache/bybit_oi.json --fee-bps 80 --slippage-bps 5 --candles-dir kraken var/research/candles/kraken --candles-dir coinbase var/research/candles/coinbase --output-md docs/artifacts/strategy-search/oi-mom-hl-bybit-dual-print.md
+
 
 ## Promote
 

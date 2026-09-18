@@ -89,6 +89,7 @@ traderstack-intraday-dual-print = "traderstack.research.intraday_dual_print_cli:
 # promote. Never flips PAPER_PROMOTE_*. Empty search is success.
 traderstack-funding-carry = "traderstack.research.funding_carry_cli:main"
 traderstack-funding-div = "traderstack.research.funding_div_cli:main"
+traderstack-oi-mom = "traderstack.research.oi_mom_cli:main"
 traderstack-sess-gap = "traderstack.research.session_gap_cli:main"
 traderstack-vol-target = "traderstack.research.vol_target_cli:main"
 # DefiLlama stablecoin net-issuance SPOT overlay. Live history is NOT

@@ -1,6 +1,6 @@
 # Edge-status memo — 2026-09-18
 
-**Repo tip at score:** re-pin after vol-target second-era dual-print merge.
+**Repo tip at score:** re-pin after HL/Bybit OI-momentum dual-print merge.
 
 Paper / research only. Summarises strategy-search outcomes **#160–#170** plus
 the vol-target **second-era** Coinbase cell in this slice. **Not a profitability
@@ -95,3 +95,8 @@ N-retunes, Vision→HL stitch, inventing basis, flipping `PAPER_PROMOTE_*`.
 successful outcome until a committed report names a fee-aware dual-print
 passer that is paper-spot executable. Continue scheduled DefiLlama snapshot
 collects so tip coverage can grow without look-ahead.
+
+## Follow-up — HL/Bybit OI-momentum (#172 candidate)
+
+Dual OI AVAILABLE (asilletto81 HL asset_ctxs 760d + Bybit 1d OI 2236/2158d). Kraken×Coinbase dual-print at 80+5: **dual_print_passers=0**; `can_promote=false`. Promote blocked. See `oi-mom-hl-bybit-dual-print.md`.
+
