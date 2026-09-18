@@ -733,3 +733,20 @@ def test_paper_simulate_fills_item_prints_the_effective_tier_fee() -> None:
     modelled = build_report(settings(paper_fee_tier="modelled"))
     simulate = next(item for item in modelled.items if item.label == "Paper simulate fills")
     assert "fee 10 bps (modelled)" in simulate.detail
+
+
+def test_paper_carry_hedge_diagnostic_off_by_default() -> None:
+    report = build_report(settings())
+    item = next(i for i in report.items if i.label == "Paper carry hedge diagnostic")
+    assert item.value == "off"
+    assert settings().paper_carry_hedge_diagnostic is False
+
+
+def test_paper_carry_hedge_diagnostic_active_warns_not_promote() -> None:
+    report = build_report(
+        settings(paper_perp_hedge=True, paper_carry_hedge_diagnostic=True)
+    )
+    item = next(i for i in report.items if i.label == "Paper carry hedge diagnostic")
+    assert "promote pin" in item.value
+    assert any("soak diagnostic only" in w for w in report.warnings)
+    assert any("PAPER_PROMOTE_" in w for w in report.warnings)

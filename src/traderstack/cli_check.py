@@ -1074,6 +1074,52 @@ def build_report(settings: Settings) -> ConfigReport:
             "historical series. Leave every PAPER_PROMOTE_* false."
         )
 
+    items.append(
+        CheckItem(
+            "Paper carry hedge diagnostic",
+            (
+                "active (not a promote pin)"
+                if settings.trading_mode == "paper"
+                and settings.paper_perp_hedge
+                and settings.paper_carry_hedge_diagnostic
+                else "off"
+            ),
+            (
+                "PAPER_CARRY_HEDGE_DIAGNOSTIC opens carry_hedged_sign-directed "
+                "paper perp hedges from public funding sign + explicit mid "
+                "without a promote voter fill. Synthetic spot fill is not "
+                "booked into spot NAV. Not a PAPER_PROMOTE_* pin; can_promote "
+                "stays false; leave every PAPER_PROMOTE_* false."
+                if settings.trading_mode == "paper"
+                else f"ignored unless TRADING_MODE=paper (got {settings.trading_mode!r})"
+            ),
+        )
+    )
+    if settings.paper_carry_hedge_diagnostic and settings.trading_mode != "paper":
+        warnings.append(
+            "PAPER_CARRY_HEDGE_DIAGNOSTIC is paper-only; "
+            f"TRADING_MODE={settings.trading_mode} ignores it."
+        )
+    if (
+        settings.paper_carry_hedge_diagnostic
+        and settings.trading_mode == "paper"
+        and not settings.paper_perp_hedge
+    ):
+        warnings.append(
+            "PAPER_CARRY_HEDGE_DIAGNOSTIC=true has no effect unless "
+            "PAPER_PERP_HEDGE=true."
+        )
+    if (
+        settings.paper_carry_hedge_diagnostic
+        and settings.paper_perp_hedge
+        and settings.trading_mode == "paper"
+    ):
+        warnings.append(
+            "PAPER_CARRY_HEDGE_DIAGNOSTIC=true is a soak diagnostic only "
+            "(carry_hedged_sign signal). Not a promote pin. "
+            "Leave every PAPER_PROMOTE_* false."
+        )
+
     # --- opportunity funnel (#131) ---------------------------------------------------
     items.append(
         CheckItem(

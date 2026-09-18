@@ -36,6 +36,11 @@ from traderstack.execution.paper_fill import adverse_fill_price_usd
 from traderstack.killswitch import KillSwitch
 from traderstack.models import Side
 
+# Paper-only carry diagnostic [PAPER_CARRY_HEDGE_DIAGNOSTIC]. Not a promote
+# pin. Fixed notional so soaks do not invent size from NAV.
+CARRY_DIAGNOSTIC_SIGNAL = "carry_hedged_sign"
+CARRY_DIAGNOSTIC_NOTIONAL_USD = 100.0
+
 # Paper hedge+funding path is cycle-wired (venue mid + same-venue
 # funding tape). Not a promote unlock — PIT basis is still missing.
 PAPER_PERP_PATH_READY = True
@@ -73,6 +78,22 @@ class PaperPerpOutcome:
     @property
     def applied(self) -> bool:
         return self.status in {PaperPerpStatus.HEDGED, PaperPerpStatus.FUNDING_APPLIED}
+
+
+
+def carry_hedged_sign_spot_side(funding_rate: float) -> Side | None:
+    """Cash-and-carry spot side for research ``carry_hedged_sign``.
+
+    Positive funding: longs pay shorts so BUY spot / SELL perp to receive.
+    Negative funding: shorts pay longs so SELL spot / BUY perp to receive.
+    Zero rate: no harvest side -- skip, never invent.
+    """
+
+    if funding_rate > 0:
+        return Side.BUY
+    if funding_rate < 0:
+        return Side.SELL
+    return None
 
 
 def paper_perp_client_order_id(decision_id: str, asset: str) -> str:

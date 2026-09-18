@@ -308,6 +308,14 @@ class Settings(BaseSettings):
     # never a substitute. Snapshot mids are not historical PIT basis
     # and do not flip PAPER_PROMOTE_*. Default off. Live/shadow ignore.
     paper_perp_hedge: bool = False
+    # --- paper carry hedge diagnostic ---
+    # TRADING_MODE=paper only. When true *and* PAPER_PERP_HEDGE, the cycle
+    # may open a carry_hedged_sign-directed paper perp hedge from the public
+    # same-venue funding sign + explicit HL/HTX mid — without needing a
+    # promote-voter spot fill. Default false. Not a promote pin and must
+    # never be named PAPER_PROMOTE_*. Does not flip PAPER_PROMOTE_*.
+    # Live/shadow ignore. Snapshot mids are not PIT basis.
+    paper_carry_hedge_diagnostic: bool = False
     # --- opportunity funnel (#131) ---
     # Diagnostic-only run: every gate (kill switch, pre-trade, risk engine,
     # meta-agent, planner) runs and is audited exactly as normal, but no
