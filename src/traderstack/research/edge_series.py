@@ -1483,3 +1483,159 @@ async def fetch_edge_bundle(
                     if liq.status == "ok":
                         bundle.liquidation[symbol.upper()] = liq.points
     return bundle
+
+
+def _asilletto_last_open_interest(csv_text: str, coin: str) -> float | None:
+    last: float | None = None
+    for row in csv.DictReader(io.StringIO(csv_text)):
+        if (row.get("coin") or "").strip() != coin:
+            continue
+        raw = row.get("open_interest")
+        if raw is None or raw == "":
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if value < 0:
+            continue
+        last = value
+    return last
+
+
+async def fetch_asilletto81_hyperliquid_open_interest(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    cache_dir: Path | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> EdgeSeriesFetch:
+    """Daily last open_interest from HF asiletto81/hyperliquid asset_ctxs."""
+    name = f"asilletto81_oi:{symbol}"
+    try:
+        coin = hyperliquid_coin(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="asilletto81")
+    start_d = start or ASILLETTO81_HL_ARCHIVE_FIRST_UTC
+    end_d = end or ASILLETTO81_HL_ARCHIVE_LAST_UTC
+    if end_d < start_d:
+        return EdgeSeriesFetch(
+            name=name,
+            status="skipped",
+            reason="asilletto81 OI freeze window empty",
+            source="asilletto81/hyperliquid asset_ctxs",
+        )
+    cache = cache_dir or ASILLETTO81_CACHE_DIR
+    owns_client = client is None
+    if owns_client:
+        client = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
+    assert client is not None
+    points: list[tuple[datetime, float]] = []
+    try:
+        day = start_d
+        while day <= end_d:
+            payload = await _asilletto_download_day(client, day, cache_dir=cache)
+            if payload:
+                try:
+                    csv_text = _asilletto_decompress(payload)
+                except (RuntimeError, UnicodeDecodeError, OSError, ValueError):
+                    day = day + timedelta(days=1)
+                    continue
+                oi = _asilletto_last_open_interest(csv_text, coin)
+                if oi is not None:
+                    points.append((datetime(day.year, day.month, day.day, tzinfo=UTC), float(oi)))
+            day = day + timedelta(days=1)
+    finally:
+        if owns_client:
+            await client.aclose()
+    if len(points) < 2:
+        return EdgeSeriesFetch(
+            name=name,
+            status="skipped",
+            reason=f"asilletto81 OI too short points={len(points)}",
+            source="asilletto81/hyperliquid asset_ctxs",
+        )
+    points.sort(key=lambda item: item[0])
+    return EdgeSeriesFetch(
+        name=name,
+        status="ok",
+        reason=f"asilletto81 daily last open_interest for {coin}; days={len(points)}",
+        source="asilletto81/hyperliquid asset_ctxs",
+        points=tuple(points),
+        first=points[0][0],
+        last=points[-1][0],
+    )
+
+
+async def fetch_bybit_open_interest(
+    symbol: str,
+    *,
+    client: httpx.AsyncClient,
+    limit_pages: int = 40,
+) -> EdgeSeriesFetch:
+    """Linear USDT open-interest history at 1d interval via endTime pagination."""
+    name = f"bybit_oi:{symbol}"
+    try:
+        contract = bybit_contract(symbol)
+    except ValueError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="bybit")
+    points: list[tuple[datetime, float]] = []
+    end_time: int | None = None
+    try:
+        for _ in range(limit_pages):
+            params: dict[str, Any] = {
+                "category": "linear",
+                "symbol": contract,
+                "intervalTime": "1d",
+                "limit": 200,
+            }
+            if end_time is not None:
+                params["endTime"] = end_time
+            response = await client.get(f"{BYBIT_BASE}/v5/market/open-interest", params=params)
+            response.raise_for_status()
+            payload = response.json()
+            ret = payload.get("retCode") if isinstance(payload, dict) else None
+            if not isinstance(payload, dict) or int(ret if ret is not None else -1) != 0:
+                return EdgeSeriesFetch(
+                    name=name,
+                    status="skipped",
+                    reason=f"bybit OI retCode={ret}",
+                    source="bybit",
+                )
+            rows = ((payload.get("result") or {}).get("list")) or []
+            if not rows:
+                break
+            for row in rows:
+                try:
+                    ts = datetime.fromtimestamp(int(row["timestamp"]) / 1000.0, tz=UTC)
+                    oi = float(row["openInterest"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                points.append((ts, oi))
+            oldest = min(int(row["timestamp"]) for row in rows)
+            end_time = oldest - 1
+            if len(rows) < 200:
+                break
+    except httpx.HTTPError as exc:
+        return EdgeSeriesFetch(name=name, status="skipped", reason=str(exc), source="bybit")
+    by_day: dict[datetime, float] = {}
+    for ts, val in sorted(points):
+        by_day[datetime(ts.year, ts.month, ts.day, tzinfo=UTC)] = val
+    ordered = tuple(sorted(by_day.items()))
+    if len(ordered) < 2:
+        return EdgeSeriesFetch(
+            name=name,
+            status="skipped",
+            reason=f"bybit OI too short points={len(ordered)}",
+            source="bybit",
+        )
+    return EdgeSeriesFetch(
+        name=name,
+        status="ok",
+        reason=f"bybit linear 1d open interest for {contract}; days={len(ordered)}",
+        source="bybit:/v5/market/open-interest",
+        points=ordered,
+        first=ordered[0][0],
+        last=ordered[-1][0],
+    )

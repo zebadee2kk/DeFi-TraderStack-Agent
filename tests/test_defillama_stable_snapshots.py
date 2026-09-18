@@ -144,7 +144,7 @@ def test_load_pit_allows_with_enough_tips(tmp_path: Path) -> None:
     (archive / "tips.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
     cov = coverage(archive)
     assert cov.enough_for_dual_print is True
-    series, points, notes, allowed = load_pit_series_from_archive(
+    series, points, _notes, allowed = load_pit_series_from_archive(
         archive,
         as_of=start + timedelta(days=MIN_SNAPSHOT_DAYS + 5),
     )

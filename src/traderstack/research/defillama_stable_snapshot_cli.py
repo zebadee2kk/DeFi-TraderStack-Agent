@@ -17,16 +17,16 @@ from pathlib import Path
 import httpx
 
 from traderstack.config import Settings
-from traderstack.market.defillama_stablecoins import (
-    DEFILLAMA_STABLECOINS_BASE,
-    STABLECOIN_CHARTS_ALL_PATH,
-)
 from traderstack.market.defillama_stable_snapshots import (
     DEFAULT_ARCHIVE_DIR,
     MIN_SNAPSHOT_DAYS,
     coverage,
     render_status_markdown,
     write_snapshot_from_raw,
+)
+from traderstack.market.defillama_stablecoins import (
+    DEFILLAMA_STABLECOINS_BASE,
+    STABLECOIN_CHARTS_ALL_PATH,
 )
 
 

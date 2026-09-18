@@ -11,6 +11,7 @@ pull must never be treated as a 720-day PIT archive.
 
 from __future__ import annotations
 
+import itertools
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -257,7 +258,7 @@ def net_issuance_from_tips(
         )
         return out, notes
     ordered = sorted(tips, key=lambda t: t.as_of)
-    for prev, cur in zip(ordered, ordered[1:], strict=False):
+    for prev, cur in itertools.pairwise(ordered):
         as_of_gap = (cur.as_of - prev.as_of).days
         tip_gap = (cur.tip_day - prev.tip_day).days
         if as_of_gap != 1 or tip_gap != 1:
@@ -410,8 +411,7 @@ def render_status_markdown(cov: ArchiveCoverage) -> str:
     ]
     for note in cov.notes:
         lines.append(
-            f"- `{note.get('name', '?')}` **{note.get('status', '?')}**: "
-            f"{note.get('reason', '')}"
+            f"- `{note.get('name', '?')}` **{note.get('status', '?')}**: {note.get('reason', '')}"
         )
     lines.extend(
         [
