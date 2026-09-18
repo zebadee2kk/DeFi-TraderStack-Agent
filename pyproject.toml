@@ -89,6 +89,7 @@ traderstack-intraday-dual-print = "traderstack.research.intraday_dual_print_cli:
 # promote. Never flips PAPER_PROMOTE_*. Empty search is success.
 traderstack-funding-carry = "traderstack.research.funding_carry_cli:main"
 traderstack-funding-div = "traderstack.research.funding_div_cli:main"
+traderstack-sess-gap = "traderstack.research.session_gap_cli:main"
 # DefiLlama stablecoin net-issuance SPOT overlay. Live history is NOT
 # PIT-safe (no as_of; revisions overwrite). Dual-print refuses without a
 # pit_safe operator archive. Never flips PAPER_PROMOTE_*. UNAVAILABLE /
