@@ -481,7 +481,7 @@ def run_crypto_wedge_eval(
             settlements_by_print.get(b, ()),
         )
     print_kind: Literal["single_print", "dual_print"] = (
-        PRINT_DUAL if independent and len(print_ids) >= 2 else PRINT_SINGLE
+        "dual_print" if independent and len(print_ids) >= 2 else "single_print"
     )
     notes.append(
         "Primary metric is unhedged Polymarket conservative PnL after frozen "
@@ -524,7 +524,7 @@ def empty_live_report(
         hedged_status="skipped_not_invented",
     )
     return CryptoWedgeEvalReport(
-        print_kind=PRINT_SINGLE,
+        print_kind="single_print",
         independent=False,
         independence_reason="fewer_than_two_prints",
         can_promote=False,
