@@ -1093,7 +1093,11 @@ async def fetch_asilletto81_hyperliquid_basis(
             source="asilletto81/hyperliquid asset_ctxs",
         )
 
-    compact_points = _load_asilletto_compact_basis(coin, start=start_d, end=end_d)
+    # Prefer day-file cache when cache_dir is explicit (test isolation /
+    # operator-supplied lz4 store). Compact JSON is default-cache only.
+    compact_points = None
+    if cache_dir is None:
+        compact_points = _load_asilletto_compact_basis(coin, start=start_d, end=end_d)
     if compact_points is not None:
         return _finish(
             name,

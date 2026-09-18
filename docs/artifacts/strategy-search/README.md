@@ -946,3 +946,7 @@ twelve frozen catalogs on the pilot tier (four eras, two venues) is #136's
 job, so it runs once on the new default rather than twice. A name that
 passed at 10 bps and fails at Tier 1 taker lost to fees, and the new
 report line says so.
+
+### xs-topk archive dual-print recipe (2026-09-18)
+
+See [`xs-topk-archive-dual-print-recipe.md`](xs-topk-archive-dual-print-recipe.md) — pre-registration only; no PnL; never flips `PAPER_PROMOTE_*`.
