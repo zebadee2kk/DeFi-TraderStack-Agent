@@ -1,9 +1,9 @@
 # Edge-status memo — 2026-09-18
 
-**Repo tip at score:** re-pin after HL/Bybit OI-momentum dual-print merge.
+**Repo tip at score:** `ae2f8ed` (post-#172; fee-ladder autopsy on same day).
 
-Paper / research only. Summarises strategy-search outcomes **#160–#170** plus
-the vol-target **second-era** Coinbase cell in this slice. **Not a profitability
+Paper / research only. Summarises strategy-search outcomes **#160–#172** plus the same-day
+fee-ladder autopsy on frozen oi_mom. **Not a profitability
 claim.** No number here is invented. All `PAPER_PROMOTE_*` defaults stay **false**.
 `TRADING_MODE` stays `paper`. No live path.
 
@@ -74,20 +74,24 @@ Pilot 80+5 bps. Promote blocked.
 
 ## Remaining ranked hypotheses (pre-registration only)
 
-Do **not** retune failed catalogs. Next falsifiable slices, ranked:
+Historical list through vol-target second-era. **Updated post-#172 + fee-ladder
+list is at the bottom of this memo.** Struck items stay struck:
 
 1. ~~Vol-target overlay on frozen `ma_cross_10_30` (concurrent venue)~~ — #169; 0 passers.
 2. ~~PIT-safe DefiLlama issuance archive collector~~ — #170 landed; wait for ≥720
    tip days before re-scoring `stable_ni_*`. Do not invent backfill tips.
-3. ~~Second-era / archive-era cell for vol-target~~ — this slice; 0 passers.
-4. **Second-era cell for sess-gap or ens_trend_v2** — same pattern; freeze recipe
-   before pull; Coinbase older era already on disk under
-   `var/research/candles/coinbase_era_2022_2024/` (local; may be gitignored).
-5. **Polymarket** — keep collector/eval isolated; empty tapes stay success
-   until a PIT mid+settlement dual-print framework exists.
+3. ~~Second-era / archive-era cell for vol-target~~ — #171; 0 passers.
+4. ~~HL/Bybit OI-momentum dual-print~~ — #172; 0 passers at pilot 80+5.
+5. ~~Fee-ladder autopsy on frozen oi_mom (80 / 38 / 10)~~ — 0 passers every rung;
+   **not** a fee-blocker for oi_mom.
+6. **Maker/rebate path** — blocked until post-only paper fill-rate evidence.
+7. **Paper-perp fills for carry** — executable path; #165 soak 0 fills.
+8. **Second-era cell for sess-gap or ens_trend_v2** — freeze recipe before pull.
+9. **Polymarket** — keep collector/eval isolated until PIT dual-print framework.
 
 Out of scope / do not revive without new data: BitMEX, failed #104/#108/#116–#123
-N-retunes, Vision→HL stitch, inventing basis, flipping `PAPER_PROMOTE_*`.
+N-retunes, Vision→HL stitch, inventing basis, flipping `PAPER_PROMOTE_*`,
+oi_mom fee retunes after this autopsy.
 
 ## Operator recommendation
 
@@ -96,7 +100,53 @@ successful outcome until a committed report names a fee-aware dual-print
 passer that is paper-spot executable. Continue scheduled DefiLlama snapshot
 collects so tip coverage can grow without look-ahead.
 
-## Follow-up — HL/Bybit OI-momentum (#172 candidate)
 
-Dual OI AVAILABLE (asilletto81 HL asset_ctxs 760d + Bybit 1d OI 2236/2158d). Kraken×Coinbase dual-print at 80+5: **dual_print_passers=0**; `can_promote=false`. Promote blocked. See `oi-mom-hl-bybit-dual-print.md`.
+## Follow-up — HL/Bybit OI-momentum (#172) — MERGED
+
+Pre-registered recipe:
+`docs/artifacts/strategy-search/oi-mom-hl-bybit-dual-print-recipe.md`
+
+Score artifact:
+`docs/artifacts/strategy-search/oi-mom-hl-bybit-dual-print.md`
+
+Result: **dual_print_passers=0**; `can_promote=false`; `keep_flag_false=true`.
+Pilot 80+5. Dual OI AVAILABLE (asilletto81 HL + Bybit). Promote blocked.
+`PAPER_PROMOTE_*` untouched.
+
+## Fee-ladder autopsy (strategic after empty streak #160–#172)
+
+Pre-registered recipe:
+`docs/artifacts/strategy-search/fee-ladder-autopsy-recipe-2026-09-18.md`
+
+Frozen catalog **before** re-score: **oi_mom** (already dual-print capable;
+ids not retuned). Ladder already in `fee_tiers`: pilot t1 80+5, one
+intermediate t3 38+5, research modelled 10+5.
+
+Memo: `docs/artifacts/strategy-search/fee-ladder-autopsy-2026-09-18.md`
+
+| rung | dual_print_passers | note |
+| --- | ---: | --- |
+| pilot 80+5 | **0** | promote bar |
+| t3 38+5 | **0** | intermediate |
+| modelled 10+5 | **0** | research |
+
+**Fee-blocker finding: no** for oi_mom — nothing clears at 10+5 either.
+Typical core median WF trades ≈17; median fold turnover ≈2.8 (fee-invariant).
+Best primary WF excess remains negative at all rungs. Promote still blocked.
+
+## Remaining ranked hypotheses (updated)
+
+Do **not** retune failed catalogs (including oi_mom fee retunes). Next
+falsifiable slices:
+
+1. **Maker/rebate path** — blocked until post-only paper fill-rate evidence;
+   do not assume maker fees in dual-print scores.
+2. **Paper-perp fills for carry** — executable path for funding/basis; #165
+   soak had 0 fills (plumbing only).
+3. **Second-era cell for sess-gap or ens_trend_v2** — freeze recipe before pull.
+4. **DefiLlama PIT** — wait ≥720 tip days before `stable_ni_*` re-score.
+
+Out of scope / do not revive without new data: BitMEX, failed N-retunes,
+Vision→HL stitch, inventing basis, flipping `PAPER_PROMOTE_*`, post-hoc
+fee-ladder fishing beyond the frozen three rungs above.
 
