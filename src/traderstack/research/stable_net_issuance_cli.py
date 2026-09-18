@@ -210,9 +210,13 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
 
-    primary_venue = "kraken" if "kraken" in venue_histories else next(iter(venue_histories), "kraken")
+    primary_venue = (
+        "kraken" if "kraken" in venue_histories else next(iter(venue_histories), "kraken")
+    )
     histories = venue_histories.get(primary_venue, {})
-    second_venue = "coinbase" if "coinbase" in venue_histories and primary_venue != "coinbase" else None
+    second_venue = (
+        "coinbase" if "coinbase" in venue_histories and primary_venue != "coinbase" else None
+    )
     second_histories = venue_histories.get(second_venue) if second_venue else None
 
     report = run_stable_net_issuance(

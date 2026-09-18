@@ -46,17 +46,13 @@ def test_refuse_live_history_without_archive() -> None:
 
 
 def test_refuse_archive_not_marked_safe() -> None:
-    ok, reason = refuse_live_history_for_backtest(
-        pit_archive_present=True, series_pit_safe=False
-    )
+    ok, reason = refuse_live_history_for_backtest(pit_archive_present=True, series_pit_safe=False)
     assert ok is False
     assert "refuse" in reason.lower() or "not marked" in reason.lower()
 
 
 def test_allow_only_when_archive_pit_safe() -> None:
-    ok, _ = refuse_live_history_for_backtest(
-        pit_archive_present=True, series_pit_safe=True
-    )
+    ok, _ = refuse_live_history_for_backtest(pit_archive_present=True, series_pit_safe=True)
     assert ok is True
 
 
@@ -68,7 +64,9 @@ def test_parse_and_net_issuance_skips_gaps() -> None:
     assert len(series.points) == 3
     points, notes = net_issuance_from_chart(series)
     assert len(points) == 2
-    assert points[0].net_issuance_usd == points[0].circulating_usd - series.points[0].circulating_usd
+    assert (
+        points[0].net_issuance_usd == points[0].circulating_usd - series.points[0].circulating_usd
+    )
     assert any(n["name"] == "net_issuance" for n in notes)
 
     # rebuild with explicit gap

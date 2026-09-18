@@ -110,9 +110,7 @@ def parse_stablecoin_chart_rows(
             skipped.append(str(ts))
             continue
         day = datetime.fromtimestamp(ts, tz=UTC).date()
-        points.append(
-            StablecoinChartPoint(day=day, circulating_usd=circ, source_date_unix=ts)
-        )
+        points.append(StablecoinChartPoint(day=day, circulating_usd=circ, source_date_unix=ts))
     points.sort(key=lambda p: p.day)
     # drop duplicate days keeping last
     dedup: dict[date, StablecoinChartPoint] = {}

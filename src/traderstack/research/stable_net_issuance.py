@@ -69,7 +69,13 @@ def issuance_to_symbol_series(
     symbols: tuple[str, ...] = REQUIRED_SYMBOLS,
 ) -> dict[str, tuple[tuple[datetime, float], ...]]:
     """Broadcast the aggregate series onto each required symbol (frozen)."""
-    series = tuple((utc_day_open(datetime(p.day.year, p.day.month, p.day.day, tzinfo=UTC)), float(p.net_issuance_usd)) for p in points)
+    series = tuple(
+        (
+            utc_day_open(datetime(p.day.year, p.day.month, p.day.day, tzinfo=UTC)),
+            float(p.net_issuance_usd),
+        )
+        for p in points
+    )
     return {symbol.upper(): series for symbol in symbols}
 
 
@@ -110,9 +116,7 @@ def skipped_stable_ni_families(
             {
                 "family": "stable_net_iss",
                 "candidate_id": candidate_id,
-                "reason": (
-                    f"{verb} stable-net-iss z |z|>={entry_z:g}: skipped — {reason}"
-                ),
+                "reason": (f"{verb} stable-net-iss z |z|>={entry_z:g}: skipped — {reason}"),
             }
         )
     return skipped
@@ -130,8 +134,7 @@ def _clear_promotion(report: StrategySearchReport) -> StrategySearchReport:
             "any_promoted": False,
             "allowed_promote_id": None,
             "honesty": (
-                report.honesty
-                + " This stable-net-issuance search cannot flip PAPER_PROMOTE_*; "
+                report.honesty + " This stable-net-issuance search cannot flip PAPER_PROMOTE_*; "
                 "spot overlay dual-print is informational only."
             ),
         }
@@ -256,7 +259,9 @@ def run_stable_net_issuance(
         )
 
     by_symbol = issuance_to_symbol_series(points) if points else {}
-    have = all(symbol.upper() in by_symbol and by_symbol[symbol.upper()] for symbol in REQUIRED_SYMBOLS)
+    have = all(
+        symbol.upper() in by_symbol and by_symbol[symbol.upper()] for symbol in REQUIRED_SYMBOLS
+    )
     if not have:
         return StableNetIssuanceReport(
             generated_at=generated,
@@ -395,10 +400,7 @@ def render_stable_net_issuance_markdown(report: StableNetIssuanceReport) -> str:
             f"`keep_flag_false={str(report.keep_flag_false).lower()}`."
         ),
         (f"Core ids={len(report.core_ids)}; dual_print_passers=`{report.dual_print_passers}`."),
-        (
-            f"Costs: fee={report.fee_bps:g} bps + slippage={report.slippage_bps:g} bps "
-            "(pilot spot)."
-        ),
+        (f"Costs: fee={report.fee_bps:g} bps + slippage={report.slippage_bps:g} bps (pilot spot)."),
         (
             f"Aligned bars: primary={report.aligned_bars_primary}, "
             f"second={report.aligned_bars_second}."
@@ -447,9 +449,7 @@ def render_stable_net_issuance_markdown(report: StableNetIssuanceReport) -> str:
     if report.skipped:
         lines.extend(["", "## Skipped families", ""])
         for row in report.skipped:
-            lines.append(
-                f"- `{row.get('candidate_id', '?')}`: {row.get('reason', '')}"
-            )
+            lines.append(f"- `{row.get('candidate_id', '?')}`: {row.get('reason', '')}")
     lines.extend(
         [
             "",
