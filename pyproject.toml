@@ -96,6 +96,10 @@ traderstack-vol-target = "traderstack.research.vol_target_cli:main"
 # pit_safe operator archive. Never flips PAPER_PROMOTE_*. UNAVAILABLE /
 # empty dual-print is success. No live.
 traderstack-stable-net-issuance = "traderstack.research.stable_net_issuance_cli:main"
+# Operator-dated DefiLlama stablecoin chart snapshots (PIT tip archive).
+# as_of = fetch UTC day; immutable dirs + tips.jsonl. Dual-print still
+# refused until >=720 tip days. Never flips PAPER_PROMOTE_*. No live score.
+traderstack-defillama-stable-snapshot = "traderstack.research.defillama_stable_snapshot_cli:main"
 # BTC−ETH residual fade/follow at frozen |z| thresholds. Same #96+A+B+C
 # dual-print bar as #104 (Kraken 720 + Binance.US older-720). Paper
 # spot executable. Never flips PAPER_PROMOTE_*. Empty dual-print is

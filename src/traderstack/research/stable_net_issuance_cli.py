@@ -65,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--pit-archive",
         type=Path,
         default=None,
-        help="operator PIT snapshot archive JSON with pit_safe=true (required to score)",
+        help="PIT archive JSON (pit_safe=true) OR dated snapshot dir (needs >=720 tips)",
     )
     parser.add_argument("--interval", default="1d", choices=("1d",))
     parser.add_argument("--fee-bps", type=float, default=PILOT_TIER_TAKER_BPS)
@@ -120,7 +120,31 @@ def _load_symbol_candles(
     return histories
 
 
-def _load_pit_archive(path: Path) -> StablecoinChartSeries:
+def _load_pit_archive(
+    path: Path,
+) -> tuple[StablecoinChartSeries | None, list | None, list[dict[str, str]], bool]:
+    """Load PIT file or dated snapshot directory.
+
+    Returns (series, issuance_points_or_None, notes, allowed_to_score).
+    Directory archives require >=720 tip days (tip-delta PIT series).
+    Bare chart arrays are never allowed.
+    """
+    from traderstack.market.defillama_stable_snapshots import (
+        load_pit_series_from_archive,
+        tips_path,
+    )
+
+    archive_dir = None
+    if path.is_dir():
+        archive_dir = path
+    elif tips_path(path).is_file():
+        archive_dir = path
+    elif path.name == "tips.jsonl" and path.is_file():
+        archive_dir = path.parent
+    if archive_dir is not None:
+        series, points, notes, allowed = load_pit_series_from_archive(archive_dir)
+        return series, points, notes, allowed
+
     payload = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(payload, dict) and "rows" in payload:
         rows = payload["rows"]
@@ -132,11 +156,12 @@ def _load_pit_archive(path: Path) -> StablecoinChartSeries:
             endpoint=str(payload.get("endpoint", "pit_archive")),
             stablecoin_id=payload.get("stablecoin_id"),
         )
-        return series.model_copy(update={"pit_safe": pit_safe})
+        series = series.model_copy(update={"pit_safe": pit_safe})
+        return series, None, [], bool(pit_safe)
     if isinstance(payload, list):
         # bare chart array is never pit_safe
-        return parse_stablecoin_chart_rows(payload)
-    raise TypeError(f"{path}: expected PIT archive object or chart list")
+        return parse_stablecoin_chart_rows(payload), None, [], False
+    raise TypeError(f"{path}: expected PIT archive object, chart list, or archive dir")
 
 
 async def _maybe_fetch_live() -> StablecoinChartSeries | None:
@@ -159,15 +184,18 @@ def main(argv: list[str] | None = None) -> int:
     ]
 
     chart: StablecoinChartSeries | None = None
+    issuance_points = None
     pit_archive_present = False
     if args.pit_archive is not None:
-        chart = _load_pit_archive(args.pit_archive)
+        chart, issuance_points, arch_notes, allowed = _load_pit_archive(args.pit_archive)
         pit_archive_present = True
+        history_notes.extend(arch_notes)
+        ps = getattr(chart, "pit_safe", False) if chart is not None else False
         history_notes.append(
             {
                 "name": "pit_archive",
-                "status": "loaded",
-                "reason": f"{args.pit_archive}; pit_safe={chart.pit_safe}",
+                "status": "loaded" if allowed else "insufficient",
+                "reason": f"{args.pit_archive}; allowed={allowed}; pit_safe={ps}",
             }
         )
     elif args.chart_json is not None:
@@ -232,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
         min_trades=int(args.min_trades),
         interval=str(args.interval),
         chart=chart,
+        issuance_points=issuance_points,
         pit_archive_present=pit_archive_present,
         second_histories=second_histories,
         primary_candle_venue=primary_venue,
