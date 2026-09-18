@@ -1,6 +1,6 @@
 # Edge-status memo — 2026-09-18
 
-**Repo tip at score:** `ae2f8ed` (post-#172; fee-ladder autopsy on same day).
+**Repo tip at score:** `dc9ef7d` (post-#173); carry-paper-fills branch follow-up same day.
 
 Paper / research only. Summarises strategy-search outcomes **#160–#172** plus the same-day
 fee-ladder autopsy on frozen oi_mom. **Not a profitability
@@ -85,7 +85,7 @@ list is at the bottom of this memo.** Struck items stay struck:
 5. ~~Fee-ladder autopsy on frozen oi_mom (80 / 38 / 10)~~ — 0 passers every rung;
    **not** a fee-blocker for oi_mom.
 6. **Maker/rebate path** — blocked until post-only paper fill-rate evidence.
-7. **Paper-perp fills for carry** — executable path; #165 soak 0 fills.
+7. ~~Paper-perp fills for carry~~ — diagnostic path landed; see updated list below.
 8. **Second-era cell for sess-gap or ens_trend_v2** — freeze recipe before pull.
 9. **Polymarket** — keep collector/eval isolated until PIT dual-print framework.
 
@@ -141,12 +141,39 @@ falsifiable slices:
 
 1. **Maker/rebate path** — blocked until post-only paper fill-rate evidence;
    do not assume maker fees in dual-print scores.
-2. **Paper-perp fills for carry** — executable path for funding/basis; #165
-   soak had 0 fills (plumbing only).
+2. ~~Paper-perp fills for carry~~ — carry diagnostic soak (#174 follow-up):
+   `PAPER_CARRY_HEDGE_DIAGNOSTIC` (default false, not a promote pin) produced
+   docker **1** + host **2** `paper_perp_hedged` under `carry_hedged_sign`.
+   Plumbing toward fee-aware **paper** PnL only; `can_promote` still blocked;
+   every `PAPER_PROMOTE_*=false`. See
+   `docs/artifacts/ops/paper-carry-fills-soak-2026-09-18.md`.
 3. **Second-era cell for sess-gap or ens_trend_v2** — freeze recipe before pull.
 4. **DefiLlama PIT** — wait ≥720 tip days before `stable_ni_*` re-score.
+5. **Fee-aware paper PnL accounting on open carry hedges** — next falsifiable
+   step after diagnostic hedges exist; do not invent PnL.
 
 Out of scope / do not revive without new data: BitMEX, failed N-retunes,
 Vision→HL stitch, inventing basis, flipping `PAPER_PROMOTE_*`, post-hoc
 fee-ladder fishing beyond the frozen three rungs above.
 
+
+## Follow-up — paper carry fills diagnostic (same day)
+
+Pre-registered recipe:
+`docs/artifacts/ops/paper-carry-fills-soak-recipe-2026-09-18.md`
+
+Metrics:
+`docs/artifacts/ops/paper-carry-fills-soak-2026-09-18.md`
+
+Signal: research `carry_hedged_sign` from public same-venue funding + explicit
+HL/HTX mid. Opt-in `PAPER_CARRY_HEDGE_DIAGNOSTIC` defaults **false** and is
+**not** a promote pin.
+
+| surface | `paper_perp_hedged` | note |
+| --- | ---: | --- |
+| docker soak (~300s) | **1** | BTC diagnostic; 1 cycle after recreate |
+| host probe | **2** | BTC+ETH; spot NAV unchanged |
+
+`can_promote` still **false**. PIT basis still UNAVAILABLE. Every
+`PAPER_PROMOTE_*` Field default and restored `.env` value remains **false**.
+Not edge proven in production.
