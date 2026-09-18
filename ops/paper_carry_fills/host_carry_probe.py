@@ -16,13 +16,15 @@ from traderstack.execution.paper_perp import (
 )
 from traderstack.execution.paper_perp_feed import PaperPerpVenueFeed
 from traderstack.killswitch import KillSwitch
-from traderstack.portfolio import InMemoryPortfolioBook
-from traderstack.runtime import RuntimeResult
 from traderstack.market.models import MarketSource, MarketTick
 from traderstack.pipeline import PipelineResult
+from traderstack.portfolio import InMemoryPortfolioBook
+from traderstack.runtime import RuntimeResult
 from traderstack.service import ContinuousPaperService
 
-OUT = Path("/home/rham-admin/src/DeFi-TraderStack-Agent/var/ops/_carry_fills_soak_20260918/host_carry_probe.json")
+OUT = Path(
+    "/home/rham-admin/src/DeFi-TraderStack-Agent/var/ops/_carry_fills_soak_20260918/host_carry_probe.json"
+)
 
 
 class FakeRuntime:
