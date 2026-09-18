@@ -255,6 +255,10 @@ def load_candles_dir(
     skipped = 0
     wanted = set(universe) if universe is not None else None
     for path in sorted(directory.glob("*.json")):
+        # Archive downloads (#147) write <out>.report.json sidecars next to the
+        # candle arrays; those are headers, not candle series — skip them.
+        if path.name.endswith(".report.json"):
+            continue
         try:
             candles = load_candles_from_json(path)
         except (TypeError, ValueError, OSError) as exc:
