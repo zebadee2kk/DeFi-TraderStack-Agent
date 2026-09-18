@@ -42,6 +42,8 @@ from traderstack.research.universe import (
     fetch_kraken_usd_pairs,
 )
 from traderstack.research.xs_topk import (
+    CATALOGS,
+    resolve_catalog,
     MIN_HISTORY_MARGIN,
     PILOT_TIER_TAKER_BPS,
     RANKING_KEY,
@@ -111,6 +113,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--slippage-bps", type=float, default=None)
     parser.add_argument("--pilot-fee-bps", type=float, default=PILOT_TIER_TAKER_BPS)
     parser.add_argument("--holdout-fraction", type=float, default=0.20)
+    parser.add_argument(
+        "--catalog",
+        choices=sorted(CATALOGS),
+        default="default",
+        help="Frozen catalog: default (K=13) or lowturn (longer N; new ids).",
+    )
     parser.add_argument("--output-json", type=Path, default=Path("var/ops/xs_topk.json"))
     parser.add_argument(
         "--output-md",
@@ -348,6 +356,7 @@ def run(
                 holdout_fraction=args.holdout_fraction,
                 skip_reasons=skip_reasons,
                 names_skipped=skipped,
+                catalog=resolve_catalog(args.catalog),
             )
         )
     else:
@@ -374,6 +383,7 @@ def run(
                     holdout_fraction=args.holdout_fraction,
                     skip_reasons=skip_reasons,
                     names_skipped=skipped,
+                    catalog=resolve_catalog(args.catalog),
                 )
             )
 
@@ -388,6 +398,8 @@ def run(
         universe_listing_source=listing_source,
         universe_listing_size=listing_size,
         data_notes=notes,
+        catalog_name=args.catalog,
+        catalog=resolve_catalog(args.catalog),
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_md.parent.mkdir(parents=True, exist_ok=True)
