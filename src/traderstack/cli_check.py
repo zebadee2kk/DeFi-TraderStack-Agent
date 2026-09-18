@@ -1106,8 +1106,7 @@ def build_report(settings: Settings) -> ConfigReport:
         and not settings.paper_perp_hedge
     ):
         warnings.append(
-            "PAPER_CARRY_HEDGE_DIAGNOSTIC=true has no effect unless "
-            "PAPER_PERP_HEDGE=true."
+            "PAPER_CARRY_HEDGE_DIAGNOSTIC=true has no effect unless PAPER_PERP_HEDGE=true."
         )
     if (
         settings.paper_carry_hedge_diagnostic

@@ -1,4 +1,3 @@
-
 """Unit tests for carry_hedged_sign diagnostic helpers and defaults."""
 
 from __future__ import annotations

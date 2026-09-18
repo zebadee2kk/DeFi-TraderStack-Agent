@@ -743,9 +743,7 @@ def test_paper_carry_hedge_diagnostic_off_by_default() -> None:
 
 
 def test_paper_carry_hedge_diagnostic_active_warns_not_promote() -> None:
-    report = build_report(
-        settings(paper_perp_hedge=True, paper_carry_hedge_diagnostic=True)
-    )
+    report = build_report(settings(paper_perp_hedge=True, paper_carry_hedge_diagnostic=True))
     item = next(i for i in report.items if i.label == "Paper carry hedge diagnostic")
     assert "promote pin" in item.value
     assert any("soak diagnostic only" in w for w in report.warnings)

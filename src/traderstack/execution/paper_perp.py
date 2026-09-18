@@ -80,7 +80,6 @@ class PaperPerpOutcome:
         return self.status in {PaperPerpStatus.HEDGED, PaperPerpStatus.FUNDING_APPLIED}
 
 
-
 def carry_hedged_sign_spot_side(funding_rate: float) -> Side | None:
     """Cash-and-carry spot side for research ``carry_hedged_sign``.
 

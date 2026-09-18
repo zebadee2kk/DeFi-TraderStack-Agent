@@ -447,7 +447,6 @@ class ContinuousPaperService:
             }
         )
 
-
     async def _maybe_open_carry_diagnostic_hedge(self, symbol: str) -> None:
         """Open a carry_hedged_sign paper hedge without a promote voter fill.
 
@@ -571,7 +570,6 @@ class ContinuousPaperService:
                 reason=hedge.reason,
                 signal=CARRY_DIAGNOSTIC_SIGNAL,
             )
-
 
     async def _maybe_hedge_paper_perp(
         self, result: RuntimeResult, fill: ExecutionFill, decision_id: str
