@@ -94,7 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_symbol_candles(directory: Path, symbols: tuple[str, ...]) -> dict[str, tuple[Candle, ...]]:
+def _load_symbol_candles(
+    directory: Path, symbols: tuple[str, ...]
+) -> dict[str, tuple[Candle, ...]]:
     wanted = {symbol.upper() for symbol in symbols}
     histories: dict[str, tuple[Candle, ...]] = {}
     for path in sorted(directory.glob("*.json")):
@@ -119,15 +121,15 @@ def _load_funding_json(path: Path) -> dict[str, tuple[tuple[datetime, float], ..
     if isinstance(payload, dict) and "by_symbol" in payload:
         payload = payload["by_symbol"]
     if not isinstance(payload, dict):
-        raise ValueError(f"{path}: expected object keyed by symbol")
+        raise TypeError(f"{path}: expected object keyed by symbol")
     for symbol, rows in payload.items():
         points: list[tuple[datetime, float]] = []
         for row in rows:
             if isinstance(row, dict):
-                ts = datetime.fromisoformat(str(row["opened_at"]).replace("Z", "+00:00"))
+                ts = datetime.fromisoformat(str(row["opened_at"]))
                 points.append((ts, float(row["value"])))
             else:
-                ts = datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+                ts = datetime.fromisoformat(str(row[0]))
                 points.append((ts, float(row[1])))
         out[str(symbol).upper()] = tuple(points)
     return out

@@ -57,8 +57,7 @@ def funding_series(
 ) -> tuple[tuple[datetime, float], ...]:
     opened = start or datetime(2024, 1, 1, tzinfo=UTC)
     return tuple(
-        (opened + timedelta(hours=every_hours * index), value)
-        for index, value in enumerate(values)
+        (opened + timedelta(hours=every_hours * index), value) for index, value in enumerate(values)
     )
 
 
@@ -145,12 +144,20 @@ def test_run_funding_div_keep_flag_false_and_no_promote() -> None:
     }
     # Dense 8h funding on both venues
     hl = {
-        "BTC/USD": funding_series([0.0001 + 0.00001 * ((i % 7) - 3) for i in range(n * 3)], start=start),
-        "ETH/USD": funding_series([0.0002 + 0.00001 * ((i % 5) - 2) for i in range(n * 3)], start=start),
+        "BTC/USD": funding_series(
+            [0.0001 + 0.00001 * ((i % 7) - 3) for i in range(n * 3)], start=start
+        ),
+        "ETH/USD": funding_series(
+            [0.0002 + 0.00001 * ((i % 5) - 2) for i in range(n * 3)], start=start
+        ),
     }
     htx = {
-        "BTC/USD": funding_series([0.00005 + 0.00002 * ((i % 9) - 4) for i in range(n * 3)], start=start),
-        "ETH/USD": funding_series([0.00015 + 0.00002 * ((i % 11) - 5) for i in range(n * 3)], start=start),
+        "BTC/USD": funding_series(
+            [0.00005 + 0.00002 * ((i % 9) - 4) for i in range(n * 3)], start=start
+        ),
+        "ETH/USD": funding_series(
+            [0.00015 + 0.00002 * ((i % 11) - 5) for i in range(n * 3)], start=start
+        ),
     }
     report = run_funding_div(
         histories,

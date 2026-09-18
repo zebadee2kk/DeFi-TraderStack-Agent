@@ -210,8 +210,7 @@ def _clear_promotion(report: StrategySearchReport) -> StrategySearchReport:
             "any_promoted": False,
             "allowed_promote_id": None,
             "honesty": (
-                report.honesty
-                + " This funding-div search cannot flip PAPER_PROMOTE_*; "
+                report.honesty + " This funding-div search cannot flip PAPER_PROMOTE_*; "
                 "spot overlay dual-print is informational only."
             ),
         }
@@ -382,9 +381,7 @@ def run_funding_div(
         aligned_bars_second=second_aligned,
         history_notes=list(history_notes or []),
         edge_notes=notes,
-        skipped=skipped_fund_div_families(
-            divergence_by_symbol=divergence if have_div else None
-        ),
+        skipped=skipped_fund_div_families(divergence_by_symbol=divergence if have_div else None),
         primary_search=primary_search,
         second_search=second_search,
         can_promote=False,
@@ -413,10 +410,7 @@ def render_funding_div_markdown(report: FundingDivReport) -> str:
             f"can_promote=`{str(report.can_promote).lower()}`; "
             f"`keep_flag_false={str(report.keep_flag_false).lower()}`."
         ),
-        (
-            f"Core ids={len(report.core_ids)}; "
-            f"dual_print_passers=`{report.dual_print_passers}`."
-        ),
+        (f"Core ids={len(report.core_ids)}; dual_print_passers=`{report.dual_print_passers}`."),
         (
             f"Costs: fee={report.fee_bps:g} bps + slippage={report.slippage_bps:g} bps "
             "(pilot spot). No hedged-carry legs."
@@ -428,9 +422,11 @@ def render_funding_div_markdown(report: FundingDivReport) -> str:
         "",
         "## What this does / does not claim",
         "",
-        "Paper-research catalog of HL-HTX funding-divergence FeatureZ voters on "
-        "spot BTC/ETH. **Not** a live-capital claim, **not** hedged carry, **not** "
-        "a reason to flip `PAPER_PROMOTE_*`. Empty dual-print set is success.",
+        (
+            "Paper-research catalog of HL-HTX funding-divergence FeatureZ voters on "
+            "spot BTC/ETH. **Not** a live-capital claim, **not** hedged carry, **not** "
+            "a reason to flip `PAPER_PROMOTE_*`. Empty dual-print set is success."
+        ),
         "",
         "## Honesty / pre-registered rules",
         "",
@@ -449,8 +445,7 @@ def render_funding_div_markdown(report: FundingDivReport) -> str:
     ]
     for note in report.edge_notes:
         lines.append(
-            f"- `{note.get('name', '?')}` **{note.get('status', '?')}**: "
-            f"{note.get('reason', '')}"
+            f"- `{note.get('name', '?')}` **{note.get('status', '?')}**: {note.get('reason', '')}"
         )
     if report.history_notes:
         lines.extend(["", "## Candle notes", ""])
