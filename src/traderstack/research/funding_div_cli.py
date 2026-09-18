@@ -1,0 +1,302 @@
+"""`traderstack-funding-div`: HL-HTX funding-divergence SPOT dual-print.
+
+Scores the frozen ``fund_div_hl_htx_*`` catalog on Kraken x Coinbase daily
+spot BTC/ETH using aligned HL-minus-HTX funding divergence as the FeatureZ
+series. Not hedged carry. Never flips ``PAPER_PROMOTE_*``. BitMEX unused.
+Empty dual-print is success.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+from datetime import datetime
+from pathlib import Path
+
+import httpx
+
+from traderstack.candles import Candle
+from traderstack.config import Settings
+from traderstack.research.cli import load_candles_from_json
+from traderstack.research.edge_series import (
+    HTX_BASE,
+    HTX_DAILY_LIMIT_PAGES,
+    HTX_DAILY_LOOKBACK_DAYS,
+    HYPERLIQUID_BASE,
+    HYPERLIQUID_DAILY_LIMIT_PAGES,
+    HYPERLIQUID_DAILY_LOOKBACK_DAYS,
+    HYPERLIQUID_SYMBOL_PAUSE_SECONDS,
+    fetch_htx_funding,
+    fetch_hyperliquid_funding,
+)
+from traderstack.research.funding_carry import (
+    DEFAULT_STEP_SIZE,
+    DEFAULT_TEST_SIZE,
+    DEFAULT_TRAIN_SIZE,
+    DEFAULT_WARMUP,
+    REQUIRED_SYMBOLS,
+)
+from traderstack.research.funding_div import (
+    FUND_DIV_RULES,
+    render_funding_div_markdown,
+    run_funding_div,
+)
+from traderstack.research.xs_topk import PILOT_TIER_TAKER_BPS
+
+SYMBOLS = REQUIRED_SYMBOLS
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "HL-HTX funding-divergence SPOT overlay dual-print on Kraken x "
+            "Coinbase at pilot fees. Pre-registered fund_div_hl_htx_* catalog. "
+            "Never flips PAPER_PROMOTE_*."
+        )
+    )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="fetch public HL + HTX funding (required unless --hl-funding-json/--htx-funding-json)",
+    )
+    parser.add_argument("--interval", default="1d", choices=("1d",))
+    parser.add_argument("--fee-bps", type=float, default=PILOT_TIER_TAKER_BPS)
+    parser.add_argument("--slippage-bps", type=float, default=5.0)
+    parser.add_argument("--starting-equity", type=float, default=10_000.0)
+    parser.add_argument("--train-size", type=int, default=DEFAULT_TRAIN_SIZE)
+    parser.add_argument("--test-size", type=int, default=DEFAULT_TEST_SIZE)
+    parser.add_argument("--step-size", type=int, default=DEFAULT_STEP_SIZE)
+    parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP)
+    parser.add_argument("--holdout-fraction", type=float, default=0.20)
+    parser.add_argument("--min-trades", type=int, default=3)
+    parser.add_argument(
+        "--candles-dir",
+        nargs=2,
+        action="append",
+        metavar=("VENUE", "DIR"),
+        default=None,
+        help="venue label and candle directory (repeatable; expect kraken + coinbase)",
+    )
+    parser.add_argument("--hl-funding-json", type=Path, default=None)
+    parser.add_argument("--htx-funding-json", type=Path, default=None)
+    parser.add_argument(
+        "--output-md",
+        type=Path,
+        default=Path("docs/artifacts/strategy-search/hl-htx-funding-div-spot-dual-print.md"),
+    )
+    parser.add_argument(
+        "--output-json",
+        type=Path,
+        default=Path("var/ops/hl_htx_funding_div_spot_dual_print.json"),
+    )
+    parser.add_argument("--stdout-md", action="store_true")
+    return parser
+
+
+def _load_symbol_candles(directory: Path, symbols: tuple[str, ...]) -> dict[str, tuple[Candle, ...]]:
+    wanted = {symbol.upper() for symbol in symbols}
+    histories: dict[str, tuple[Candle, ...]] = {}
+    for path in sorted(directory.glob("*.json")):
+        if path.name.endswith(".report.json"):
+            continue
+        try:
+            candles = load_candles_from_json(path)
+        except (TypeError, ValueError, OSError):
+            continue
+        if not candles or candles[0].interval != "1d":
+            continue
+        symbol = candles[0].symbol.upper()
+        if symbol not in wanted:
+            continue
+        histories[symbol] = candles
+    return histories
+
+
+def _load_funding_json(path: Path) -> dict[str, tuple[tuple[datetime, float], ...]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    out: dict[str, tuple[tuple[datetime, float], ...]] = {}
+    if isinstance(payload, dict) and "by_symbol" in payload:
+        payload = payload["by_symbol"]
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path}: expected object keyed by symbol")
+    for symbol, rows in payload.items():
+        points: list[tuple[datetime, float]] = []
+        for row in rows:
+            if isinstance(row, dict):
+                ts = datetime.fromisoformat(str(row["opened_at"]).replace("Z", "+00:00"))
+                points.append((ts, float(row["value"])))
+            else:
+                ts = datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+                points.append((ts, float(row[1])))
+        out[str(symbol).upper()] = tuple(points)
+    return out
+
+
+async def fetch_hl_htx_funding(
+    symbols: tuple[str, ...],
+    *,
+    timeout: float = 30.0,
+) -> tuple[
+    dict[str, tuple[tuple[datetime, float], ...]],
+    dict[str, tuple[tuple[datetime, float], ...]],
+    list[dict[str, str]],
+]:
+    notes: list[dict[str, str]] = []
+    hl: dict[str, tuple[tuple[datetime, float], ...]] = {}
+    htx: dict[str, tuple[tuple[datetime, float], ...]] = {}
+    async with httpx.AsyncClient(base_url=HYPERLIQUID_BASE, timeout=timeout) as client:
+        for index, symbol in enumerate(symbols):
+            if index:
+                await asyncio.sleep(HYPERLIQUID_SYMBOL_PAUSE_SECONDS)
+            result = await fetch_hyperliquid_funding(
+                symbol,
+                client=client,
+                lookback_days=HYPERLIQUID_DAILY_LOOKBACK_DAYS,
+                limit_pages=HYPERLIQUID_DAILY_LIMIT_PAGES,
+            )
+            notes.append(result.as_note())
+            if result.status == "ok":
+                hl[symbol.upper()] = result.points
+    async with httpx.AsyncClient(base_url=HTX_BASE, timeout=timeout) as client:
+        for symbol in symbols:
+            result = await fetch_htx_funding(
+                symbol,
+                client=client,
+                lookback_days=HTX_DAILY_LOOKBACK_DAYS,
+                limit_pages=HTX_DAILY_LIMIT_PAGES,
+            )
+            notes.append(result.as_note())
+            if result.status == "ok":
+                htx[symbol.upper()] = result.points
+    return hl, htx, notes
+
+
+def run(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    _ = Settings()  # ensure defaults load; never mutate PAPER_PROMOTE_*
+
+    candle_dirs = args.candles_dir or [
+        ["kraken", "var/research/candles/kraken"],
+        ["coinbase", "var/research/candles/coinbase"],
+    ]
+    history_notes: list[dict[str, str]] = []
+    primary_venue, primary_dir = candle_dirs[0][0], Path(candle_dirs[0][1])
+    histories = _load_symbol_candles(primary_dir, SYMBOLS)
+    for symbol in SYMBOLS:
+        series = histories.get(symbol.upper())
+        if series:
+            history_notes.append(
+                {
+                    "name": f"{primary_venue}:{symbol}",
+                    "status": "ok",
+                    "reason": (
+                        f"{len(series)} daily bars "
+                        f"{series[0].opened_at.isoformat()} -> {series[-1].opened_at.isoformat()}"
+                    ),
+                }
+            )
+        else:
+            history_notes.append(
+                {
+                    "name": f"{primary_venue}:{symbol}",
+                    "status": "skipped",
+                    "reason": f"missing 1d candles under {primary_dir}",
+                }
+            )
+
+    second_histories: dict[str, tuple[Candle, ...]] | None = None
+    second_venue: str | None = None
+    if len(candle_dirs) >= 2:
+        second_venue, second_dir = candle_dirs[1][0], Path(candle_dirs[1][1])
+        second_histories = _load_symbol_candles(second_dir, SYMBOLS)
+        for symbol in SYMBOLS:
+            series = second_histories.get(symbol.upper())
+            if series:
+                history_notes.append(
+                    {
+                        "name": f"{second_venue}:{symbol}",
+                        "status": "ok",
+                        "reason": (
+                            f"{len(series)} daily bars "
+                            f"{series[0].opened_at.isoformat()} -> "
+                            f"{series[-1].opened_at.isoformat()}"
+                        ),
+                    }
+                )
+            else:
+                history_notes.append(
+                    {
+                        "name": f"{second_venue}:{symbol}",
+                        "status": "skipped",
+                        "reason": f"missing 1d candles under {second_dir}",
+                    }
+                )
+        if len(second_histories) < len(SYMBOLS):
+            second_histories = None
+            second_venue = None
+
+    edge_notes: list[dict[str, str]] = []
+    if args.hl_funding_json and args.htx_funding_json:
+        hl = _load_funding_json(args.hl_funding_json)
+        htx = _load_funding_json(args.htx_funding_json)
+        edge_notes.append(
+            {
+                "name": "funding_source",
+                "status": "ok",
+                "reason": f"offline files {args.hl_funding_json} + {args.htx_funding_json}",
+            }
+        )
+    elif args.live:
+        hl, htx, fetch_notes = asyncio.run(fetch_hl_htx_funding(SYMBOLS))
+        edge_notes.extend(fetch_notes)
+    else:
+        raise SystemExit("provide --live or both --hl-funding-json and --htx-funding-json")
+
+    report = run_funding_div(
+        histories,
+        fee_bps=args.fee_bps,
+        slippage_bps=args.slippage_bps,
+        starting_equity=args.starting_equity,
+        warmup=args.warmup,
+        train_size=args.train_size,
+        test_size=args.test_size,
+        step_size=args.step_size,
+        holdout_fraction=args.holdout_fraction,
+        min_trades=args.min_trades,
+        interval=args.interval,
+        hl_funding_by_symbol=hl,
+        htx_funding_by_symbol=htx,
+        second_histories=second_histories,
+        primary_candle_venue=primary_venue,
+        second_candle_venue=second_venue,
+        history_notes=history_notes,
+    )
+    # Attach raw fetch notes that are not already in report.edge_notes
+    if edge_notes:
+        report = report.model_copy(update={"edge_notes": list(report.edge_notes) + edge_notes})
+
+    md = render_funding_div_markdown(report)
+    args.output_md.parent.mkdir(parents=True, exist_ok=True)
+    args.output_md.write_text(md, encoding="utf-8")
+    args.output_json.parent.mkdir(parents=True, exist_ok=True)
+    args.output_json.write_text(
+        json.dumps(report.model_dump(mode="json"), indent=2, default=str) + "\n",
+        encoding="utf-8",
+    )
+    if args.stdout_md:
+        print(md)
+    print(
+        f"wrote {args.output_md} dual_print_passers={report.dual_print_passers} "
+        f"print_kind={report.print_kind} keep_flag_false={report.keep_flag_false}"
+    )
+    print(FUND_DIV_RULES.split(".")[0] + ".")
+    return 0
+
+
+def main() -> None:
+    raise SystemExit(run())
+
+
+if __name__ == "__main__":
+    main()
