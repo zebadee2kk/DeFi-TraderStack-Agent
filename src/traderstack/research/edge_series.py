@@ -1539,7 +1539,7 @@ async def fetch_asilletto81_hyperliquid_open_interest(
             if payload:
                 try:
                     csv_text = _asilletto_decompress(payload)
-                except Exception:
+                except (RuntimeError, UnicodeDecodeError, OSError, ValueError):
                     day = day + timedelta(days=1)
                     continue
                 oi = _asilletto_last_open_interest(csv_text, coin)

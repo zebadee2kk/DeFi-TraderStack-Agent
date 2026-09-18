@@ -53,7 +53,9 @@ def make_candles(
     return tuple(candles)
 
 
-def oi_series(values: list[float], *, start: datetime | None = None) -> tuple[tuple[datetime, float], ...]:
+def oi_series(
+    values: list[float], *, start: datetime | None = None
+) -> tuple[tuple[datetime, float], ...]:
     opened = start or datetime(2024, 1, 1, tzinfo=UTC)
     return tuple((opened + timedelta(days=index), value) for index, value in enumerate(values))
 
@@ -87,7 +89,9 @@ def test_oi_momentum_series_math() -> None:
 
 def test_dual_oi_gate_fail_closed() -> None:
     short = oi_series([100.0] * 100)
-    ok, notes = dual_oi_gate({"BTC/USD": short, "ETH/USD": short}, {"BTC/USD": short, "ETH/USD": short})
+    ok, notes = dual_oi_gate(
+        {"BTC/USD": short, "ETH/USD": short}, {"BTC/USD": short, "ETH/USD": short}
+    )
     assert ok is False
     assert any(n.get("name") == "oi_gate:dual" and n.get("status") == "unavailable" for n in notes)
 

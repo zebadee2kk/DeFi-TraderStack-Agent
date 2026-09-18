@@ -135,9 +135,7 @@ def _load_pit_archive(
     )
 
     archive_dir = None
-    if path.is_dir():
-        archive_dir = path
-    elif tips_path(path).is_file():
+    if path.is_dir() or tips_path(path).is_file():
         archive_dir = path
     elif path.name == "tips.jsonl" and path.is_file():
         archive_dir = path.parent

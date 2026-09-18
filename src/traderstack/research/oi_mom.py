@@ -26,7 +26,6 @@ from traderstack.research.funding_carry import (
     DEFAULT_WARMUP,
     Z_LOOKBACK,
     choose_walkforward,
-    resample_funding_to_daily,
     slice_histories_to_funding,
     utc_day_open,
 )
@@ -197,8 +196,7 @@ def _clear_promotion(report: StrategySearchReport) -> StrategySearchReport:
             "any_promoted": False,
             "allowed_promote_id": None,
             "honesty": (
-                report.honesty
-                + " This oi-mom search cannot flip PAPER_PROMOTE_*; "
+                report.honesty + " This oi-mom search cannot flip PAPER_PROMOTE_*; "
                 "spot overlay dual-print is informational only."
             ),
         }
@@ -266,8 +264,7 @@ def run_oi_mom(
 
     feature_oi = feature_oi_by_symbol or bybit_oi_by_symbol or {}
     have_feature = all(
-        any(name.upper() == symbol.upper() for name in feature_oi)
-        for symbol in REQUIRED_SYMBOLS
+        any(name.upper() == symbol.upper() for name in feature_oi) for symbol in REQUIRED_SYMBOLS
     )
     if not dual_ok or not have_feature:
         return OiMomReport(
@@ -427,8 +424,10 @@ def render_oi_mom_markdown(report: OiMomReport) -> str:
         "- Hyperliquid asiletto81/hyperliquid asset_ctxs: AVAILABLE >=720d BTC+ETH.",
         "- Bybit linear daily open interest: AVAILABLE >=720d BTC+ETH.",
         "- HTX / Binance / OKX daily OI history: UNAVAILABLE at >=720d.",
-        "- Live candle feature tape: Bybit. HL archive ends 2026-06-01; live Kraken720 "
-        "overlap is below 720 so HL is gate-only for this score.",
+        (
+            "- Live candle feature tape: Bybit. HL archive ends 2026-06-01; live Kraken720 "
+            "overlap is below 720 so HL is gate-only for this score."
+        ),
         "",
         "## Honesty / pre-registered rules",
         "",

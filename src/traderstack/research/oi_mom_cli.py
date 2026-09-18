@@ -145,16 +145,17 @@ async def fetch_hl_bybit_oi(
         for symbol in symbols:
             result = await fetch_asilletto81_hyperliquid_open_interest(symbol, client=client)
             notes.append(result.as_note())
-            if result.status == 'ok':
+            if result.status == "ok":
                 hl[symbol.upper()] = result.points
-    async with httpx.AsyncClient(base_url=BYBIT_BASE, timeout=timeout, follow_redirects=True) as bybit_client:
+    async with httpx.AsyncClient(
+        base_url=BYBIT_BASE, timeout=timeout, follow_redirects=True
+    ) as bybit_client:
         for symbol in symbols:
             result = await fetch_bybit_open_interest(symbol, client=bybit_client)
             notes.append(result.as_note())
-            if result.status == 'ok':
+            if result.status == "ok":
                 bybit[symbol.upper()] = result.points
     return hl, bybit, notes
-
 
 
 def run(argv: list[str] | None = None) -> int:
