@@ -81,3 +81,27 @@ so and leave every `PAPER_PROMOTE_*` false.
 - `src/traderstack/research/download_candles.py` / `candle_archives.py` — #147
 - Helpers fanout 2026-09-18: prefer this executable dual-print path over modeled
   hedged-carry promotion.
+
+
+## Operator execution record (2026-09-18)
+
+Executed on WSL against tip `3302ac4` / branch `feat/xs-topk-archive-dual-print`.
+Pre-registration run notes (scratch):
+`/home/rham-admin/claude-scratch/defi-helpers/xs-topk-dual-print-run-notes-2026-09-18.md`.
+
+- **Second cell picked before pull:** option 1 Coinbase same era (download succeeded from WSL).
+- **START/END:** `2024-09-24T00:00:00+00:00` → `2026-09-18T00:00:00+00:00`.
+- **SYMBOLS:** 45 pre-declared Coinbase USD pairs (see run notes). Coinbase pull: 45/45 ok.
+  Kraken first-cell dir rebuilt for the same list via public OHLC: 43/45 ok
+  (skipped `MATIC/USD`, `MKR/USD` — fail-closed, not invented).
+- **Score:** two `--candles-dir` prints at pilot 80+5 bps →
+  `docs/artifacts/strategy-search/xs-topk-archive-dual-print.md`.
+- **Result:** dual-print passers = **0** (success). `keep_flag_false=true`.
+  `PAPER_PROMOTE_*` unchanged (still default false). Catalog K=13 not retuned.
+
+### CLI corrections vs skeleton above
+
+- `traderstack-download-candles` takes one positional `symbol` and `--out FILE`
+  (not `--symbols` / `--out-dir`). Loop per symbol into `var/research/candles/<venue>/`.
+- Archive venues also write `<out>.report.json` sidecars; `load_candles_dir` skips
+  `*.report.json` so they are not counted as unreadable candle series.
