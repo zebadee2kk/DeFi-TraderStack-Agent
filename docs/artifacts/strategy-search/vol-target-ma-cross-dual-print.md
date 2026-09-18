@@ -1,8 +1,8 @@
 # Vol-target overlay on ma_cross_10_30 SPOT dual-print (Kraken x Coinbase)
 
-**Repo tip at score:** `8b616bc`.
+**Repo tip at score:** `eb1ed0f`.
 
-Generated: 2026-09-18T14:40:51.960457+00:00
+Generated: 2026-09-18T14:41:45.643360+00:00
 Print kind: **dual_print**. primary_candle=`kraken`; second_candle=`coinbase`; paper_path_ready=`true`; can_promote=`false`; `keep_flag_false=true`.
 Core ids=4; dual_print_passers=`0`.
 Costs: fee=80 bps + slippage=5 bps (pilot spot). Reduce-only vol scalar; no leverage.
