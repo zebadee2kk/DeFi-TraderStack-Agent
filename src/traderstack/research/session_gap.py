@@ -28,7 +28,6 @@ from traderstack.research.funding_carry import (
 )
 from traderstack.research.search import StrategySearchReport, run_search
 
-
 SESS_GAP_RULES = (
     "Pre-registered overnight vs session open-close gap SPOT overlay "
     "(frozen before any score). Features from daily OHLC only: "
