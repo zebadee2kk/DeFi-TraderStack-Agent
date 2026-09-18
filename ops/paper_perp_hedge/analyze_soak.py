@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Honest paper-perp-hedge soak metrics for 2026-09-18. Never invents PnL."""
+
 from __future__ import annotations
+
 import re
 from collections import Counter
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path("/home/rham-admin/src/DeFi-TraderStack-Agent")
@@ -11,8 +13,10 @@ RAW = ROOT / "var/ops/_perp_hedge_soak_20260918"
 OUT = ROOT / "docs/artifacts/ops/paper-perp-hedge-soak-2026-09-18.md"
 LON = timezone(timedelta(hours=1))
 
+
 def strip_ansi(s: str) -> str:
     return re.sub(r"\x1b\[[0-9;]*m", "", s)
+
 
 def parse_logs(text: str) -> dict:
     text = strip_ansi(text)
@@ -48,15 +52,29 @@ def parse_logs(text: str) -> dict:
             venues[vm.group(1)] += 1
         if sm:
             sources[sm.group(1).strip()] += 1
-    return dict(
-        hedged=hedged, skipped=skipped, funding=funding, mid_fail=mid_fail,
-        fund_fail=fund_fail, cycles=cycles, withheld=withheld,
-        skip_reasons=skip_reasons, venues=venues, sources=sources,
-    )
+    return {
+        "hedged": hedged,
+        "skipped": skipped,
+        "funding": funding,
+        "mid_fail": mid_fail,
+        "fund_fail": fund_fail,
+        "cycles": cycles,
+        "withheld": withheld,
+        "skip_reasons": skip_reasons,
+        "venues": venues,
+        "sources": sources,
+    }
+
 
 blobs = []
-for name in ["docker_logs_window.txt", "docker_logs_perp.txt", "app_logs_end.txt",
-             "app_logs_mid1.txt", "app_logs_kill.txt", "app_logs_start.txt"]:
+for name in [
+    "docker_logs_window.txt",
+    "docker_logs_perp.txt",
+    "app_logs_end.txt",
+    "app_logs_mid1.txt",
+    "app_logs_kill.txt",
+    "app_logs_start.txt",
+]:
     p = RAW / name
     if p.exists():
         blobs.append(p.read_text(errors="replace"))
@@ -67,7 +85,7 @@ for line in meta.splitlines():
     if "commit=" in line:
         sha = line.split("commit=")[-1].strip()
 
-now_utc = datetime.now(timezone.utc)
+now_utc = datetime.now(UTC)
 now_lon = now_utc.astimezone(LON)
 
 # promote flags from host .env (read-only check)
@@ -75,7 +93,15 @@ env_lines = []
 env_path = ROOT / ".env"
 if env_path.exists():
     for line in env_path.read_text().splitlines():
-        if line.startswith(("TRADING_MODE=", "PAPER_PERP_HEDGE=", "PAPER_PROMOTE_", "PAPER_GARCH_SIZE=", "PAPER_SIMULATE_FILLS=")):
+        if line.startswith(
+            (
+                "TRADING_MODE=",
+                "PAPER_PERP_HEDGE=",
+                "PAPER_PROMOTE_",
+                "PAPER_GARCH_SIZE=",
+                "PAPER_SIMULATE_FILLS=",
+            )
+        ):
             env_lines.append(line)
 
 lines = []
@@ -180,8 +206,16 @@ a("| Recipe pre-registered before soak | YES |")
 a("| Paper-only / no live claim | YES |")
 a("| Promote pins flipped | **NO** (must remain false) |")
 a("| Snapshot mid treated as PIT basis | **NO** |")
-a("| Funding apply in-window | " + ("YES" if parsed["funding"] else "NONE IN WINDOW (not a fail)") + " |")
-a("| Mid fetch hard failures | " + ("PASS (none)" if not parsed["mid_fail"] else f"SEE LOGS ({len(parsed['mid_fail'])})") + " |")
+a(
+    "| Funding apply in-window | "
+    + ("YES" if parsed["funding"] else "NONE IN WINDOW (not a fail)")
+    + " |"
+)
+a(
+    "| Mid fetch hard failures | "
+    + ("PASS (none)" if not parsed["mid_fail"] else f"SEE LOGS ({len(parsed['mid_fail'])})")
+    + " |"
+)
 a("")
 a("Artifacts: this report + `var/ops/_perp_hedge_soak_20260918/` (local raw).")
 a("")
@@ -189,4 +223,6 @@ a("")
 OUT.parent.mkdir(parents=True, exist_ok=True)
 OUT.write_text("\n".join(lines) + "\n")
 print(f"wrote {OUT}")
-print(f"cycles={len(parsed['cycles'])} hedged={len(parsed['hedged'])} funding={len(parsed['funding'])} skips={len(parsed['skipped'])}")
+print(
+    f"cycles={len(parsed['cycles'])} hedged={len(parsed['hedged'])} funding={len(parsed['funding'])} skips={len(parsed['skipped'])}"
+)

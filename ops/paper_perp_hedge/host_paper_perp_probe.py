@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Bounded host-side paper perp feed+book probe (paper-only)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,8 +14,12 @@ from traderstack.execution.paper_perp_feed import PaperPerpVenueFeed
 from traderstack.killswitch import KillSwitch
 from traderstack.models import Side
 
-OUT = Path("/home/rham-admin/src/DeFi-TraderStack-Agent/var/ops/_perp_hedge_soak_20260918/host_probe.json")
-REPORT_SNIP = Path("/home/rham-admin/src/DeFi-TraderStack-Agent/var/ops/_perp_hedge_soak_20260918/host_probe.md")
+OUT = Path(
+    "/home/rham-admin/src/DeFi-TraderStack-Agent/var/ops/_perp_hedge_soak_20260918/host_probe.json"
+)
+REPORT_SNIP = Path(
+    "/home/rham-admin/src/DeFi-TraderStack-Agent/var/ops/_perp_hedge_soak_20260918/host_probe.md"
+)
 
 
 def _out(o):
@@ -41,12 +46,16 @@ async def main() -> dict:
     for sym in symbols:
         try:
             q = await feed.fetch_mid(sym)
-            mids[sym] = None if q is None else {
-                "venue": q.venue,
-                "mid_usd": q.mid_usd,
-                "source": q.source,
-                "observed_at": q.observed_at.isoformat(),
-            }
+            mids[sym] = (
+                None
+                if q is None
+                else {
+                    "venue": q.venue,
+                    "mid_usd": q.mid_usd,
+                    "source": q.source,
+                    "observed_at": q.observed_at.isoformat(),
+                }
+            )
         except Exception as exc:  # noqa: BLE001
             errors.append({"op": "fetch_mid", "symbol": sym, "error": repr(exc)})
             mids[sym] = None
@@ -82,8 +91,7 @@ async def main() -> dict:
                 "n_settlements": len(tape.settlements),
                 "source": tape.source,
                 "sample": [
-                    {"ts": ts.isoformat(), "rate": rate}
-                    for ts, rate in tape.settlements[:3]
+                    {"ts": ts.isoformat(), "rate": rate} for ts, rate in tape.settlements[:3]
                 ],
             }
             if tape.settlements:
@@ -151,8 +159,7 @@ async def main() -> dict:
         f"- hedge: `{result['hedge_outcome']}`",
         f"- funding_apply: `{result['funding_outcome']}`",
         f"- kill_withhold: `{result['withhold_outcome']}`",
-        "- mid venues: "
-        + ", ".join(f"{s}-> {(m or {}).get('venue')}" for s, m in mids.items()),
+        "- mid venues: " + ", ".join(f"{s}-> {(m or {}).get('venue')}" for s, m in mids.items()),
         f"- errors: {len(errors)}",
         "",
         "Raw: `var/ops/_perp_hedge_soak_20260918/host_probe.json`",
