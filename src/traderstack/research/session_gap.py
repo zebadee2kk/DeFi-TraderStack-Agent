@@ -335,9 +335,7 @@ def run_sess_gap(
             slippage_bps=slippage_bps,
             history_notes=list(history_notes or []),
             edge_notes=notes,
-            skipped=skipped_sess_gap_families(
-                overnight_by_symbol=None, session_by_symbol=None
-            ),
+            skipped=skipped_sess_gap_families(overnight_by_symbol=None, session_by_symbol=None),
         )
 
     catalog = sess_gap_candidates(
