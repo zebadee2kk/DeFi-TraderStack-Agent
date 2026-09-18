@@ -1,10 +1,10 @@
 # Edge-status memo — 2026-09-18
 
-**Repo tip at score:** re-pin after DefiLlama PIT snapshot archive merge.
+**Repo tip at score:** re-pin after vol-target second-era dual-print merge.
 
-Paper / research only. Summarises strategy-search outcomes **#160–#169** plus
-the PIT snapshot collector in this slice. **Not a profitability claim.** No
-number here is invented. All `PAPER_PROMOTE_*` defaults stay **false**.
+Paper / research only. Summarises strategy-search outcomes **#160–#170** plus
+the vol-target **second-era** Coinbase cell in this slice. **Not a profitability
+claim.** No number here is invented. All `PAPER_PROMOTE_*` defaults stay **false**.
 `TRADING_MODE` stays `paper`. No live path.
 
 ## Standing promote bar (unchanged)
@@ -21,7 +21,7 @@ A name cannot enter a paper pin unless **all** hold:
 
 Skip-not-invent: a missing series is a skip, not a zero-filled z.
 
-## Empty / skip streak (#160–#169)
+## Empty / skip streak (#160–#170)
 
 | id | family | result | note |
 | --- | --- | --- | --- |
@@ -34,28 +34,31 @@ Skip-not-invent: a missing series is a skip, not a zero-filled z.
 | #166 | DefiLlama stable net-issuance | **NOT_PIT** | Live `/stablecoincharts/*` refuses historical dual-print (no as_of). |
 | #167 | Polymarket weather live-tape | **empty_print** | Recipe + empty live collect; fail-closed success. |
 | #168 | session-gap overnight/session | **0** dual-print passers | Kraken×Coinbase OHLC gap FeatureZ; promote blocked. |
-| #169 | vol-target on `ma_cross_10_30` | **0** dual-print passers | Reduce-only VT scalars; promote blocked. |
+| #169 | vol-target on `ma_cross_10_30` | **0** dual-print passers | Concurrent-venue Kraken×Coinbase; promote blocked. |
+| #170 | DefiLlama PIT snapshot collector | day-one tip | `tip_days=1`; dual-print unavailable until ≥720 tips. |
 
 Promote blocked after each of the above. Claude helper shells often exited
 empty (ec=129); operator continued scoring.
 
-## This slice — PIT-safe DefiLlama snapshot archive
+## This slice — vol-target second-era dual-print
 
 Pre-registered recipe:
-`docs/artifacts/strategy-search/defillama-stable-pit-snapshot-recipe.md`
+`docs/artifacts/strategy-search/vol-target-ma-cross-second-era-dual-print-recipe.md`
 
-Collector: `traderstack-defillama-stable-snapshot` writes immutable
-`var/research/defillama/stablecoincharts/as_of=YYYY-MM-DD/` + append-only
-`tips.jsonl`. PIT net-issuance = successive tip deltas only. Dual-print
-score still refused until **≥720** distinct `as_of` tip days exist.
+Family picked because `traderstack-vol-target` already accepts `--candles-dir`
+and has concurrent-venue plumbing from #169. Catalog **unchanged** (no retune).
 
-Day-one coverage: **1 tip day (or whatever the collect reports)** —
-`enough_for_dual_print=false`. Honest `print_kind=unavailable` / skip; **no**
-invented historical PnL from the live chart. Link from #166 unavailable
-report: archive path is the forward unblocker, not a backfill.
+Frozen cells (Coinbase public archive; `RESEARCH_KRAKEN_ARCHIVE_PATH` unset so
+`kraken_archive` was not used):
 
-Status artifact:
-`var/research/defillama/stablecoincharts/STATUS.md` (local; may be gitignored)
+- `coinbase_era_2024_2026`: 2024-09-24 → 2026-09-17 (724 daily bars BTC/ETH)
+- `coinbase_era_2022_2024`: 2022-09-24 → 2024-09-23 (731 daily bars BTC/ETH)
+
+Score artifact:
+`docs/artifacts/strategy-search/vol-target-ma-cross-second-era-dual-print.md`
+
+Result: **dual_print_passers=0**; `can_promote=false`; `keep_flag_false=true`.
+Pilot 80+5 bps. Promote blocked.
 
 ## Paper-fill gap (honest)
 
@@ -66,27 +69,29 @@ Status artifact:
 - Hedged carry / basis-aware pins remain research-model only unless a
   committed dual-print passer exists (none today for spot-executable names).
 - #165 hedge soak recorded **0 fills** — plumbing evidence only.
+- #170 PIT snapshot archive is the forward unblocker for `stable_ni_*`; do not
+  invent historical tips from one live chart.
 
 ## Remaining ranked hypotheses (pre-registration only)
 
 Do **not** retune failed catalogs. Next falsifiable slices, ranked:
 
-1. ~~Vol-target overlay on frozen `ma_cross_10_30`~~ — scored #169; 0 passers.
-2. ~~PIT-safe DefiLlama issuance archive~~ — collector landed this slice;
-   wait for ≥720 tip days before re-scoring `stable_ni_*` (or keep daily
-   collect). Do not invent backfill tips from one chart.
-3. **Second-era / archive-era cells** for any future spot family that already
-   has concurrent-venue plumbing but only one covered era (rank #4 pivot if
-   snapshot path stalls).
-4. **Polymarket** — keep collector/eval isolated; empty tapes stay success
+1. ~~Vol-target overlay on frozen `ma_cross_10_30` (concurrent venue)~~ — #169; 0 passers.
+2. ~~PIT-safe DefiLlama issuance archive collector~~ — #170 landed; wait for ≥720
+   tip days before re-scoring `stable_ni_*`. Do not invent backfill tips.
+3. ~~Second-era / archive-era cell for vol-target~~ — this slice; 0 passers.
+4. **Second-era cell for sess-gap or ens_trend_v2** — same pattern; freeze recipe
+   before pull; Coinbase older era already on disk under
+   `var/research/candles/coinbase_era_2022_2024/` (local; may be gitignored).
+5. **Polymarket** — keep collector/eval isolated; empty tapes stay success
    until a PIT mid+settlement dual-print framework exists.
 
 Out of scope / do not revive without new data: BitMEX, failed #104/#108/#116–#123
-N-retunes, Vision→HL stitch, inventing basis.
+N-retunes, Vision→HL stitch, inventing basis, flipping `PAPER_PROMOTE_*`.
 
 ## Operator recommendation
 
 **Keep every `PAPER_PROMOTE_*=false`.** Empty dual-print sets remain the
 successful outcome until a committed report names a fee-aware dual-print
-passer that is paper-spot executable. Run the DefiLlama snapshot collector
-on a schedule so tip coverage can grow without look-ahead.
+passer that is paper-spot executable. Continue scheduled DefiLlama snapshot
+collects so tip coverage can grow without look-ahead.
