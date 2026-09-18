@@ -88,6 +88,7 @@ traderstack-intraday-dual-print = "traderstack.research.intraday_dual_print_cli:
 # paper perp stub cannot promote; otherwise single-print and cannot
 # promote. Never flips PAPER_PROMOTE_*. Empty search is success.
 traderstack-funding-carry = "traderstack.research.funding_carry_cli:main"
+traderstack-funding-div = "traderstack.research.funding_div_cli:main"
 # BTC−ETH residual fade/follow at frozen |z| thresholds. Same #96+A+B+C
 # dual-print bar as #104 (Kraken 720 + Binance.US older-720). Paper
 # spot executable. Never flips PAPER_PROMOTE_*. Empty dual-print is
