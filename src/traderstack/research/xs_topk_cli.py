@@ -43,7 +43,6 @@ from traderstack.research.universe import (
 )
 from traderstack.research.xs_topk import (
     CATALOGS,
-    resolve_catalog,
     MIN_HISTORY_MARGIN,
     PILOT_TIER_TAKER_BPS,
     RANKING_KEY,
@@ -51,6 +50,7 @@ from traderstack.research.xs_topk import (
     PrintResult,
     build_xs_topk_report,
     render_xs_topk_markdown,
+    resolve_catalog,
     score_print,
 )
 

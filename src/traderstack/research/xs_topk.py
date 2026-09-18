@@ -1196,7 +1196,6 @@ def _recommendation(
     return "\n".join(lines)
 
 
-
 def resolve_catalog(name: str) -> tuple[tuple[str, int, int, str], ...]:
     """Return a frozen named catalog. Unknown names raise."""
     try:
