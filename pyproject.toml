@@ -188,6 +188,9 @@ traderstack-download-basis = "traderstack.research.basis_cli:main"
 # paper loop. Crucix high-tier alerts are recorded as stand-aside and can
 # only withhold. Never flips PAPER_PROMOTE_*. An empty tape is success.
 traderstack-polymarket-crypto-collect = "traderstack.polymarket.crypto_cli:main"
+# Fee-aware evaluation of the #142 wedge tape (slice-2). Report-only;
+# never invents settlements; never flips PAPER_PROMOTE_*. Empty is success.
+traderstack-polymarket-crypto-eval = "traderstack.polymarket.crypto_eval_cli:main"
 # Point-in-time Polymarket weather tape (#141). Observations only: the
 # collector appends decision-time book + as-issued forecast, the resolver
 # pairs them with an official station high. No intents, no CLOB orders.
