@@ -1,0 +1,112 @@
+{
+  "aligned_bars_primary": 0,
+  "aligned_bars_second": 0,
+  "can_promote": false,
+  "control_ids": [
+    "ma_cross_10_30"
+  ],
+  "core_ids": [
+    "stable_ni_fade_1_0",
+    "stable_ni_fade_1_5",
+    "stable_ni_fade_2_0",
+    "stable_ni_follow_1_0",
+    "stable_ni_follow_1_5",
+    "stable_ni_follow_2_0",
+    "ma_cross_10_30"
+  ],
+  "dual_print_passer_ids": [],
+  "dual_print_passers": 0,
+  "edge_notes": [
+    {
+      "name": "stable_net_issuance",
+      "reason": "NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2.",
+      "status": "unavailable"
+    }
+  ],
+  "feature_source": "defillama_stablecoins",
+  "fee_bps": 80.0,
+  "generated_at": "2026-09-18T12:55:56.291374Z",
+  "history_notes": [
+    {
+      "name": "rules",
+      "reason": "Pre-registered DefiLlama stablecoin net-issuance SPOT overlay (frozen before any pull/score). Feature = UTC-daily \u0394 totalCirculatingUSD.peggedUSD on /stablecoin\u2026",
+      "status": "frozen"
+    },
+    {
+      "name": "pit",
+      "reason": "NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2.",
+      "status": "verdict"
+    },
+    {
+      "name": "live_fetch",
+      "reason": "fetched 3216 days from https://stablecoins.llama.fi; score refused without PIT archive",
+      "status": "ok"
+    },
+    {
+      "name": "candles:kraken",
+      "reason": "var/research/candles/kraken: symbols=['BTC/USD', 'ETH/USD']",
+      "status": "ok"
+    },
+    {
+      "name": "candles:coinbase",
+      "reason": "var/research/candles/coinbase: symbols=['BTC/USD', 'ETH/USD']",
+      "status": "ok"
+    },
+    {
+      "name": "parse_stablecoin_chart_rows",
+      "reason": "parsed 3216 circulating days; skipped=0; pit_safe=false (NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history \u2026)",
+      "status": "ok"
+    },
+    {
+      "name": "pit_gate",
+      "reason": "NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2.",
+      "status": "refused"
+    }
+  ],
+  "interval": "1d",
+  "keep_flag_false": true,
+  "lag_days": 2,
+  "paper_path_ready": true,
+  "pit_safe": false,
+  "pit_verdict": "NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2.",
+  "primary_candle_venue": "kraken",
+  "primary_search": null,
+  "print_kind": "unavailable",
+  "recommended_promote_flag": null,
+  "rules": "Pre-registered DefiLlama stablecoin net-issuance SPOT overlay (frozen before any pull/score). Feature = UTC-daily \u0394 totalCirculatingUSD.peggedUSD on /stablecoincharts/all; non-consecutive days skipped; LAG_DAYS=2. FeatureZVoter lookback=20; fade/follow at |z|>=1.0/1.5/2.0. Dual-print = Kraken x Coinbase spot BTC/ETH with the SAME aggregate series. Live API history is NOT PIT-safe (no as_of; revisions overwrite) \u2014 refuse historical dual-print unless an operator PIT archive is marked pit_safe. Pilot fee 80+5 bps. PAPER_PROMOTE_* stays default false. UNAVAILABLE / empty dual-print is success.",
+  "second_candle_venue": "coinbase",
+  "second_search": null,
+  "skipped": [
+    {
+      "candidate_id": "stable_ni_fade_1_0",
+      "family": "stable_net_iss",
+      "reason": "fade stable-net-iss z |z|>=1: skipped \u2014 NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2."
+    },
+    {
+      "candidate_id": "stable_ni_fade_1_5",
+      "family": "stable_net_iss",
+      "reason": "fade stable-net-iss z |z|>=1.5: skipped \u2014 NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2."
+    },
+    {
+      "candidate_id": "stable_ni_fade_2_0",
+      "family": "stable_net_iss",
+      "reason": "fade stable-net-iss z |z|>=2: skipped \u2014 NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2."
+    },
+    {
+      "candidate_id": "stable_ni_follow_1_0",
+      "family": "stable_net_iss",
+      "reason": "follow stable-net-iss z |z|>=1: skipped \u2014 NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2."
+    },
+    {
+      "candidate_id": "stable_ni_follow_1_5",
+      "family": "stable_net_iss",
+      "reason": "follow stable-net-iss z |z|>=1.5: skipped \u2014 NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2."
+    },
+    {
+      "candidate_id": "stable_ni_follow_2_0",
+      "family": "stable_net_iss",
+      "reason": "follow stable-net-iss z |z|>=2: skipped \u2014 NOT_PIT_SAFE: DefiLlama /stablecoincharts/* returns the current view of history with no as_of/revision feed; past circulating values may be rewritten. Live pulls must not score historical dual-prints. Forward paper use requires operator-dated snapshot archives + LAG_DAYS=2."
+    }
+  ],
+  "slippage_bps": 5.0
+}
