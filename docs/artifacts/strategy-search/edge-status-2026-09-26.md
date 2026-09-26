@@ -334,13 +334,13 @@ combined funding_usd ? thr; hold next N present days (no same-day lookahead).
 - **`le2d_path_exists=true`** (N=2 primary dual-era survivor)
 - N=1 fails both eras (28.9% / 13.3% frac_pos)
 - Always-on tumbling reference at N=1,2,3: **all fail** (matches #185 N=3 fail)
-- era_b selective n_windows thin (**30** at thr=$0.10) ? reported honestly
+- era_b selective n_windows thin (**30** at thr=$0.10) -- reported honestly
 - Stricter `paper_fee_plus_slip_15bps_x2` (open $0.30): N=2 fails era_b
 - `can_promote=false`; `keep_flag_false=true`; every `PAPER_PROMOTE_*=false`
 - Soaks PID **45859** / **2638509** untouched
 
-**Honesty:** informational hist fee-survival under selective entry ? promote,
-? dual-print WF, ? live paper PnL. Thin quiet-era sample. Still no Settings pin.
+**Honesty:** informational hist fee-survival under selective entry != promote,
+!= dual-print WF, != live paper PnL. Thin quiet-era sample. Still no Settings pin.
 
 **Named passers (informational):** none for dual-print; fee-survival only.
 
