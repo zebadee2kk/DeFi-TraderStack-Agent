@@ -217,6 +217,66 @@ def _wf_mean(per_print: list[float]) -> float | None:
     return sum(fold_totals) / len(fold_totals)
 
 
+def _compact_funding_path(cache_dir: Path) -> Path:
+    # Sibling compact cache next to asset_ctxs (gitignored under var/).
+    return cache_dir.parent / "daily_funding_last_core100.json"
+
+
+def _load_compact_panel(
+    compact_path: Path,
+    *,
+    coins: tuple[str, ...],
+    start: datetime,
+    end: datetime,
+) -> dict[datetime, dict[str, float]] | None:
+    import json
+
+    if not compact_path.is_file() or compact_path.stat().st_size <= 0:
+        return None
+    try:
+        raw = json.loads(compact_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(raw, dict) or "days" not in raw:
+        return None
+    want = set(coins)
+    start_d = _utc_day(start)
+    end_d = _utc_day(end)
+    panel: dict[datetime, dict[str, float]] = {}
+    for day_key, mapping in raw["days"].items():
+        try:
+            day = datetime.strptime(day_key, "%Y%m%d").replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        if day < start_d or day > end_d:
+            continue
+        if not isinstance(mapping, dict):
+            continue
+        filtered = {
+            coin: float(val)
+            for coin, val in mapping.items()
+            if coin in want and isinstance(val, (int, float))
+        }
+        if filtered:
+            panel[day] = filtered
+    return panel
+
+
+def _write_compact_panel(
+    compact_path: Path, panel: dict[datetime, dict[str, float]]
+) -> None:
+    import json
+
+    payload = {
+        "universe": list(CORE_UNIVERSE),
+        "days": {
+            _asilletto_yyyymmdd(day): vals for day, vals in sorted(panel.items())
+        },
+    }
+    compact_path.parent.mkdir(parents=True, exist_ok=True)
+    compact_path.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
+
+
 def load_asilletto_daily_funding(
     cache_dir: Path,
     *,
@@ -224,9 +284,10 @@ def load_asilletto_daily_funding(
     start: datetime = ASILLETTO81_HL_ARCHIVE_FIRST_UTC,
     end: datetime = ASILLETTO81_HL_ARCHIVE_LAST_UTC,
 ) -> tuple[dict[datetime, dict[str, float]], list[dict[str, str]]]:
-    """Load last funding print per UTC day per coin from asilletto lz4 CSVs.
+    """Load last funding print per UTC day per coin from asiletto lz4 CSVs.
 
-    Missing days / coins are omitted (never zero-filled).
+    Missing days / coins are omitted (never zero-filled). Prefers a compact
+    JSON cache beside asset_ctxs when present; otherwise builds it.
     """
     notes: list[dict[str, str]] = []
     if not cache_dir.is_dir():
@@ -239,6 +300,18 @@ def load_asilletto_daily_funding(
         )
         return {}, notes
 
+    compact_path = _compact_funding_path(cache_dir)
+    cached = _load_compact_panel(compact_path, coins=coins, start=start, end=end)
+    if cached is not None and cached:
+        notes.append(
+            {
+                "name": "asilletto_funding_compact",
+                "status": "ok",
+                "reason": f"loaded compact cache {compact_path.name}; days={len(cached)}",
+            }
+        )
+        return cached, notes
+
     want = set(coins)
     panel: dict[datetime, dict[str, float]] = {}
     day = _utc_day(start)
@@ -246,13 +319,13 @@ def load_asilletto_daily_funding(
     files_read = 0
     files_missing = 0
     while day <= end_d:
-        path = cache_dir / f"{_asilletto_yyyymmdd(day)}.csv.lz4"
-        if not path.is_file() or path.stat().st_size <= 0:
+        day_path = cache_dir / f"{_asilletto_yyyymmdd(day)}.csv.lz4"
+        if not day_path.is_file() or day_path.stat().st_size <= 0:
             files_missing += 1
             day = day + timedelta(days=1)
             continue
         try:
-            text = _asilletto_decompress(path.read_bytes())
+            text = _asilletto_decompress(day_path.read_bytes())
         except (RuntimeError, OSError, UnicodeDecodeError, ValueError) as exc:
             notes.append(
                 {
@@ -263,13 +336,28 @@ def load_asilletto_daily_funding(
             )
             day = day + timedelta(days=1)
             continue
+        reader = csv.reader(io.StringIO(text))
+        try:
+            header = next(reader)
+        except StopIteration:
+            day = day + timedelta(days=1)
+            continue
+        header_l = [h.strip().lower() for h in header]
+        try:
+            coin_i = header_l.index("coin")
+            fund_i = header_l.index("funding")
+        except ValueError:
+            day = day + timedelta(days=1)
+            continue
         last: dict[str, float] = {}
-        for row in csv.DictReader(io.StringIO(text)):
-            coin = (row.get("coin") or "").strip()
+        for row in reader:
+            if len(row) <= max(coin_i, fund_i):
+                continue
+            coin = row[coin_i].strip()
             if coin not in want:
                 continue
-            raw = row.get("funding")
-            if raw is None or raw == "":
+            raw = row[fund_i]
+            if raw == "":
                 continue
             try:
                 value = float(raw)
@@ -281,7 +369,31 @@ def load_asilletto_daily_funding(
         if last:
             panel[day] = last
             files_read += 1
+            if files_read % 50 == 0:
+                print(
+                    f"asilletto funding progress days={files_read} last={_asilletto_yyyymmdd(day)}",
+                    flush=True,
+                )
         day = day + timedelta(days=1)
+
+    if panel:
+        try:
+            _write_compact_panel(compact_path, panel)
+            notes.append(
+                {
+                    "name": "asilletto_funding_compact_write",
+                    "status": "ok",
+                    "reason": f"wrote {compact_path.name}; days={len(panel)}",
+                }
+            )
+        except OSError as exc:
+            notes.append(
+                {
+                    "name": "asilletto_funding_compact_write",
+                    "status": "skipped",
+                    "reason": f"write failed: {type(exc).__name__}",
+                }
+            )
 
     notes.append(
         {
@@ -294,6 +406,7 @@ def load_asilletto_daily_funding(
         }
     )
     return panel, notes
+
 
 
 def _target_weights(
