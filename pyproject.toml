@@ -97,6 +97,7 @@ traderstack-fund-z-flipcost = "traderstack.research.fund_z_flipcost_cli:main"
 # Historical fee-aware multi-day REPLAY of fund_z_harvest_sign_hold.
 # Paper/research only; never flips PAPER_PROMOTE_*. Skip-not-invent.
 traderstack-fund-z-fee-aware-replay = "traderstack.research.fund_z_fee_aware_replay_cli:main"
+traderstack-fund-z-hiabs-fee-aware-replay = "traderstack.research.fund_z_hiabs_fee_aware_replay_cli:main"
 # Hedged-carry + dual-basis (OKX x Vision) fee-aware multi-day REPLAY.
 # Reuses #185 ladders/windows. Never flips PAPER_PROMOTE_*.
 traderstack-carry-basis-fee-aware-replay = "traderstack.research.carry_basis_fee_aware_replay_cli:main"
