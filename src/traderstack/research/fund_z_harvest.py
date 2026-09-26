@@ -149,16 +149,15 @@ def _score_catalog(
                 basis_days += bd
         btc = per_asset.get("BTC/USD") or {}
         eth = per_asset.get("ETH/USD") or {}
-        wf_vals = [
-            v.get("mean_wf_total_return")
-            for v in (btc, eth)
-            if isinstance(v.get("mean_wf_total_return"), float)
-        ]
-        ho_vals = [
-            v.get("mean_holdout_excess_return")
-            for v in (btc, eth)
-            if isinstance(v.get("mean_holdout_excess_return"), float)
-        ]
+        wf_vals: list[float] = []
+        ho_vals: list[float] = []
+        for asset_metrics in (btc, eth):
+            wf_raw = asset_metrics.get("mean_wf_total_return")
+            if isinstance(wf_raw, float):
+                wf_vals.append(wf_raw)
+            ho_raw = asset_metrics.get("mean_holdout_excess_return")
+            if isinstance(ho_raw, float):
+                ho_vals.append(ho_raw)
         out.append(
             HarvestCandidate(
                 candidate_id=candidate_id,
