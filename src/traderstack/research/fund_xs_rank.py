@@ -262,16 +262,12 @@ def _load_compact_panel(
     return panel
 
 
-def _write_compact_panel(
-    compact_path: Path, panel: dict[datetime, dict[str, float]]
-) -> None:
+def _write_compact_panel(compact_path: Path, panel: dict[datetime, dict[str, float]]) -> None:
     import json
 
     payload = {
         "universe": list(CORE_UNIVERSE),
-        "days": {
-            _asilletto_yyyymmdd(day): vals for day, vals in sorted(panel.items())
-        },
+        "days": {_asilletto_yyyymmdd(day): vals for day, vals in sorted(panel.items())},
     }
     compact_path.parent.mkdir(parents=True, exist_ok=True)
     compact_path.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
@@ -406,7 +402,6 @@ def load_asilletto_daily_funding(
         }
     )
     return panel, notes
-
 
 
 def _target_weights(
@@ -725,9 +720,7 @@ def run_fund_xs_rank(
         candidates=candidates,
         can_promote=False,
         keep_flag_false=True,
-        recommended_promote_flag=(
-            paper_promote_flag_name(passers[0]) if passers else None
-        ),
+        recommended_promote_flag=(paper_promote_flag_name(passers[0]) if passers else None),
     )
 
 
