@@ -206,3 +206,18 @@ Measurement:
 **Named passers:** none.
 
 **Next recommendation:** keep every promote flag false. Maker/rebate remains **blocked** (INVALID paper evidence). Prefer research-only basis-carry flip-cost amortization study matching #181 fee drag, or wait DefiLlama PIT ≥720 — do not retune empty fund_mom / fund_spread / fund_xs_rank / weekly / spot catalogs. Continue DefiLlama PIT tips.
+
+## Paper soak vs dual-print honesty (fund_z fee amortization, 2026-09-26)
+
+**HONESTY: research passer ≠ short-horizon paper profit under current open fees.**
+
+| Surface | Fees | Horizon | Result |
+|---|---|---|---|
+| Dual-print #175 `fund_z_harvest_sign_hold` | research **5+5 bps × 2** | ~800 daily bars | WF +1.68% / +1.47%; holdout +3.42% / +3.12%; `can_promote=false` |
+| Host paper soak #181 | **PAPER_FEE_BPS=10** (+5 slip in fill) | **~6h** | `fee_aware_paper_pnl_usd=-0.064699` (fees 0.20 ≫ funding 0.013) |
+| On-disk HL amortization (asilletto81 hourly→daily ∑\|f\|) | open 10 bps×2 on $100×2 | mean income ~$0.074/day | **~2.7 days** to breakeven fees_usd; **~4.1 days** if counting 10+5 |
+
+Pin / Field defaults: all `PAPER_PROMOTE_*=false`. Paper only. No live.
+
+Full study: `docs/artifacts/ops/paper-fund-z-fee-amortization-study-2026-09-26.md`.
+Recipe: `docs/recipes/ops/paper-fund-z-fee-amortization-and-48h-soak-recipe-2026-09-26.md`.
