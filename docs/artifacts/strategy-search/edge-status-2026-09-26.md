@@ -268,3 +268,19 @@ Recipe frozen before score: `docs/recipes/strategy-search/fund-z-harvest-fee-awa
 
 `can_promote=false` / `keep_flag_false=true`. Every `PAPER_PROMOTE_*=false`.
 
+## carry+basis fee-aware multi-day REPLAY (OKX x Vision, 2026-09-26)
+
+**HONESTY: PAPER/RESEARCH ONLY. NOT A PROMOTE. NOT LIVE PnL. MTM omitted.**
+
+Reuses #185 N in {3,5,7} fee-survival ladders on other archived tapes: HL
+funding compact + dual PIT basis (OKX x Binance Vision). HTX hourly
+still skip-not-invent. Always-on hedged-carry (funding + basis delta).
+
+See docs/artifacts/strategy-search/carry-basis-fee-aware-multiday-replay.md.
+Recipe frozen before score.
+
+can_promote=false / keep_flag_false=true. Every PAPER_PROMOTE_*=false.
+
+DefiLlama weekday cron installed (see
+docs/artifacts/ops/defillama-stable-pit-weekday-cron-installed-2026-09-26.md);
+tip_days=2; no tip backfill.
