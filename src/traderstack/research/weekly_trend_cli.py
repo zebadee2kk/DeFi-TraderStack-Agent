@@ -116,8 +116,7 @@ def load_candles_dir(directory: Path) -> tuple[dict[str, tuple[Candle, ...]], li
         key = f"{candles[0].symbol}@{candles[0].interval}"
         histories[key] = candles
         notes.append(
-            f"loaded {len(candles)} {candles[0].interval} bars for "
-            f"{candles[0].symbol} from {path}"
+            f"loaded {len(candles)} {candles[0].interval} bars for {candles[0].symbol} from {path}"
         )
     return histories, notes
 
@@ -125,8 +124,14 @@ def load_candles_dir(directory: Path) -> tuple[dict[str, tuple[Candle, ...]], li
 def _detect_recipe_commit() -> str | None:
     try:
         out = subprocess.check_output(
-            ["git", "log", "-1", "--format=%h", "--",
-             "docs/recipes/strategy-search/weekly-lowturn-trend-dual-print-recipe.md"],
+            [
+                "git",
+                "log",
+                "-1",
+                "--format=%h",
+                "--",
+                "docs/recipes/strategy-search/weekly-lowturn-trend-dual-print-recipe.md",
+            ],
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()

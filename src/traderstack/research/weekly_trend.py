@@ -454,11 +454,7 @@ def _score_asset(
     return AssetGateMetrics(
         symbol=symbol,
         wf_total=row.walkforward_mean_total_return,
-        holdout_excess=(
-            None
-            if row.holdout is None
-            else row.holdout.excess_return
-        ),
+        holdout_excess=(None if row.holdout is None else row.holdout.excess_return),
         wf_trades=row.walkforward_trades,
         skipped_reason=row.skipped_reason,
     )
@@ -528,9 +524,7 @@ def _score_candidate_on_venue(
             notes.append(f"{symbol}: missing; skipped")
             continue
         if len(candles) < MIN_WEEKLY_BARS:
-            notes.append(
-                f"{symbol}: {len(candles)} weekly bars < {MIN_WEEKLY_BARS}; gate short"
-            )
+            notes.append(f"{symbol}: {len(candles)} weekly bars < {MIN_WEEKLY_BARS}; gate short")
         per_asset[symbol] = _score_asset(
             candidate,
             candles,
@@ -541,12 +535,7 @@ def _score_candidate_on_venue(
 
     btc = per_asset.get("BTC/USD")
     eth = per_asset.get("ETH/USD")
-    gate96 = bool(
-        btc is not None
-        and eth is not None
-        and _gate96_asset(btc)
-        and _gate96_asset(eth)
-    )
+    gate96 = bool(btc is not None and eth is not None and _gate96_asset(btc) and _gate96_asset(eth))
     ratio = holdout_magnitude_ratio(
         None if btc is None else btc.holdout_excess,
         None if eth is None else eth.holdout_excess,
@@ -601,9 +590,7 @@ def _score_candidate_on_venue(
     gate_c = stress_ok
 
     wf_vals = [
-        m.wf_total
-        for sym, m in per_asset.items()
-        if sym in GATE_SYMBOLS and m.wf_total is not None
+        m.wf_total for sym, m in per_asset.items() if sym in GATE_SYMBOLS and m.wf_total is not None
     ]
     ho_vals = [
         m.holdout_excess
@@ -689,9 +676,7 @@ def run_weekly_trend_search(
             era_weekly, en = resample_histories(era_daily)
             notes.extend(f"era: {n}" for n in en)
             # non-overlapping: era last week must end before primary first week
-            primary_first = min(
-                c[0].opened_at for c in kraken_weekly.values() if c
-            )
+            primary_first = min(c[0].opened_at for c in kraken_weekly.values() if c)
             era_ok = _venue_usable(era_weekly)
             if era_ok:
                 era_last = max(c[-1].opened_at for c in era_weekly.values() if c)
@@ -822,11 +807,7 @@ def render_weekly_trend_markdown(report: WeeklyTrendReport) -> str:
             f"resample=`{report.resample_rule}`; "
             f"second_rule=`{report.second_print_rule}`; "
             f"fees={report.fee_bps:g}+{report.slippage_bps:g} bps"
-            + (
-                f" (Kraken Pro tier {report.kraken_tier})"
-                if report.kraken_tier is not None
-                else ""
-            )
+            + (f" (Kraken Pro tier {report.kraken_tier})" if report.kraken_tier is not None else "")
             + f"; can_promote=`{str(report.can_promote).lower()}`; "
             f"keep_flag_false=`{str(report.keep_flag_false).lower()}`; "
             f"dual_print_passers=`{report.dual_print_passers}`; "
