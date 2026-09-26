@@ -94,6 +94,9 @@ traderstack-oi-mom = "traderstack.research.oi_mom_cli:main"
 traderstack-basis-residual = "traderstack.research.basis_residual_cli:main"
 traderstack-fund-z-harvest = "traderstack.research.fund_z_harvest_cli:main"
 traderstack-fund-z-flipcost = "traderstack.research.fund_z_flipcost_cli:main"
+# Historical fee-aware multi-day REPLAY of fund_z_harvest_sign_hold.
+# Paper/research only; never flips PAPER_PROMOTE_*. Skip-not-invent.
+traderstack-fund-z-fee-aware-replay = "traderstack.research.fund_z_fee_aware_replay_cli:main"
 # HL asilletto multi-asset cross-sectional funding-rank dual-era dual-print.
 # Paper-perp 5+5 x 2. Never flips PAPER_PROMOTE_*. Empty dual-print is success.
 traderstack-fund-xs-rank = "traderstack.research.fund_xs_rank_cli:main"

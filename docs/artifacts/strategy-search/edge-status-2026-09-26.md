@@ -254,3 +254,17 @@ Recipe: `docs/recipes/ops/paper-fund-z-fee-amortization-and-48h-soak-recipe-2026
 **Fee-survivability conclusion:** No NEW gated family in existing data clears dual-print with structural >=3d amortized holds. Always-on sign_hold remains the only research passer; short-horizon paper still needs multi-day soak per #183 (~2.7–4.1d BE).
 
 **Next recommendation:** keep every promote flag false. Await 48h fund_z soak harvest. Do not retune empty catalogs. Weekly funding harvest / basis MR hold>=5d remain unused alternatives if a distinct long-hold family is still required after soak.
+
+## fund_z fee-aware multi-day historical REPLAY (2026-09-26)
+
+**HONESTY: PAPER/RESEARCH ONLY. NOT A PROMOTE. NOT LIVE PnL. MTM omitted.**
+
+Historical tumbling N∈{3,5,7} day windows of `fund_z_harvest_sign_hold` on HL
+asilletto hourly→daily ∑|f| (skip-not-invent). Dual **era** (HTX hourly absent).
+Primary ladder = paper `PAPER_FEE_BPS=10` fees_usd ×2 on $100×BTC+ETH.
+
+See `docs/artifacts/strategy-search/fund-z-harvest-fee-aware-multiday-replay.md`.
+Recipe frozen before score: `docs/recipes/strategy-search/fund-z-harvest-fee-aware-multiday-replay-recipe.md`.
+
+`can_promote=false` / `keep_flag_false=true`. Every `PAPER_PROMOTE_*=false`.
+
