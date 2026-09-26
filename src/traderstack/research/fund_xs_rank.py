@@ -46,8 +46,8 @@ EXECUTABLE_NOTE = (
 
 # Dual-era freeze (inclusive UTC days) — pinned before any score.
 ERA_A_START = datetime(2024, 1, 1, tzinfo=UTC)
-ERA_A_END = datetime(2025, 1, 15, tzinfo=UTC)
-ERA_B_START = datetime(2025, 1, 16, tzinfo=UTC)
+ERA_A_END = datetime(2025, 4, 1, tzinfo=UTC)
+ERA_B_START = datetime(2025, 4, 2, tzinfo=UTC)
 ERA_B_END = datetime(2026, 6, 1, tzinfo=UTC)
 
 # 100 coins present across archive sample days (probe 2026-09-26); BTC+ETH included.
@@ -566,8 +566,8 @@ class RankCandidate(BaseModel):
 class FundXsRankReport(BaseModel):
     generated_at: datetime
     print_kind: Literal["single_print", "dual_print", "unavailable"]
-    primary_era: str = "era_a_2024-01-01_2025-01-15"
-    second_era: str = "era_b_2025-01-16_2026-06-01"
+    primary_era: str = "era_a_2024-01-01_2025-04-01"
+    second_era: str = "era_b_2025-04-02_2026-06-01"
     funding_venue: str = "hyperliquid_asilletto"
     fee_bps: float
     slippage_bps: float

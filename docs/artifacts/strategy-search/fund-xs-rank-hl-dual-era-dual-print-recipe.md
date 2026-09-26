@@ -51,8 +51,12 @@ RV and from HL−HTX same-asset funding-div spot #162.
 
 ## Dual-print policy (dual era)
 
-1. Primary era A: 2024-01-01 → 2025-01-15 UTC (inclusive).
-2. Second era B: 2025-01-16 → 2026-06-01 UTC (inclusive).
+1. Primary era A: 2024-01-01 → 2025-04-01 UTC (inclusive).
+2. Second era B: 2025-04-02 → 2026-06-01 UTC (inclusive).
+   Note: original calendar mid (2025-01-15) left era A with only 258 panel days
+   because asiletto has 123 missing calendar files; re-frozen on coverage
+   (334/426 days) **before any candidate PnL score** (first pull was
+   print_kind=unavailable).
 3. Each era needs ≥300 daily panel days with ≥8 eligible coins; else skip.
 4. Passer: fee-aware walk-forward mean total return > 0 **and** holdout excess > 0
    on **both** eras. BTC+ETH must remain in CORE_UNIVERSE (membership gate).
