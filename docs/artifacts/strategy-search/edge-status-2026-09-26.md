@@ -161,5 +161,48 @@ Honesty: not a retune of ens_trend_v2 / daily TSMOM / Donchian / xs-topk / sess-
 
 **Named passers:** none.
 
-**Next recommendation:** keep every promote flag false. Prefer fee-aware paper PnL accounting / soak under `PAPER_PERP_HEDGE` diagnostic for the existing `fund_z_harvest_sign_hold` passer rather than retuning this empty funding-spread catalog. Maker/rebate still blocked until post-only fill-rate evidence. Continue DefiLlama PIT tips.
+**Next recommendation (superseded by this slice):** ~~fee-aware paper PnL soak for fund_z~~ scored fee-negative in #181. This slice: maker fill-rate probe = **INVALID**/UNAVAILABLE; fund_mom dual-print = **0** passers. Keep every promote flag false. Prefer research-only basis-carry flip-cost amortization matching #181 fees, or wait DefiLlama PIT ?720. Do not retune empty catalogs. Maker/rebate remains blocked. Continue DefiLlama PIT tips.
 
+
+## Appendix — maker fill-rate probe + fund_mom dual-print (this slice)
+
+**A) Maker / post-only paper fill-rate probe**
+
+Pre-registered recipe:
+`docs/recipes/ops/paper-maker-post-only-fill-rate-probe-recipe-2026-09-26.md`
+
+Measurement:
+`docs/artifacts/ops/paper-maker-post-only-fill-rate-probe-2026-09-26.md`
+
+- post_only_path_exists: **false** (#73 not implemented; no `post_only` defs in `src/`)
+- PAPER_SIMULATE_FILLS / `PaperFillSimulator`: **20/20** sync fills; max time-to-fill ≈0.4ms; cancels=0
+- **maker_evidence_status: INVALID**; **fill_rate: UNAVAILABLE**
+- Honesty stop: immediate taker-style fills cannot evidence maker/rebate. No ≤2h soak (no resting queue).
+- `PAPER_PROMOTE_*` untouched (false)
+
+**B) Funding-momentum (rate-change) HL×HTX dual-print**
+
+**Choice:** option 1 — same-asset funding momentum / Δfunding (NOT sign_hold retune, NOT spread #180, NOT xs-rank #179).
+
+**Data probe / coverage freeze (before PnL):** HL BTC+ETH 801d; HTX BTC+ETH 801d (live public funding → UTC daily sums). Concurrent venues used. Dual basis not required.
+
+**Blocked / skipped alternatives (this turn):**
+
+| hyp | why blocked / skipped |
+| --- | --- |
+| 2. Basis-carry flip-cost amortization matching #181 fees | Research-only candidate; deferred — option 1 had AVAILABLE HL×HTX funding tape |
+| 3. Edge-status blocked list only | Not needed — A measured INVALID; B scored |
+
+**Recipe (committed before score):** `docs/recipes/strategy-search/fund-mom-delta-hl-htx-dual-print-recipe.md` (recipe commit before score)
+
+**Score:** `docs/artifacts/strategy-search/fund-mom-delta-hl-htx-dual-print.md`
+
+- Catalog: 5 `fund_mom_*` + flat control (NEW ids)
+- Fees: 5+5 bps × 2 legs on each position change
+- Dual-print: concurrent Hyperliquid × HTX
+- Result: **dual_print_passers=0**; all names fee-aware negative on both venues (high flip count); `can_promote=false`; `keep_flag_false=true`
+- `PAPER_PROMOTE_*` untouched (false)
+
+**Named passers:** none.
+
+**Next recommendation:** keep every promote flag false. Maker/rebate remains **blocked** (INVALID paper evidence). Prefer research-only basis-carry flip-cost amortization study matching #181 fee drag, or wait DefiLlama PIT ≥720 — do not retune empty fund_mom / fund_spread / fund_xs_rank / weekly / spot catalogs. Continue DefiLlama PIT tips.
