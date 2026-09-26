@@ -84,6 +84,25 @@ class PaperPerpOutcome:
         return self.status in {PaperPerpStatus.HEDGED, PaperPerpStatus.FUNDING_APPLIED}
 
 
+@dataclass(frozen=True)
+class FeeAwarePaperPnL:
+    """Fee-aware paper PnL components for the perp book (diagnostic only).
+
+    Never invents marks. When an open position lacks a positive mid in
+    ``marks``, that asset is skipped and ``marks_incomplete`` is True.
+    ``fee_aware_paper_pnl_usd`` is None when incomplete — callers must
+    report UNAVAILABLE rather than inventing a total.
+    """
+
+    funding_pnl_usd: float
+    unrealized_mtm_usd: float
+    fees_usd: float
+    fee_aware_paper_pnl_usd: float | None
+    marks_incomplete: bool
+    marked_assets: tuple[str, ...]
+    skipped_assets: tuple[str, ...]
+
+
 def carry_hedged_sign_spot_side(funding_rate: float) -> Side | None:
     """Cash-and-carry spot side for research ``carry_hedged_sign``.
 
@@ -124,6 +143,7 @@ class PaperPerpBook:
     _positions: dict[str, PaperPerpPosition] = field(default_factory=dict)
     _seen_ids: set[str] = field(default_factory=set)
     _funding_prints_applied: int = 0
+    _total_fees_usd: float = 0.0
 
     def __post_init__(self) -> None:
         if self.trading_mode != "paper":
@@ -144,6 +164,10 @@ class PaperPerpBook:
     @property
     def funding_prints_applied(self) -> int:
         return self._funding_prints_applied
+
+    @property
+    def total_fees_usd(self) -> float:
+        return self._total_fees_usd
 
     def total_funding_pnl_usd(self) -> float:
         return sum(position.funding_pnl_usd for position in self._positions.values())
@@ -198,6 +222,7 @@ class PaperPerpBook:
         side = hedge_side(fill.side)
         fill_price = adverse_fill_price_usd(side, perp_mid_usd, self.paper_slippage_bps)
         fee_usd = fill.quantity * fill_price * self.paper_fee_bps / 10_000.0
+        self._total_fees_usd += fee_usd
         if ledger is not None:
             existing = [
                 order
@@ -309,4 +334,45 @@ class PaperPerpBook:
             status=PaperPerpStatus.FUNDING_APPLIED,
             position=updated,
             funding_pnl_usd=pnl,
+        )
+
+    def unrealized_mtm_usd(
+        self, marks: dict[str, float]
+    ) -> tuple[float, tuple[str, ...], tuple[str, ...]]:
+        """Mark open positions to explicit mids. Skip missing/non-positive marks.
+
+        Returns (mtm_usd, marked_assets, skipped_assets). Never invents a mid.
+        """
+
+        mtm = 0.0
+        marked: list[str] = []
+        skipped: list[str] = []
+        for asset, position in self._positions.items():
+            mid = marks.get(asset)
+            if mid is None or mid <= 0:
+                skipped.append(asset)
+                continue
+            if position.side is Side.BUY:
+                mtm += (float(mid) - position.entry_price_usd) * position.quantity
+            else:
+                mtm += (position.entry_price_usd - float(mid)) * position.quantity
+            marked.append(asset)
+        return mtm, tuple(marked), tuple(skipped)
+
+    def harvest_fee_aware_paper_pnl(self, marks: dict[str, float]) -> FeeAwarePaperPnL:
+        """Harvest fee-aware paper PnL. Skip-not-invent on missing marks."""
+
+        funding = self.total_funding_pnl_usd()
+        fees = self.total_fees_usd
+        mtm, marked, skipped = self.unrealized_mtm_usd(marks)
+        incomplete = len(skipped) > 0
+        total: float | None = None if incomplete else funding + mtm - fees
+        return FeeAwarePaperPnL(
+            funding_pnl_usd=funding,
+            unrealized_mtm_usd=mtm,
+            fees_usd=fees,
+            fee_aware_paper_pnl_usd=total,
+            marks_incomplete=incomplete,
+            marked_assets=marked,
+            skipped_assets=skipped,
         )
