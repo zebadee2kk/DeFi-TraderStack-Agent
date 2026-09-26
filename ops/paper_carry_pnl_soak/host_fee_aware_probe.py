@@ -37,9 +37,7 @@ from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.runtime import RuntimeResult
 from traderstack.service import ContinuousPaperService
 
-DEFAULT_OUT_CARRY = Path(
-    "var/ops/_carry_fee_aware_pnl_soak_20260926/host_fee_aware_probe.json"
-)
+DEFAULT_OUT_CARRY = Path("var/ops/_carry_fee_aware_pnl_soak_20260926/host_fee_aware_probe.json")
 DEFAULT_OUT_FUND_Z = Path(
     "var/ops/_fund_z_fee_aware_multi_hour_soak_20260926/host_fee_aware_probe.json"
 )
@@ -58,9 +56,7 @@ def _flag_defaults(settings: Settings) -> dict[str, bool]:
         "trading_mode_paper": settings.trading_mode == "paper",
         "paper_perp_hedge": settings.paper_perp_hedge,
         "paper_carry_hedge_diagnostic": settings.paper_carry_hedge_diagnostic,
-        "paper_promote_fund_z_harvest_sign_hold": (
-            settings.paper_promote_fund_z_harvest_sign_hold
-        ),
+        "paper_promote_fund_z_harvest_sign_hold": (settings.paper_promote_fund_z_harvest_sign_hold),
         "paper_promote_ema_9_21": settings.paper_promote_ema_9_21,
         "paper_promote_ema_9_21_adx15": settings.paper_promote_ema_9_21_adx15,
         "paper_promote_searched_strategies": settings.paper_promote_searched_strategies,
@@ -170,9 +166,7 @@ async def run_soak(
                 await service._maybe_apply_paper_perp_funding(sym)
             except Exception as exc:  # noqa: BLE001
                 errors.append({"op": "funding", "symbol": sym, "error": repr(exc)})
-        marks = await _collect_marks(
-            feed, ("BTC/USD", "ETH/USD"), dict(service._paper_perp_venue)
-        )
+        marks = await _collect_marks(feed, ("BTC/USD", "ETH/USD"), dict(service._paper_perp_venue))
         snap = book.harvest_fee_aware_paper_pnl(marks)
         samples.append(
             {
@@ -206,9 +200,7 @@ async def run_soak(
         fee_aware_status = final_snap.fee_aware_paper_pnl_usd
 
     # Position signal attribution (promote pin path logs fund_z signal in service)
-    position_signals = {
-        k: getattr(v, "signal", None) for k, v in book.positions.items()
-    }
+    position_signals = {k: getattr(v, "signal", None) for k, v in book.positions.items()}
 
     out = {
         "started_utc": started.isoformat(),
@@ -266,8 +258,7 @@ async def run_soak(
         "errors": errors,
         "honesty": "PAPER_PROBE_ONLY_NOT_LIVE_PNL_NOT_PROMOTE",
         "docker_note": (
-            "compose app may be restarting (postgres DNS); "
-            "host probe is the soak surface"
+            "compose app may be restarting (postgres DNS); host probe is the soak surface"
         ),
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 PROBE = Path("ops/paper_carry_pnl_soak/host_fee_aware_probe.py")
 
 
@@ -27,9 +26,7 @@ def test_probe_supports_fund_z_mode_and_signal() -> None:
 
 
 def test_recipe_preregistered_for_fund_z_multi_hour() -> None:
-    recipe = Path(
-        "docs/recipes/ops/paper-fund-z-fee-aware-multi-hour-soak-recipe-2026-09-26.md"
-    )
+    recipe = Path("docs/recipes/ops/paper-fund-z-fee-aware-multi-hour-soak-recipe-2026-09-26.md")
     text = recipe.read_text(encoding="utf-8")
     assert "PRE-REGISTRATION" in text
     assert "PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD" in text
