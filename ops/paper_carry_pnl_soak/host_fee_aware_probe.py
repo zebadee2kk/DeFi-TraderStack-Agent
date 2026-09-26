@@ -134,9 +134,7 @@ async def run_soak(
                 await service._maybe_apply_paper_perp_funding(sym)
             except Exception as exc:  # noqa: BLE001
                 errors.append({"op": "funding", "symbol": sym, "error": repr(exc)})
-        marks = await _collect_marks(
-            feed, ("BTC/USD", "ETH/USD"), dict(service._paper_perp_venue)
-        )
+        marks = await _collect_marks(feed, ("BTC/USD", "ETH/USD"), dict(service._paper_perp_venue))
         snap = book.harvest_fee_aware_paper_pnl(marks)
         samples.append(
             {
@@ -184,8 +182,7 @@ async def run_soak(
         "paper_fee_tier": defaults.paper_fee_tier,
         "fee_assumptions": {
             "spot_if_booked": (
-                "kraken_pro_spot_t1 taker 80 bps + 5 slip "
-                "(NOT charged; diagnostic spot not booked)"
+                "kraken_pro_spot_t1 taker 80 bps + 5 slip (NOT charged; diagnostic spot not booked)"
             ),
             "perp_open": (
                 f"PAPER_FEE_BPS={defaults.paper_fee_bps} + "

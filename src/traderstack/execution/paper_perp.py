@@ -80,7 +80,6 @@ class PaperPerpOutcome:
         return self.status in {PaperPerpStatus.HEDGED, PaperPerpStatus.FUNDING_APPLIED}
 
 
-
 @dataclass(frozen=True)
 class FeeAwarePaperPnL:
     """Fee-aware paper PnL components for the perp book (diagnostic only).
@@ -98,7 +97,6 @@ class FeeAwarePaperPnL:
     marks_incomplete: bool
     marked_assets: tuple[str, ...]
     skipped_assets: tuple[str, ...]
-
 
 
 def carry_hedged_sign_spot_side(funding_rate: float) -> Side | None:
@@ -374,4 +372,3 @@ class PaperPerpBook:
             marked_assets=marked,
             skipped_assets=skipped,
         )
-
