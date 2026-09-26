@@ -1,0 +1,281 @@
+{
+  "study": "fund_z_harvest_sign_hold fee amortization",
+  "date_local": "2026-09-26 Europe/London",
+  "funding_tape": {
+    "path": "/home/rham-admin/src/DeFi-TraderStack-Agent/var/ops/basis_cache/asilletto81/asset_ctxs",
+    "method": "For each day lz4: take last funding print per UTC hour for BTC and ETH; daily_sum = sum(hourly rates); daily_sum_abs = sum(|hourly rates|) which is sign-hold collectable funding under always-harvest |rate|.",
+    "skip_not_invent": true,
+    "files_used": 760,
+    "htx": "SKIP \u2014 no HTX hourly funding tape on disk (only dual-print result JSONs). HL asset_ctxs used."
+  },
+  "tape_stats": {
+    "BTC": {
+      "daily_sum_signed": {
+        "n": 760,
+        "day_start": "20240101",
+        "day_end": "20260601",
+        "mean": 0.00031320765605263157,
+        "median": 0.00028728475,
+        "p10": 5.2400000000004466e-08,
+        "p90": 0.0006447434
+      },
+      "daily_sum_abs": {
+        "n": 760,
+        "day_start": "20240101",
+        "day_end": "20260601",
+        "mean": 0.00037210706289473683,
+        "median": 0.00029836035,
+        "p10": 0.0001770927,
+        "p90": 0.0006447434
+      },
+      "hours_per_day_mean": 23.58157894736842,
+      "hours_per_day_median": 24.0,
+      "daily_funding_last_signed": {
+        "n": 760,
+        "mean": 1.2973945394736843e-05,
+        "median": 1.25e-05
+      },
+      "daily_funding_last_abs": {
+        "n": 760,
+        "mean": 1.661921539473684e-05,
+        "median": 1.25e-05
+      }
+    },
+    "ETH": {
+      "daily_sum_signed": {
+        "n": 760,
+        "day_start": "20240101",
+        "day_end": "20260601",
+        "mean": 0.00028249605263157897,
+        "median": 0.00025833145000000004,
+        "p10": -6.35496e-05,
+        "p90": 0.0006648422
+      },
+      "daily_sum_abs": {
+        "n": 760,
+        "day_start": "20240101",
+        "day_end": "20260601",
+        "mean": 0.0003657647236842105,
+        "median": 0.00029007215,
+        "p10": 0.0001664677,
+        "p90": 0.00066994
+      },
+      "hours_per_day_mean": 23.58157894736842,
+      "hours_per_day_median": 24.0,
+      "daily_funding_last_signed": {
+        "n": 760,
+        "mean": 1.2028207631578948e-05,
+        "median": 1.25e-05
+      },
+      "daily_funding_last_abs": {
+        "n": 760,
+        "mean": 1.6718746842105264e-05,
+        "median": 1.25e-05
+      }
+    }
+  },
+  "notional_per_asset_usd": 100.0,
+  "n_assets": 2,
+  "fee_assumptions_matching_176_181": {
+    "perp_open_freeze": "PAPER_FEE_BPS=10 + PAPER_SLIPPAGE_BPS=5",
+    "fees_usd_charges": "paper_fee_bps only (10); slippage in adverse fill price",
+    "observed_181_fees_usd": 0.1999,
+    "observed_181_funding_6h": 0.013189,
+    "observed_181_fee_aware_pnl": -0.064699,
+    "research_dual_print_fees": "5+5 bps x 2 legs (different from paper soak 10+5)"
+  },
+  "breakeven_rows": [
+    {
+      "ladder": "paper_176_181_fees_usd_only_10bps_x2",
+      "agg": "mean_abs",
+      "open_cost_usd": 0.2,
+      "daily_income_usd": 0.07378717865789473,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00037210706289473683,
+          "income_usd": 0.037210706289473684
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.0003657647236842105,
+          "income_usd": 0.03657647236842105
+        }
+      },
+      "days_to_breakeven": 2.710497997589468,
+      "note": "fees_usd line only (matches #181 observed ~0.20)"
+    },
+    {
+      "ladder": "paper_176_181_fees_usd_only_10bps_x2",
+      "agg": "median_abs",
+      "open_cost_usd": 0.2,
+      "daily_income_usd": 0.05884325,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00029836035,
+          "income_usd": 0.029836035000000004
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.00029007215,
+          "income_usd": 0.029007215
+        }
+      },
+      "days_to_breakeven": 3.398860532006645,
+      "note": "fees_usd line only (matches #181 observed ~0.20)"
+    },
+    {
+      "ladder": "paper_176_181_fee_plus_slip_15bps_x2",
+      "agg": "mean_abs",
+      "open_cost_usd": 0.3,
+      "daily_income_usd": 0.07378717865789473,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00037210706289473683,
+          "income_usd": 0.037210706289473684
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.0003657647236842105,
+          "income_usd": 0.03657647236842105
+        }
+      },
+      "days_to_breakeven": 4.065746996384202,
+      "note": "10+5 as frozen open assumption text"
+    },
+    {
+      "ladder": "paper_176_181_fee_plus_slip_15bps_x2",
+      "agg": "median_abs",
+      "open_cost_usd": 0.3,
+      "daily_income_usd": 0.05884325,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00029836035,
+          "income_usd": 0.029836035000000004
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.00029007215,
+          "income_usd": 0.029007215
+        }
+      },
+      "days_to_breakeven": 5.098290798009967,
+      "note": "10+5 as frozen open assumption text"
+    },
+    {
+      "ladder": "research_dual_print_5plus5_x2",
+      "agg": "mean_abs",
+      "open_cost_usd": 0.2,
+      "daily_income_usd": 0.07378717865789473,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00037210706289473683,
+          "income_usd": 0.037210706289473684
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.0003657647236842105,
+          "income_usd": 0.03657647236842105
+        }
+      },
+      "days_to_breakeven": 2.710497997589468,
+      "note": "matches fund_z dual-print DEFAULT 5+5"
+    },
+    {
+      "ladder": "research_dual_print_5plus5_x2",
+      "agg": "median_abs",
+      "open_cost_usd": 0.2,
+      "daily_income_usd": 0.05884325,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00029836035,
+          "income_usd": 0.029836035000000004
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.00029007215,
+          "income_usd": 0.029007215
+        }
+      },
+      "days_to_breakeven": 3.398860532006645,
+      "note": "matches fund_z dual-print DEFAULT 5+5"
+    },
+    {
+      "ladder": "sensitivity_2plus2_x2",
+      "agg": "mean_abs",
+      "open_cost_usd": 0.08,
+      "daily_income_usd": 0.07378717865789473,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00037210706289473683,
+          "income_usd": 0.037210706289473684
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.0003657647236842105,
+          "income_usd": 0.03657647236842105
+        }
+      },
+      "days_to_breakeven": 1.084199199035787,
+      "note": "sensitivity"
+    },
+    {
+      "ladder": "sensitivity_2plus2_x2",
+      "agg": "median_abs",
+      "open_cost_usd": 0.08,
+      "daily_income_usd": 0.05884325,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00029836035,
+          "income_usd": 0.029836035000000004
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.00029007215,
+          "income_usd": 0.029007215
+        }
+      },
+      "days_to_breakeven": 1.359544212802658,
+      "note": "sensitivity"
+    },
+    {
+      "ladder": "sensitivity_maker_0plus5_x2",
+      "agg": "mean_abs",
+      "open_cost_usd": 0.1,
+      "daily_income_usd": 0.07378717865789473,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00037210706289473683,
+          "income_usd": 0.037210706289473684
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.0003657647236842105,
+          "income_usd": 0.03657647236842105
+        }
+      },
+      "days_to_breakeven": 1.355248998794734,
+      "note": "maker 0+5 if modeled; #176/#181 maker NOT assumed"
+    },
+    {
+      "ladder": "sensitivity_maker_0plus5_x2",
+      "agg": "median_abs",
+      "open_cost_usd": 0.1,
+      "daily_income_usd": 0.05884325,
+      "per_asset": {
+        "BTC": {
+          "daily_sum_abs_rate": 0.00029836035,
+          "income_usd": 0.029836035000000004
+        },
+        "ETH": {
+          "daily_sum_abs_rate": 0.00029007215,
+          "income_usd": 0.029007215
+        }
+      },
+      "days_to_breakeven": 1.6994302660033225,
+      "note": "maker 0+5 if modeled; #176/#181 maker NOT assumed"
+    }
+  ],
+  "dual_print_consistency": {
+    "primary_wf_total": 0.0168,
+    "primary_holdout_excess": 0.0342,
+    "second_wf_total": 0.0147,
+    "second_holdout_excess": 0.0312,
+    "approx_daily_bars": 801,
+    "implied_avg_daily_net_return_frac": 2.097378277153558e-05,
+    "research_5plus5_open_cost_usd_on_100x2": 0.2,
+    "tape_mean_daily_sign_hold_income_usd": 0.07378717865789473,
+    "days_to_amortize_research_open_at_tape_mean": 2.710497997589468,
+    "honesty": "Dual-print WF edge is a multi-hundred-day net-of-5+5 result. It is consistent with needing many days to amortize open fees, and does NOT imply 3\u20136h paper profit under PAPER_FEE_BPS=10. Research passer \u2260 short-horizon paper profit under current open fees."
+  }
+}
