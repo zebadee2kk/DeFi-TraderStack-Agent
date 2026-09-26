@@ -39,9 +39,7 @@ def _post_only_symbols_in_src() -> list[str]:
             except SyntaxError:
                 continue
             for node in ast.walk(tree):
-                if isinstance(
-                    node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-                ) and (
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and (
                     "post_only" in node.name.lower() or "postonly" in node.name.lower()
                 ):
                     hits.append(str(path.relative_to(REPO_ROOT)))
@@ -90,11 +88,7 @@ def run_probe(*, n_orders: int = 20, mid_usd: float = 20_000.0) -> dict:
     # Immediate = every FILLED outcome completed inside synchronous apply().
     # A real maker queue would leave orders open across cycles / wall time.
     always_immediate = (
-        fills > 0
-        and fills == n_orders
-        and cancels == 0
-        and max_ttf is not None
-        and max_ttf < 50.0
+        fills > 0 and fills == n_orders and cancels == 0 and max_ttf is not None and max_ttf < 50.0
     )
     post_only_exists = bool(post_only_hits)
     has_cancel_api = hasattr(PaperFillSimulator, "cancel") or hasattr(
@@ -117,9 +111,7 @@ def run_probe(*, n_orders: int = 20, mid_usd: float = 20_000.0) -> dict:
     else:
         status = "UNAVAILABLE"
         fill_rate = "UNAVAILABLE"
-        honesty = (
-            "Cannot produce honest maker fill-rate evidence from this paper path."
-        )
+        honesty = "Cannot produce honest maker fill-rate evidence from this paper path."
 
     return {
         "generated_at": datetime.now(tz=UTC).isoformat(),
