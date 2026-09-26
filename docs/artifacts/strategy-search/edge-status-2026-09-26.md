@@ -111,7 +111,7 @@ Honesty: not a retune of ens_trend_v2 / daily TSMOM / Donchian / xs-topk / sess-
    - Fee-aware **paper** PnL accounting on open carry / harvest hedges under `PAPER_PERP_HEDGE` diagnostic (still default false)
    - ~~Weekly / low-turnover trend (hyp C)~~ scored empty (#178)
    - ~~HL cross-sectional funding rank~~ scored this slice: dual_print_passers=0
-   - BTC–ETH relative funding / funding-spread on HL×HTX (option 2)
+   - ~~BTC–ETH relative funding / funding-spread on HL×HTX (option 2)~~ scored this slice: dual_print_passers=0
    - Weekly / low-turnover trend (hyp C) — **scored 2026-09-26; 0 dual-print passers; do not retune**
    - Maker/rebate path — blocked until post-only fill-rate evidence
 
@@ -139,5 +139,27 @@ Honesty: not a retune of ens_trend_v2 / daily TSMOM / Donchian / xs-topk / sess-
 - Result: **dual_print_passers=0**; all L/S and single-sleeve names fee-aware negative on both eras; `can_promote=false`; `keep_flag_false=true`
 - `PAPER_PROMOTE_*` untouched (false)
 
-**Next recommendation:** ship BTC–ETH relative funding / funding-spread dual-print on HL×HTX (option 2; distinct from price RV and fund_div #162), still paper-perp 5+5×2 or spot FeatureZ if Spot path preferred. Keep every promote flag false.
+**Next recommendation (superseded by this slice):** ~~ship BTC–ETH relative funding / funding-spread~~ scored below.
+
+## Appendix — fund_spread_btc_eth dual-print (this slice)
+
+**Choice:** option 2 — BTC–ETH relative funding / funding-spread on concurrent HL×HTX (paper-perp 5+5×2).
+
+**Data probe / coverage freeze (before PnL):** HL BTC+ETH daily funding 801d; HTX BTC+ETH daily funding 801d; pair-aligned intersection 801d each (2024-07-18 → 2026-09-26 UTC). Concurrent venues preferred and used.
+
+**Blocked / skipped alternatives (this turn):** none required — concurrent HL×HTX tape sufficient (≥720).
+
+**Recipe:** `docs/artifacts/strategy-search/fund-spread-btc-eth-hl-htx-dual-print-recipe.md` (committed before score).
+
+**Score:** `docs/artifacts/strategy-search/fund-spread-btc-eth-hl-htx-dual-print.md`
+
+- Catalog: 5 `fund_spread_btc_eth_*` + flat control (≤6; NEW ids)
+- Fees: 5+5 bps × 2 legs on each position change
+- Dual-print: concurrent Hyperliquid × HTX
+- Result: **dual_print_passers=0**; all names fee-aware negative or flat on both venues; `can_promote=false`; `keep_flag_false=true`
+- `PAPER_PROMOTE_*` untouched (false)
+
+**Named passers:** none.
+
+**Next recommendation:** keep every promote flag false. Prefer fee-aware paper PnL accounting / soak under `PAPER_PERP_HEDGE` diagnostic for the existing `fund_z_harvest_sign_hold` passer rather than retuning this empty funding-spread catalog. Maker/rebate still blocked until post-only fill-rate evidence. Continue DefiLlama PIT tips.
 
