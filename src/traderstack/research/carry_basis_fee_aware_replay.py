@@ -58,7 +58,6 @@ class CarryWindowAgg(BaseModel):
     fee_survival_pass: bool = False
 
 
-
 def _day_key(ts: datetime) -> str:
     d = _utc_day(ts)
     return f"{d.year:04d}{d.month:02d}{d.day:02d}"
@@ -265,9 +264,7 @@ def score_venue(
                     bases.append(basis_usd)
                     pnls.append(funding_usd + basis_usd - fees)
                 st = _stats(pnls)
-                frac = (
-                    sum(1 for x in pnls if x > 0) / len(pnls) if pnls else None
-                )
+                frac = sum(1 for x in pnls if x > 0) / len(pnls) if pnls else None
                 aggs.append(
                     CarryWindowAgg(
                         mode=mode,  # type: ignore[arg-type]
@@ -275,20 +272,14 @@ def score_venue(
                         ladder_id=ladder.ladder_id,
                         fees_usd=fees,
                         n_windows=len(pnls),
-                        mean_funding_usd=(
-                            statistics.fmean(fundings) if fundings else None
-                        ),
-                        mean_basis_usd=(
-                            statistics.fmean(bases) if bases else None
-                        ),
+                        mean_funding_usd=(statistics.fmean(fundings) if fundings else None),
+                        mean_basis_usd=(statistics.fmean(bases) if bases else None),
                         mean_fee_aware_paper_pnl_usd=st["mean"],  # type: ignore[arg-type]
                         median_fee_aware_paper_pnl_usd=st["median"],  # type: ignore[arg-type]
                         p10_fee_aware_paper_pnl_usd=st["p10"],  # type: ignore[arg-type]
                         p90_fee_aware_paper_pnl_usd=st["p90"],  # type: ignore[arg-type]
                         fraction_fee_positive=frac,
-                        fee_survival_pass=bool(
-                            frac is not None and frac >= FEE_SURVIVAL_FRACTION
-                        ),
+                        fee_survival_pass=bool(frac is not None and frac >= FEE_SURVIVAL_FRACTION),
                     )
                 )
     return VenueReport(
@@ -363,16 +354,8 @@ def run_carry_basis_replay(
     passers: list[str] = []
     if print_kind == "dual_basis":
         primary_ladder = next(l.ladder_id for l in FEE_LADDERS if l.primary)
-        a_map = {
-            (a.n_days, a.ladder_id): a
-            for a in usable[0].aggs
-            if a.mode == "tumbling"
-        }
-        b_map = {
-            (a.n_days, a.ladder_id): a
-            for a in usable[1].aggs
-            if a.mode == "tumbling"
-        }
+        a_map = {(a.n_days, a.ladder_id): a for a in usable[0].aggs if a.mode == "tumbling"}
+        b_map = {(a.n_days, a.ladder_id): a for a in usable[1].aggs if a.mode == "tumbling"}
         for n in WINDOWS_N:
             key = (n, primary_ladder)
             aa = a_map.get(key)
@@ -428,8 +411,7 @@ def render_carry_basis_replay_markdown(report: CarryBasisReplayReport) -> str:
     ]
     for note in report.history_notes:
         lines.append(
-            f"- `{note.get('name', '')}` **{note.get('status', '')}**: "
-            f"{note.get('reason', '')}"
+            f"- `{note.get('name', '')}` **{note.get('status', '')}**: {note.get('reason', '')}"
         )
     for venue in report.venues:
         lines.extend(

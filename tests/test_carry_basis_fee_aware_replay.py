@@ -48,9 +48,7 @@ def test_score_venue_includes_basis() -> None:
     agg = next(
         a
         for a in venue.aggs
-        if a.mode == "tumbling"
-        and a.n_days == 3
-        and a.ladder_id == "paper_fees_usd_10bps_x2"
+        if a.mode == "tumbling" and a.n_days == 3 and a.ladder_id == "paper_fees_usd_10bps_x2"
     )
     assert agg.n_windows == 10
     assert agg.mean_funding_usd == pytest.approx(0.24)

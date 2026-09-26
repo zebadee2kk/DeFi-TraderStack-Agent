@@ -57,16 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--output-md",
         type=Path,
-        default=Path(
-            "docs/artifacts/strategy-search/carry-basis-fee-aware-multiday-replay.md"
-        ),
+        default=Path("docs/artifacts/strategy-search/carry-basis-fee-aware-multiday-replay.md"),
     )
     p.add_argument(
         "--output-json",
         type=Path,
-        default=Path(
-            "docs/artifacts/strategy-search/carry-basis-fee-aware-multiday-replay.json"
-        ),
+        default=Path("docs/artifacts/strategy-search/carry-basis-fee-aware-multiday-replay.json"),
     )
     p.add_argument("--stdout-md", action="store_true")
     return p
