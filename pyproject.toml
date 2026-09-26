@@ -93,6 +93,9 @@ traderstack-funding-div = "traderstack.research.funding_div_cli:main"
 traderstack-oi-mom = "traderstack.research.oi_mom_cli:main"
 traderstack-basis-residual = "traderstack.research.basis_residual_cli:main"
 traderstack-fund-z-harvest = "traderstack.research.fund_z_harvest_cli:main"
+# HL asilletto multi-asset cross-sectional funding-rank dual-era dual-print.
+# Paper-perp 5+5 x 2. Never flips PAPER_PROMOTE_*. Empty dual-print is success.
+traderstack-fund-xs-rank = "traderstack.research.fund_xs_rank_cli:main"
 traderstack-sess-gap = "traderstack.research.session_gap_cli:main"
 traderstack-vol-target = "traderstack.research.vol_target_cli:main"
 # DefiLlama stablecoin net-issuance SPOT overlay. Live history is NOT
