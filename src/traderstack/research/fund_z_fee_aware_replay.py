@@ -163,13 +163,13 @@ def load_asilletto_daily_sum_abs(
                 day = datetime.strptime(day_s, "%Y%m%d").replace(tzinfo=UTC)
                 if day < _utc_day(start) or day > _utc_day(end):
                     continue
-                row = {
+                panel_row = {
                     coin: float(vals[coin])
                     for coin in coins
                     if coin in vals and isinstance(vals[coin], (int, float))
                 }
-                if len(row) == len(coins):
-                    panel[day] = row
+                if len(panel_row) == len(coins):
+                    panel[day] = panel_row
             if panel:
                 notes.append(
                     {
@@ -228,13 +228,13 @@ def load_asilletto_daily_sum_abs(
             continue
         # last funding print per (coin, utc_hour)
         last_hour: dict[tuple[str, int], float] = {}
-        for row in reader:
-            if len(row) <= max(time_i, coin_i, fund_i):
+        for csv_row in reader:
+            if len(csv_row) <= max(time_i, coin_i, fund_i):
                 continue
-            coin = row[coin_i].strip()
+            coin = csv_row[coin_i].strip()
             if coin not in want:
                 continue
-            raw = row[fund_i]
+            raw = csv_row[fund_i]
             if raw == "":
                 continue
             try:
@@ -243,14 +243,12 @@ def load_asilletto_daily_sum_abs(
                 continue
             if math.isnan(value):
                 continue
-            ts_raw = row[time_i].strip()
+            ts_raw = csv_row[time_i].strip()
             try:
                 if ts_raw.endswith("Z"):
                     ts = datetime.fromisoformat(ts_raw.rstrip("Z")).replace(tzinfo=UTC)
                 else:
                     ts = datetime.fromisoformat(ts_raw)
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=UTC)
                     if ts.tzinfo is None:
                         ts = ts.replace(tzinfo=UTC)
             except ValueError:
