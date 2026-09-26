@@ -295,3 +295,18 @@ tip_days=2; no tip backfill.
 - Promote-gap memo: `docs/artifacts/strategy-search/fund-z-promote-honesty-gap-2026-09-26.md`
   (why can_promote / PAPER_PROMOTE_FUND_Z still blocked despite #175 passer + #185/#186 N>=5 survival).
 - Every `PAPER_PROMOTE_*=false`. Field defaults unchanged.
+
+## fund_z high-|funding| selective ≤2d fee-survival REPLAY (2026-09-26)
+
+**HONESTY: PAPER/RESEARCH ONLY. NOT A PROMOTE. NOT LIVE PnL. MTM omitted.**
+
+The frozen completed-day high-|funding| gate produced a dual-era primary-ladder
+event-mode N=2 fee-survival passer (era A 73.5%; era B 63.3%) on 760 HL
+asilletto daily observations. N=1 failed both eras. The always-on tumbling
+reference is contrast only and cannot enter the passers list.
+
+See `docs/artifacts/strategy-search/fund-z-hiabs-2d-fee-survival.md`.
+Recipe frozen at `7bb12d4` before score.
+
+`le2d_path_exists=true`, but `can_promote=false` / `keep_flag_false=true`.
+Every `PAPER_PROMOTE_*=false`; soak PIDs untouched.
