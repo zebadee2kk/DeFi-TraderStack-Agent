@@ -284,3 +284,14 @@ can_promote=false / keep_flag_false=true. Every PAPER_PROMOTE_*=false.
 DefiLlama weekday cron installed (see
 docs/artifacts/ops/defillama-stable-pit-weekday-cron-installed-2026-09-26.md);
 tip_days=2; no tip backfill.
+
+## Parallel 7d fund_z fee-aware paper soak + promote-gap memo (2026-09-26)
+
+**HONESTY: PAPER ONLY. NOT A PROMOTE. model_copy only.**
+
+- Started parallel 7d host soak PID **2638509** (604800s) out
+  `var/ops/_fund_z_fee_aware_7d_soak_20260926/` — does not collide with 48h PID **45859**.
+- Harvest note: `docs/artifacts/ops/paper-fund-z-fee-aware-7d-soak-harvest-note-2026-09-26.md` (expected ~2026-10-03).
+- Promote-gap memo: `docs/artifacts/strategy-search/fund-z-promote-honesty-gap-2026-09-26.md`
+  (why can_promote / PAPER_PROMOTE_FUND_Z still blocked despite #175 passer + #185/#186 N>=5 survival).
+- Every `PAPER_PROMOTE_*=false`. Field defaults unchanged.
