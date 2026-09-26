@@ -1,0 +1,83 @@
+{
+  "started_utc": "2026-09-26T02:13:59.868449+00:00",
+  "ended_utc": "2026-09-26T08:14:10.611131+00:00",
+  "duration_seconds_requested": 21600,
+  "duration_seconds_observed": 21610,
+  "sample_every_seconds": 60,
+  "sample_count": 349,
+  "mode": "fund_z",
+  "signal": "fund_z_harvest_sign_hold",
+  "funding_interval_expectation": "HL funding often ~1h; multi-hour soak preferred so funding can offset one-time open fees. Never invent prints.",
+  "defaults_before": {
+    "trading_mode_paper": true,
+    "paper_perp_hedge": false,
+    "paper_carry_hedge_diagnostic": false,
+    "paper_promote_fund_z_harvest_sign_hold": false,
+    "paper_promote_ema_9_21": false,
+    "paper_promote_ema_9_21_adx15": false,
+    "paper_promote_searched_strategies": false,
+    "paper_garch_size": false
+  },
+  "defaults_after": {
+    "trading_mode_paper": true,
+    "paper_perp_hedge": false,
+    "paper_carry_hedge_diagnostic": false,
+    "paper_promote_fund_z_harvest_sign_hold": false,
+    "paper_promote_ema_9_21": false,
+    "paper_promote_ema_9_21_adx15": false,
+    "paper_promote_searched_strategies": false,
+    "paper_garch_size": false
+  },
+  "enabled_via": "Settings.model_copy only; Field defaults and .env unchanged",
+  "soak_flags_enabled": {
+    "paper_perp_hedge": true,
+    "paper_promote_fund_z_harvest_sign_hold": true,
+    "paper_carry_hedge_diagnostic": false
+  },
+  "paper_fee_bps": 10.0,
+  "paper_slippage_bps": 5.0,
+  "paper_fee_tier": "kraken_pro_spot_t1",
+  "fee_assumptions": {
+    "spot_if_booked": "kraken_pro_spot_t1 taker 80 bps + 5 slip (NOT charged; diagnostic/promote synthetic spot not booked)",
+    "perp_open": "PAPER_FEE_BPS=10.0 + PAPER_SLIPPAGE_BPS=5.0",
+    "maker_rebate": "not assumed"
+  },
+  "positions": {
+    "BTC": {
+      "side": "sell",
+      "qty": 0.001190015767708922,
+      "entry": 83990.48375,
+      "funding_pnl_usd": 0.005705350985273554,
+      "signal": null
+    },
+    "ETH": {
+      "side": "sell",
+      "qty": 0.03712021381243156,
+      "entry": 2692.603025,
+      "funding_pnl_usd": 0.007484038308060654,
+      "signal": null
+    }
+  },
+  "venues": {
+    "BTC": "hyperliquid",
+    "ETH": "hyperliquid"
+  },
+  "hedge_count": 2,
+  "funding_prints_applied": 12,
+  "total_fees_usd": 0.19989999999999997,
+  "final_marks": {
+    "BTC": 84017.5,
+    "ETH": 2688.45
+  },
+  "final_funding_pnl_usd": 0.013189389293334209,
+  "final_unrealized_mtm_usd": 0.12201141248400935,
+  "final_fee_aware_paper_pnl_usd": -0.0646991982226564,
+  "final_marks_incomplete": false,
+  "nav_before": 10000.0,
+  "nav_after": 10000.0,
+  "errors": [],
+  "honesty": "PAPER_PROBE_ONLY_NOT_LIVE_PNL_NOT_PROMOTE",
+  "docker_note": "compose app may be restarting (postgres DNS); host probe is the soak surface",
+  "first_sample_utc": "2026-09-26T02:14:04.133986+00:00",
+  "last_sample_utc": "2026-09-26T08:14:10.611020+00:00"
+}
