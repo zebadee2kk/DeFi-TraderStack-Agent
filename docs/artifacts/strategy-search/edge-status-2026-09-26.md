@@ -109,5 +109,35 @@ Honesty: not a retune of ens_trend_v2 / daily TSMOM / Donchian / xs-topk / sess-
 3. Continue daily DefiLlama tips until ≥720.
 4. Next pivot candidates (do not retune failed spot catalogs):
    - Fee-aware **paper** PnL accounting on open carry / harvest hedges under `PAPER_PERP_HEDGE` diagnostic (still default false)
+   - ~~Weekly / low-turnover trend (hyp C)~~ scored empty (#178)
+   - ~~HL cross-sectional funding rank~~ scored this slice: dual_print_passers=0
+   - BTC–ETH relative funding / funding-spread on HL×HTX (option 2)
    - Weekly / low-turnover trend (hyp C) — **scored 2026-09-26; 0 dual-print passers; do not retune**
    - Maker/rebate path — blocked until post-only fill-rate evidence
+
+## Appendix — fund_xs_rank dual-era (this slice)
+
+**Choice:** option 1 — HL asilletto cross-sectional funding rank (dual era; paper-perp 5+5×2).
+
+**Data probe:** asiletto81 `asset_ctxs` has 760 daily lz4 files with a `funding` column; 100 CORE_UNIVERSE coins (incl BTC+ETH) have long tapes. Compact cache written to `var/ops/basis_cache/asilletto81/daily_funding_last_core100.json` (gitignored).
+
+**Blocked / skipped alternatives (this turn):**
+
+| hyp | why blocked / skipped |
+| --- | --- |
+| 2. BTC–ETH funding spread / relative funding | **AVAILABLE** next (HL×HTX BTC+ETH funding already proven by #175); not scored this turn — option 1 preferred when multi-asset tape present |
+| 3. Intraday 4h MR / overnight inventory | **BLOCKED** — no `*4h*` candles on disk under `var/research/candles/{kraken,coinbase}/`; #108 intraday already empty |
+| 4. Maker/rebate paper fill probe | Not needed — option 1 had data |
+
+**Recipe:** `docs/artifacts/strategy-search/fund-xs-rank-hl-dual-era-dual-print-recipe.md` (re-frozen era split 2025-04-01 after coverage-only miss: original mid left era A at 258&lt;300 due to 123 missing archive days; amendment before any candidate PnL).
+
+**Score:** `docs/artifacts/strategy-search/fund-xs-rank-hl-dual-era-dual-print.md`
+
+- Catalog: 5 `fund_xs_rank_*` + flat control
+- Fees: 5+5 bps × 2 on gross turnover
+- Dual-print: era A 2024-01-01→2025-04-01 (334d) × era B 2025-04-02→2026-06-01 (426d)
+- Result: **dual_print_passers=0**; all L/S and single-sleeve names fee-aware negative on both eras; `can_promote=false`; `keep_flag_false=true`
+- `PAPER_PROMOTE_*` untouched (false)
+
+**Next recommendation:** ship BTC–ETH relative funding / funding-spread dual-print on HL×HTX (option 2; distinct from price RV and fund_div #162), still paper-perp 5+5×2 or spot FeatureZ if Spot path preferred. Keep every promote flag false.
+
