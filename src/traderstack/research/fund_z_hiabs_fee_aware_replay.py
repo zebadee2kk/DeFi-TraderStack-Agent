@@ -215,14 +215,15 @@ def run_hiabs_fee_aware_replay(
     now: datetime | None = None,
 ) -> HiAbsFeeAwareReplayReport:
     generated = now or datetime.now(UTC)
-    common = {
-        "generated_at": generated,
-        "notional_per_asset_usd": notional_per_asset_usd,
-        "history_notes": list(history_notes or []),
-        "recipe_commit": recipe_commit,
-    }
+    notes = list(history_notes or [])
     if not panel:
-        return HiAbsFeeAwareReplayReport(print_kind="unavailable", **common)
+        return HiAbsFeeAwareReplayReport(
+            generated_at=generated,
+            print_kind="unavailable",
+            notional_per_asset_usd=notional_per_asset_usd,
+            history_notes=notes,
+            recipe_commit=recipe_commit,
+        )
     era_a = score_era(
         panel,
         era_id="era_a",
@@ -255,14 +256,17 @@ def run_hiabs_fee_aware_replay(
             ):
                 passers.append(f"N={n}/{primary}")
     return HiAbsFeeAwareReplayReport(
+        generated_at=generated,
         print_kind=print_kind,
+        notional_per_asset_usd=notional_per_asset_usd,
+        history_notes=notes,
         eras=[era_a, era_b],
         dual_era_fee_survival_passers=passers,
         dual_era_fee_survival_passers_count=len(passers),
         le2d_path_exists=any(p.startswith(("N=1/", "N=2/")) for p in passers),
         can_promote=False,
         keep_flag_false=True,
-        **common,
+        recipe_commit=recipe_commit,
     )
 
 
