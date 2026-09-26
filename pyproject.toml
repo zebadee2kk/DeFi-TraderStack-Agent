@@ -192,6 +192,7 @@ traderstack-xs-topk = "traderstack.research.xs_topk_cli:main"
 # Paper spot executable (long-only). Never flips PAPER_PROMOTE_*.
 # Empty dual-print is success. Not a #118 Donchian N retune.
 traderstack-ensemble-trend = "traderstack.research.ensemble_trend_cli:main"
+traderstack-weekly-trend = "traderstack.research.weekly_trend_cli:main"
 # Second-venue PIT basis (#134): OKX history-mark-price-candles − history-index-candles
 # and Binance Vision markPriceKlines − indexPriceKlines (sha256-verified) daily
 # mark−index into [{opened_at, value}] JSON for traderstack-funding-carry --basis-dir.
