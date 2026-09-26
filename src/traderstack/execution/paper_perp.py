@@ -40,6 +40,10 @@ from traderstack.models import Side
 # pin. Fixed notional so soaks do not invent size from NAV.
 CARRY_DIAGNOSTIC_SIGNAL = "carry_hedged_sign"
 CARRY_DIAGNOSTIC_NOTIONAL_USD = 100.0
+# Paper-only promote pin [PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD].
+# Same always-harvest |rate| shape as carry_hedged_sign under the
+# #175 dual-print recipe; defaults false; requires PAPER_PERP_HEDGE.
+FUND_Z_HARVEST_SIGN_HOLD_SIGNAL = "fund_z_harvest_sign_hold"
 
 # Paper hedge+funding path is cycle-wired (venue mid + same-venue
 # funding tape). Not a promote unlock — PIT basis is still missing.

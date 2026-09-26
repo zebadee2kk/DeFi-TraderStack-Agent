@@ -15,6 +15,7 @@ from traderstack.execution.paper_fill import PaperFillSimulator, PaperFillStatus
 from traderstack.execution.paper_perp import (
     CARRY_DIAGNOSTIC_NOTIONAL_USD,
     CARRY_DIAGNOSTIC_SIGNAL,
+    FUND_Z_HARVEST_SIGN_HOLD_SIGNAL,
     PaperPerpBook,
     carry_hedged_sign_spot_side,
 )
@@ -448,22 +449,24 @@ class ContinuousPaperService:
         )
 
     async def _maybe_open_carry_diagnostic_hedge(self, symbol: str) -> None:
-        """Open a carry_hedged_sign paper hedge without a promote voter fill.
+        """Open always-harvest |rate| paper hedge without a promote voter fill.
 
-        PAPER_CARRY_HEDGE_DIAGNOSTIC only. Synthetic spot fill is NOT booked
-        into the spot portfolio. Explicit venue mid required; never invents
-        funding or uses Kraken spot as perp mid. Not a promote path.
+        Enabled when TRADING_MODE=paper, PAPER_PERP_HEDGE has attached the
+        book/feed, and either PAPER_CARRY_HEDGE_DIAGNOSTIC or the documented
+        PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD pin is on. Synthetic spot fill
+        is NOT booked into the spot portfolio. Explicit venue mid required;
+        never invents funding or uses Kraken spot as perp mid. Not live.
         """
 
-        if (
-            self.settings is None
-            or not self.settings.paper_carry_hedge_diagnostic
-            or self.paper_perp_book is None
-            or self.paper_perp_feed is None
-        ):
+        if self.settings is None or self.paper_perp_book is None or self.paper_perp_feed is None:
             return
         if self.settings.trading_mode != "paper":
             return
+        promote_active = self.settings.paper_promote_fund_z_harvest_sign_hold_active
+        diagnostic_active = self.settings.paper_carry_hedge_diagnostic
+        if not promote_active and not diagnostic_active:
+            return
+        signal = FUND_Z_HARVEST_SIGN_HOLD_SIGNAL if promote_active else CARRY_DIAGNOSTIC_SIGNAL
         asset = symbol.split("/", 1)[0].upper()
         if asset in self.paper_perp_book.positions:
             return
@@ -556,8 +559,9 @@ class ContinuousPaperService:
                 venue=quote.venue,
                 source=quote.source,
                 mid_usd=quote.mid_usd,
-                signal=CARRY_DIAGNOSTIC_SIGNAL,
-                diagnostic=True,
+                signal=signal,
+                diagnostic=not promote_active,
+                promote_pin=promote_active,
                 funding_rate=rate,
                 spot_side=spot_side.value,
                 notional_usd=CARRY_DIAGNOSTIC_NOTIONAL_USD,
@@ -568,7 +572,7 @@ class ContinuousPaperService:
                 asset=asset,
                 status=hedge.status.value,
                 reason=hedge.reason,
-                signal=CARRY_DIAGNOSTIC_SIGNAL,
+                signal=signal,
             )
 
     async def _maybe_hedge_paper_perp(

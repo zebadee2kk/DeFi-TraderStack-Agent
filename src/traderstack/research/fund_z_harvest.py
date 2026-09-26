@@ -19,6 +19,7 @@ from traderstack.research.funding_carry import (
     evaluate_carry_hard_gates,
     score_hedged_carry,
 )
+from traderstack.research.harder_gates import paper_promote_flag_name
 
 HARVEST_RULES = (
     "Pre-registered paper-perp funding-z harvest (frozen before score). "
@@ -281,6 +282,11 @@ def run_fund_z_harvest(
         second_hard_gates_note=second_gates.note,
         can_promote=False,
         keep_flag_false=True,
+        recommended_promote_flag=(
+            paper_promote_flag_name("fund_z_harvest_sign_hold")
+            if "fund_z_harvest_sign_hold" in passers
+            else None
+        ),
     )
 
 
@@ -359,8 +365,12 @@ def render_fund_z_harvest_markdown(report: FundZHarvestReport) -> str:
             "## Promotion decision",
             "",
             (
-                "**No candidate is promoted.** can_promote=false; keep_flag_false=true. "
-                "Leave every PAPER_PROMOTE_*=false. No live path."
+                "**No candidate is auto-enabled.** can_promote=false; "
+                "keep_flag_false=true. Operator pin "
+                f"`{report.recommended_promote_flag or 'PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD'}` "
+                "exists and defaults **false** (paper-perp only; requires "
+                "PAPER_PERP_HEDGE). Not a live/profit claim. Explicit env "
+                "required to enable. No live path."
             ),
             "",
         ]

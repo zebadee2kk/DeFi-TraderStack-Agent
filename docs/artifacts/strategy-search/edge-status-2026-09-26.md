@@ -86,7 +86,7 @@ Honesty: this is the always-harvest |rate| shape under a **new** recipe id + fee
 ## Operator recommendation
 
 1. **Keep every `PAPER_PROMOTE_*=false`.** Do not enable `PAPER_PERP_HEDGE` from this memo alone.
-2. If a default-false pin for `fund_z_harvest_sign_hold` is desired, that is a **separate** user-facing PR — not this score commit.
+2. Default-false pin added: `PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD` (`paper_promote_fund_z_harvest_sign_hold`). Defaults **false**; paper-perp only via `PAPER_PERP_HEDGE`. See `docs/artifacts/ops/paper-promote-fund-z-harvest-sign-hold-2026-09-26.md`. Still not a live/profit claim.
 3. Continue daily DefiLlama tips until ≥720.
 4. Next pivot candidates (do not retune failed spot catalogs):
    - Fee-aware **paper** PnL accounting on open carry / harvest hedges under `PAPER_PERP_HEDGE` diagnostic (still default false)
