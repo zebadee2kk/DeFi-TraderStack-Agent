@@ -14,7 +14,7 @@ dependencies = [
   "lz4>=4.3",
   "websockets>=13.0",
   "structlog>=24.1",
-  "sqlalchemy>=2.0",
+  "sqlalchemy[asyncio]>=2.0",
   "asyncpg>=0.29",
   "redis>=5.0",
   "prometheus-client>=0.20",
@@ -90,6 +90,8 @@ traderstack-intraday-dual-print = "traderstack.research.intraday_dual_print_cli:
 traderstack-funding-carry = "traderstack.research.funding_carry_cli:main"
 traderstack-funding-div = "traderstack.research.funding_div_cli:main"
 traderstack-oi-mom = "traderstack.research.oi_mom_cli:main"
+traderstack-basis-residual = "traderstack.research.basis_residual_cli:main"
+traderstack-fund-z-harvest = "traderstack.research.fund_z_harvest_cli:main"
 traderstack-sess-gap = "traderstack.research.session_gap_cli:main"
 traderstack-vol-target = "traderstack.research.vol_target_cli:main"
 # DefiLlama stablecoin net-issuance SPOT overlay. Live history is NOT
