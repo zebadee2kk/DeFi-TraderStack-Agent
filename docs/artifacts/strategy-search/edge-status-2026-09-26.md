@@ -221,3 +221,36 @@ Pin / Field defaults: all `PAPER_PROMOTE_*=false`. Paper only. No live.
 
 Full study: `docs/artifacts/ops/paper-fund-z-fee-amortization-study-2026-09-26.md`.
 Recipe: `docs/recipes/ops/paper-fund-z-fee-amortization-and-48h-soak-recipe-2026-09-26.md`.
+
+## Appendix — fund_z flip-cost / >=N-day hold-gate dual-print (this slice)
+
+**Choice:** option 1 — re-score sign_hold under explicit flip-cost gate (N from #183 BE table). First AVAILABLE. Did **not** retune xs-topk / weekly wk_trend / fund_spread / fund_xs_rank / fund_mom / oi_mom / spot FeatureZ / basis_resid.
+
+**Data probe / coverage freeze (before PnL):** HL BTC+ETH 801d; HTX BTC+ETH 801d (live public funding → UTC daily sums). Dual basis OKX×Vision on disk (>=720d). Recipe commit `eb60bcd` before score.
+
+**Blocked / skipped alternatives (this turn):**
+
+| hyp | why blocked / skipped |
+| --- | --- |
+| 2. Weekly funding harvest (1w resample) | Deferred — option 1 AVAILABLE (HL×HTX + known passer) |
+| 3. Basis MR hold>=5d (NEW ids vs #175 empty) | Deferred — option 1 AVAILABLE |
+
+**Recipe (committed before score):** `docs/recipes/strategy-search/fund-z-flipcost-hold-gate-dual-print-recipe.md`
+
+**Score:** `docs/artifacts/strategy-search/fund-z-flipcost-hold-gate-dual-print.md`
+
+- Catalog: 4 magnitude/sticky gates (N=3,5) + `fund_z_flipcost_sign_hold_ref` + flat control (NEW ids; <=6)
+- Fees: 5+5 bps × 2 legs; dual_basis required
+- Dual-print: Hyperliquid×OKX / HTX×Binance Vision
+- Result: **dual_print_passers=1** (`fund_z_flipcost_sign_hold_ref` only)
+- **Honesty:** ref clone = known `fund_z_harvest_sign_hold` / `carry_hedged_sign` shape under NEW id — **not a new edge**
+- Magnitude/sticky gates: all dual-print **ineligible** (WF negative). Sticky mean holds 4–6.5d but fee-negative
+- `structurally_fee_survivable_ge_3d=false` for NEW gated candidates
+- `can_promote=false`; `keep_flag_false=true`; `PAPER_PROMOTE_*` untouched (false)
+- 48h soak PID 45859 **untouched**
+
+**Named passers:** `fund_z_flipcost_sign_hold_ref` (honesty: same always-on harvest family as #175).
+
+**Fee-survivability conclusion:** No NEW gated family in existing data clears dual-print with structural >=3d amortized holds. Always-on sign_hold remains the only research passer; short-horizon paper still needs multi-day soak per #183 (~2.7–4.1d BE).
+
+**Next recommendation:** keep every promote flag false. Await 48h fund_z soak harvest. Do not retune empty catalogs. Weekly funding harvest / basis MR hold>=5d remain unused alternatives if a distinct long-hold family is still required after soak.
