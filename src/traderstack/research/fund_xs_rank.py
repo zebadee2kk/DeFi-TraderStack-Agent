@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -17,7 +18,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from traderstack.research.edge_series import (
-    ASILLETTO81_CACHE_DIR,
     ASILLETTO81_HL_ARCHIVE_FIRST_UTC,
     ASILLETTO81_HL_ARCHIVE_LAST_UTC,
     _asilletto_decompress,
@@ -363,7 +363,7 @@ def load_asilletto_daily_funding(
                 value = float(raw)
             except (TypeError, ValueError):
                 continue
-            if value != value:  # NaN
+            if math.isnan(value):
                 continue
             last[coin] = value
         if last:
