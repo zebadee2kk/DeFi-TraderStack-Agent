@@ -56,7 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     until = datetime.now(tz=since.tzinfo)
     until = utc_day(until)
     notes: list[dict[str, str]] = []
-    okx, okx_notes = load_basis_dir(args.basis_dir, "okx", REQUIRED_SYMBOLS, since=since, until=until)
+    okx, okx_notes = load_basis_dir(
+        args.basis_dir, "okx", REQUIRED_SYMBOLS, since=since, until=until
+    )
     vision, vision_notes = load_basis_dir(
         args.basis_dir, "binance_vision", REQUIRED_SYMBOLS, since=since, until=until
     )

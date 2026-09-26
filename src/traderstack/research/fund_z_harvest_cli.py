@@ -67,7 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _fetch_funding(timeout: float) -> tuple[
+async def _fetch_funding(
+    timeout: float,
+) -> tuple[
     dict[str, tuple[tuple[datetime, float], ...]],
     dict[str, tuple[tuple[datetime, float], ...]],
     list[dict[str, str]],
