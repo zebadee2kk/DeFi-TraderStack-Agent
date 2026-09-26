@@ -295,3 +295,56 @@ tip_days=2; no tip backfill.
 - Promote-gap memo: `docs/artifacts/strategy-search/fund-z-promote-honesty-gap-2026-09-26.md`
   (why can_promote / PAPER_PROMOTE_FUND_Z still blocked despite #175 passer + #185/#186 N>=5 survival).
 - Every `PAPER_PROMOTE_*=false`. Field defaults unchanged.
+
+## fund_z high-|funding| selective ≤2d fee-survival REPLAY (2026-09-26)
+
+**HONESTY: PAPER/RESEARCH ONLY. NOT A PROMOTE. NOT LIVE PnL. MTM omitted.**
+
+The frozen completed-day high-|funding| gate produced a dual-era primary-ladder
+event-mode N=2 fee-survival passer (era A 73.5%; era B 63.3%) on 760 HL
+asilletto daily observations. N=1 failed both eras. The always-on tumbling
+reference is contrast only and cannot enter the passers list.
+
+See `docs/artifacts/strategy-search/fund-z-hiabs-2d-fee-survival.md`.
+Recipe frozen at `7bb12d4` before score.
+
+`le2d_path_exists=true`, but `can_promote=false` / `keep_flag_false=true`.
+Every `PAPER_PROMOTE_*=false`; soak PIDs untouched.
+## Appendix ? fund_z hi-|funding| selective ?2d fee-survival (this slice)
+
+**Choice:** selective high-|funding| trail-1d entry fee-survival ladder at N?{1,2,3}
+answering whether a **?2d** paper-fee path exists on EXISTING asilletto
+daily_sum_abs (distinct from always-on #185, flipcost #184, fund_mom/spread/xs).
+
+**Data probe / freeze (before PnL):** compact `daily_sum_abs_btc_eth.json` 760d.
+Dual era (HTX hourly absent). Recipe commit `7bb12d4` before score.
+
+**Threshold freeze (from #183 BE math, not fitted):** primary open `$0.20` ?
+`thr_usd = 0.20 / TARGET_N=2 = $0.10`. Enter when trailing completed day
+combined funding_usd ? thr; hold next N present days (no same-day lookahead).
+
+**Blocked / skipped alternatives (this turn):** none required ? tape AVAILABLE.
+
+**Recipe:** `docs/recipes/strategy-search/fund-z-hiabs-2d-fee-survival-recipe.md`
+
+**Score:** `docs/artifacts/strategy-search/fund-z-hiabs-2d-fee-survival.md`
+
+- strategy=`fund_z_hiabs_trail1_hold`; fees primary `paper_fees_usd_10bps_x2`
+- Dual-era **event** fee-survival passers: `N=2/...`, `N=3/...` (count=2)
+- **`le2d_path_exists=true`** (N=2 primary dual-era survivor)
+- N=1 fails both eras (28.9% / 13.3% frac_pos)
+- Always-on tumbling reference at N=1,2,3: **all fail** (matches #185 N=3 fail)
+- era_b selective n_windows thin (**30** at thr=$0.10) -- reported honestly
+- Stricter `paper_fee_plus_slip_15bps_x2` (open $0.30): N=2 fails era_b
+- `can_promote=false`; `keep_flag_false=true`; every `PAPER_PROMOTE_*=false`
+- Soaks PID **45859** / **2638509** untouched
+
+**Honesty:** informational hist fee-survival under selective entry != promote,
+!= dual-print WF, != live paper PnL. Thin quiet-era sample. Still no Settings pin.
+
+**Named passers (informational):** none for dual-print; fee-survival only.
+
+**Next recommendation:** keep promote false. Optional: paper-side selective
+entry diagnostic on next fund_z soak harvest (still default-false). Do not
+retune dead catalogs. Continue DefiLlama PIT tips.
+
