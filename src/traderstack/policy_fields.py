@@ -132,6 +132,7 @@ NON_POLICY_FIELDS: tuple[str, ...] = (
     "paper_pretrade_min_walkforward_excess_return",
     "paper_promote_ema_9_21",
     "paper_promote_ema_9_21_adx15",
+    "paper_promote_fund_z_harvest_sign_hold",
     "paper_promote_ema_9_21_max_drawdown_pct",
     "paper_promote_searched_strategies",
     "paper_promote_searched_strategy_id",

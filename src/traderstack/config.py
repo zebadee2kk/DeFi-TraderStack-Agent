@@ -316,6 +316,17 @@ class Settings(BaseSettings):
     # never be named PAPER_PROMOTE_*. Does not flip PAPER_PROMOTE_*.
     # Live/shadow ignore. Snapshot mids are not PIT basis.
     paper_carry_hedge_diagnostic: bool = False
+    # --- paper promote: fund_z_harvest_sign_hold (#175 follow-up) ---
+    # Documented paper-only operator pin for the named dual-print passer
+    # ``fund_z_harvest_sign_hold`` (HL×HTX funding + OKX×Vision basis;
+    # 5+5 bps × 2 legs). Default false. When TRADING_MODE=paper *and* this
+    # is true *and* PAPER_PERP_HEDGE, the cycle may open the same always-
+    # harvest |rate| paper-perp hedge path used by the carry diagnostic
+    # (no promote-voter spot fill; synthetic spot not booked into NAV).
+    # Not Kraken-spot. Not a live path. Not a profitability claim.
+    # Not RiskEngine policy -- flipping it must not move policy_version.
+    # Ignored on live/shadow. Keep false until an operator explicitly opts in.
+    paper_promote_fund_z_harvest_sign_hold: bool = False
     # --- opportunity funnel (#131) ---
     # Diagnostic-only run: every gate (kill switch, pre-trade, risk engine,
     # meta-agent, planner) runs and is audited exactly as normal, but no
@@ -713,6 +724,11 @@ class Settings(BaseSettings):
         return self.trading_mode == "paper" and self.paper_garch_size
 
     # --- miles-inspired ema_9_21 paper voter ---
+    @property
+    def paper_promote_fund_z_harvest_sign_hold_active(self) -> bool:
+        """True only when TRADING_MODE=paper and the fund-z harvest pin is on."""
+        return self.trading_mode == "paper" and self.paper_promote_fund_z_harvest_sign_hold
+
     @property
     def paper_promote_ema_9_21_active(self) -> bool:
         """Register ema_9_21 as the sole paper voter only on the paper path."""

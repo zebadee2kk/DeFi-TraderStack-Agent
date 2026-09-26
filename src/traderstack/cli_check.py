@@ -1119,6 +1119,49 @@ def build_report(settings: Settings) -> ConfigReport:
             "Leave every PAPER_PROMOTE_* false."
         )
 
+    items.append(
+        CheckItem(
+            "Paper promote fund_z_harvest_sign_hold",
+            (
+                "active (paper-perp only; cannot claim spot edge)"
+                if settings.paper_promote_fund_z_harvest_sign_hold_active
+                and settings.paper_perp_hedge
+                else "off (default false; cannot promote)"
+            ),
+            (
+                "PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD is the documented "
+                "honesty pin for dual-print passer fund_z_harvest_sign_hold "
+                "(#175). Default false. When true with PAPER_PERP_HEDGE and "
+                "TRADING_MODE=paper, enables the always-harvest |rate| "
+                "paper-perp path only. Not Kraken-spot. Not live. Not a "
+                "profit claim. Explicit env required to enable."
+                if settings.trading_mode == "paper"
+                else (f"ignored unless TRADING_MODE=paper (got {settings.trading_mode!r})")
+            ),
+        )
+    )
+    if settings.paper_promote_fund_z_harvest_sign_hold and settings.trading_mode != "paper":
+        warnings.append(
+            "PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD is paper-only; "
+            f"TRADING_MODE={settings.trading_mode} ignores it and "
+            "cannot enable live."
+        )
+    if (
+        settings.paper_promote_fund_z_harvest_sign_hold
+        and settings.trading_mode == "paper"
+        and not settings.paper_perp_hedge
+    ):
+        warnings.append(
+            "PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD=true has no effect "
+            "unless PAPER_PERP_HEDGE=true."
+        )
+    if settings.paper_promote_fund_z_harvest_sign_hold_active and settings.paper_perp_hedge:
+        warnings.append(
+            "PAPER_PROMOTE_FUND_Z_HARVEST_SIGN_HOLD=true enables the "
+            "paper-perp fund_z_harvest_sign_hold harvest path only. "
+            "Not Kraken-spot. Not live. Not a profitability claim."
+        )
+
     # --- opportunity funnel (#131) ---------------------------------------------------
     items.append(
         CheckItem(
