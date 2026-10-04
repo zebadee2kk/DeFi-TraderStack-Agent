@@ -369,19 +369,26 @@ def evaluate_context_grid(
                     row for row, matched in zip(baseline, matches, strict=True) if matched
                 ]
 
+            floor = _sample_floor(split, discovery_min, holdout_min)
+            per_context_sharpes = {
+                context_id: sharpe_ratio(
+                    [
+                        row.net_pnl_usd / row.copied_notional_usd
+                        for row in context_rows[context_id]
+                        if row.copied_notional_usd > 0
+                    ]
+                )
+                for context_id in CONTEXT_IDS
+            }
+            catalog_ready = all(
+                len(context_rows[context_id]) >= floor
+                and per_context_sharpes[context_id] is not None
+                for context_id in CONTEXT_IDS
+            )
             trial_sharpes = [
                 value
                 for context_id in CONTEXT_IDS
-                if (
-                    value := sharpe_ratio(
-                        [
-                            row.net_pnl_usd / row.copied_notional_usd
-                            for row in context_rows[context_id]
-                            if row.copied_notional_usd > 0
-                        ]
-                    )
-                )
-                is not None
+                if (value := per_context_sharpes[context_id]) is not None
             ]
 
             for context_id in CONTEXT_IDS:
@@ -393,7 +400,6 @@ def evaluate_context_grid(
                     if baseline_mean is None or treatment_mean is None
                     else treatment_mean - baseline_mean
                 )
-                floor = _sample_floor(split, discovery_min, holdout_min)
                 floor_met = len(treatment) >= floor
                 mean_ci = bootstrap_interval(pnls, statistic="mean")
                 incremental_ci = bootstrap_incremental_mean(
@@ -405,7 +411,7 @@ def evaluate_context_grid(
                     for row in treatment
                     if row.copied_notional_usd > 0
                 ]
-                if floor_met:
+                if floor_met and catalog_ready:
                     dsr = deflated_sharpe_ratio(
                         returns=normalized,
                         trial_sharpes=trial_sharpes,
@@ -413,8 +419,12 @@ def evaluate_context_grid(
                 else:
                     dsr = {
                         "computed": False,
-                        "skipped_reason": "minimum_signal_count_not_met",
-                        "trials": len(trial_sharpes),
+                        "skipped_reason": (
+                            "minimum_signal_count_not_met"
+                            if not floor_met
+                            else "catalog_sample_support_incomplete"
+                        ),
+                        "trials": TRIALS_PER_BASE_GRID,
                         "observations": len(normalized),
                     }
 
@@ -585,7 +595,13 @@ async def _run(args: argparse.Namespace) -> int:
                 "catalog_frozen_in_issue_193": True,
                 "context_ids": list(CONTEXT_IDS),
                 "context_cells_per_base_grid": TRIALS_PER_BASE_GRID,
-                "reported_cell_count_expected": (
+                "grid_cell_count_expected": (
+                    len(HYPOTHESES)
+                    * len(args.copy_delays)
+                    * len(args.cost_bps)
+                    * len(CONTEXT_IDS)
+                ),
+                "split_row_count_expected": (
                     len(HYPOTHESES)
                     * len(args.copy_delays)
                     * len(args.cost_bps)
