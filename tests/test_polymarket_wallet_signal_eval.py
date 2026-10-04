@@ -2,15 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from traderstack.polymarket import wallet_signal_eval
 from traderstack.polymarket.data_api import DataPricePoint
-from traderstack.polymarket.wallet_signal_eval import (
-    HYPOTHESES,
-    ScoredSignal,
-    build_signal_candidates,
-    parse_trade_observations,
-    score_candidates,
-    summarize,
-)
 
 
 WALLET = "0x" + "11" * 20
@@ -69,7 +62,7 @@ def test_parse_trade_observations_dedupes_repeated_snapshot_payloads() -> None:
         trade_row(observed_at=happened + timedelta(minutes=1), trades=[raw]),
         trade_row(observed_at=happened + timedelta(hours=1), trades=[raw]),
     ]
-    parsed = parse_trade_observations(rows)
+    parsed = wallet_signal_eval.parse_trade_observations(rows)
     assert len(parsed) == 1
     assert parsed[0].side == "BUY"
     assert parsed[0].token_id == "123456"
@@ -90,7 +83,7 @@ def test_candidates_use_only_latest_point_in_time_eligible_cohort() -> None:
         )
     ]
 
-    candidates = build_signal_candidates(
+    candidates = wallet_signal_eval.build_signal_candidates(
         leaderboard_rows=leaderboard,
         trade_rows=trades,
         category="CRYPTO",
@@ -106,7 +99,7 @@ def test_candidates_use_only_latest_point_in_time_eligible_cohort() -> None:
 def test_top3_follow_can_qualify_on_first_point_in_time_snapshot() -> None:
     snapshot = datetime(2026, 10, 2, 9, tzinfo=UTC)
     traded = snapshot + timedelta(minutes=10)
-    candidates = build_signal_candidates(
+    candidates = wallet_signal_eval.build_signal_candidates(
         leaderboard_rows=[leaderboard_row(snapshot_id="s1", snapshot_at=snapshot, rank=2)],
         trade_rows=[
             trade_row(
@@ -124,7 +117,7 @@ def test_top3_follow_can_qualify_on_first_point_in_time_snapshot() -> None:
 def test_sell_trades_are_not_silently_treated_as_executable_copies() -> None:
     snapshot = datetime(2026, 10, 2, 9, tzinfo=UTC)
     traded = snapshot + timedelta(minutes=10)
-    candidates = build_signal_candidates(
+    candidates = wallet_signal_eval.build_signal_candidates(
         leaderboard_rows=[leaderboard_row(snapshot_id="s1", snapshot_at=snapshot, rank=1)],
         trade_rows=[
             trade_row(
@@ -144,7 +137,7 @@ async def test_score_candidates_applies_copy_delay_capacity_and_costs() -> None:
     first = datetime(2026, 10, 1, 9, tzinfo=UTC)
     second = datetime(2026, 10, 2, 9, tzinfo=UTC)
     traded = second + timedelta(hours=1)
-    candidates = build_signal_candidates(
+    candidates = wallet_signal_eval.build_signal_candidates(
         leaderboard_rows=[
             leaderboard_row(snapshot_id="s1", snapshot_at=first, rank=8),
             leaderboard_row(snapshot_id="s2", snapshot_at=second, rank=6),
@@ -167,7 +160,7 @@ async def test_score_candidates_applies_copy_delay_capacity_and_costs() -> None:
             return DataPricePoint(timestamp=timestamp, price=0.40, resolution_seconds=60)
         return DataPricePoint(timestamp=timestamp, price=0.50, resolution_seconds=60)
 
-    scored, skipped = await score_candidates(
+    scored, skipped = await wallet_signal_eval.score_candidates(
         follow,
         price_lookup=price_lookup,
         copy_delay_seconds=300,
@@ -191,7 +184,7 @@ async def test_score_candidates_applies_copy_delay_capacity_and_costs() -> None:
 async def test_score_candidates_rejects_price_resolution_too_coarse_for_delay() -> None:
     snapshot = datetime(2026, 10, 2, 9, tzinfo=UTC)
     traded = snapshot + timedelta(minutes=10)
-    candidates = build_signal_candidates(
+    candidates = wallet_signal_eval.build_signal_candidates(
         leaderboard_rows=[leaderboard_row(snapshot_id="s1", snapshot_at=snapshot, rank=1)],
         trade_rows=[
             trade_row(
@@ -207,7 +200,7 @@ async def test_score_candidates_rejects_price_resolution_too_coarse_for_delay() 
     async def coarse(_: str, timestamp: int) -> DataPricePoint | None:
         return DataPricePoint(timestamp=timestamp, price=0.4, resolution_seconds=43_200)
 
-    scored, skipped = await score_candidates(
+    scored, skipped = await wallet_signal_eval.score_candidates(
         candidates,
         price_lookup=coarse,
         copy_delay_seconds=300,
@@ -224,7 +217,7 @@ async def test_score_candidates_rejects_price_resolution_too_coarse_for_delay() 
 
 
 def test_hypothesis_catalog_is_frozen_to_three_initial_wallet_rules() -> None:
-    assert HYPOTHESES == (
+    assert wallet_signal_eval.HYPOTHESES == (
         "persistent_top10_follow",
         "top3_follow",
         "persistent_top10_fade",
@@ -234,7 +227,7 @@ def test_hypothesis_catalog_is_frozen_to_three_initial_wallet_rules() -> None:
 def test_summarize_keeps_chronological_holdout_separate() -> None:
     base = datetime(2026, 10, 1, tzinfo=UTC)
     rows = [
-        ScoredSignal(
+        wallet_signal_eval.ScoredSignal(
             hypothesis="top3_follow",
             wallet=WALLET,
             token_id="t",
@@ -258,7 +251,7 @@ def test_summarize_keeps_chronological_holdout_separate() -> None:
         )
         for i in range(4)
     ]
-    summaries = summarize(rows, holdout_fraction=0.25)
+    summaries = wallet_signal_eval.summarize(rows, holdout_fraction=0.25)
     discovery = next(item for item in summaries if item.split == "discovery")
     holdout = next(item for item in summaries if item.split == "holdout")
     assert discovery.signals == 3
