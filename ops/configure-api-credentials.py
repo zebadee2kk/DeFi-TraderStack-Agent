@@ -196,6 +196,15 @@ def _print_status(values: dict[str, str]) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     path: Path = args.env_file
+    if not path.exists():
+        example = path.parent / ".env.example"
+        if not example.is_file():
+            raise FileNotFoundError(
+                f"{path} does not exist and no {example} template is available"
+            )
+        path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+        path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        print(f"Initialized {path} from {example} with mode 0600.")
     current = read_env_values(path)
 
     if args.status:
