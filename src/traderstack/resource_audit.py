@@ -295,6 +295,13 @@ def build_rows(settings: Settings, *, now: datetime | None = None) -> list[Resou
             now=now,
         ),
         _provider_row(
+            provider="Polymarket Data API",
+            role="public wallet / trade / leaderboard research",
+            configured=True,
+            action_if_missing="run/schedule traderstack-polymarket-wallet-snapshot",
+            now=now,
+        ),
+        _provider_row(
             provider="Polymarket crypto tape",
             role="Gamma/CLOB + Deribit probability research",
             configured=settings.polymarket_crypto_tape_enabled,
@@ -328,6 +335,7 @@ _PUBLIC_PROBES: dict[str, str] = {
     "Coin Metrics": (
         "/v4/timeseries/asset-metrics?assets=btc&metrics=CapMVRVCur&frequency=1d&page_size=1"
     ),
+    "Polymarket Data API": "/v2/status",
     "Polymarket crypto tape": "/events?limit=1",
     "Polymarket weather tape": "/events?limit=1",
 }
@@ -349,6 +357,7 @@ async def probe_public(rows: list[ResourceRow], settings: Settings) -> list[Reso
     bases = {
         "Crucix": crucix_effective_base_url(settings.crucix_base_url),
         "Coin Metrics": settings.coinmetrics_base_url,
+        "Polymarket Data API": "https://data-api.polymarket.com",
         "Polymarket crypto tape": settings.polymarket_gamma_base_url,
         "Polymarket weather tape": settings.polymarket_gamma_base_url,
     }
@@ -385,6 +394,7 @@ _JOURNAL_PROVIDER_NAMES: dict[str, str] = {
     "CoinGecko": "coingecko",
     "CoinMarketCap": "coinmarketcap",
     "Coin Metrics": "coinmetrics",
+    "Polymarket Data API": "polymarket_data",
 }
 
 
