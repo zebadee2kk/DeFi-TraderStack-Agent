@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from traderstack.polymarket import wallet_signal_eval
 from traderstack.polymarket.data_api import DataPricePoint
+from traderstack.polymarket import wallet_signal_eval
 
 
 WALLET = "0x" + "11" * 20
