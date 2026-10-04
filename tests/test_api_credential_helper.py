@@ -150,6 +150,7 @@ def test_optional_keys_are_only_prompted_when_requested(
     assert any("COINGECKO_API_KEY" in prompt for prompt in prompts)
     assert any("COINMARKETCAP_API_KEY" in prompt for prompt in prompts)
 
+
 def test_guide_never_prints_secret_values(capsys: pytest.CaptureFixture[str]) -> None:
     helper._print_guide()
     output = capsys.readouterr().out
