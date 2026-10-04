@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -19,7 +21,7 @@ def leaderboard_row(
         "observed_at": snapshot_at,
         "wallet": WALLET,
         "observation_type": "leaderboard",
-        "source_id": "polymarket:data-api:/v1/leaderboard",
+        "source_id": "polymarket:data-api:/v2/leaderboard",
         "payload": {
             "snapshot_id": snapshot_id,
             "snapshot_at": snapshot_at.isoformat(),
