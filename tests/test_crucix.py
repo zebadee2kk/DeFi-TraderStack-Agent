@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -12,6 +15,7 @@ from traderstack.market.crucix import (
     crucix_effective_base_url,
     crucix_should_register,
     parse_crucix_alerts,
+    parse_crucix_dashboard,
 )
 from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
 from traderstack.models import PortfolioSnapshot
@@ -75,11 +79,49 @@ def test_parse_crucix_rejects_unknown_shape() -> None:
         parse_crucix_alerts({"ok": True}, asset="BTC")
 
 
+_DASHBOARD_FIXTURE = Path(__file__).parent / "fixtures" / "crucix_api_data.json"
+
+
+def test_parse_crucix_dashboard_fixture_does_not_invent_a_signal() -> None:
+    payload = json.loads(_DASHBOARD_FIXTURE.read_text())
+    snapshot = parse_crucix_dashboard(payload, asset="BTC")
+    btc = next(row for row in payload["markets"]["crypto"] if row["symbol"] == "BTC-USD")
+    assert snapshot.source_id == "crucix:data"
+    assert snapshot.asset == "BTC"
+    assert snapshot.adverse_event is False
+    assert snapshot.event_score == 0.0
+    assert snapshot.item_count == len(payload["news"])
+    assert btc["price"] == 84850.93
+    assert "polymarket" not in json.dumps(payload).lower()
+
+
 @pytest.mark.asyncio
-async def test_crucix_provider_fetches_alerts_path() -> None:
+async def test_crucix_provider_reads_api_data_without_api_key() -> None:
+    payload = json.loads(_DASHBOARD_FIXTURE.read_text())
+
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/alerts"
-        assert request.url.params["asset"] == "BTC"
+        assert request.url.path == "/api/data"
+        assert "asset" not in request.url.params
+        assert "authorization" not in {name.lower() for name in request.headers}
+        return httpx.Response(200, json=payload)
+
+    async with httpx.AsyncClient(
+        base_url="http://127.0.0.1:3117", transport=httpx.MockTransport(handler)
+    ) as client:
+        snapshot = await CrucixIntelProvider(
+            base_url="http://127.0.0.1:3117", api_key=None, client=client
+        ).fetch("btc")
+
+    assert snapshot.source_id == "crucix:data"
+    assert snapshot.adverse_event is False
+    assert snapshot.event_score == 0.0
+    assert snapshot.item_count == len(payload["news"])
+
+
+@pytest.mark.asyncio
+async def test_crucix_provider_still_parses_legacy_alerts_when_returned() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/data"
         assert request.headers["Authorization"] == "Bearer k"
         return httpx.Response(200, json={"alerts": [{"tier": "medium", "score": 0.4}]})
 
@@ -92,6 +134,7 @@ async def test_crucix_provider_fetches_alerts_path() -> None:
 
     assert snapshot.adverse_event is False
     assert snapshot.event_score == pytest.approx(0.4)
+    assert snapshot.source_id == "crucix:alerts"
 
 
 def test_build_intelligence_skips_crucix_by_default() -> None:

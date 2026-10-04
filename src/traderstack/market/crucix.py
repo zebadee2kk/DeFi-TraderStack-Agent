@@ -5,8 +5,10 @@ Crucix is an operator-hosted alert service (typically reached from Docker via
 source: high-tier alerts become ``NewsSnapshot.adverse_event`` / event and
 narrative scores. It cannot authorise risk.
 
-The HTTP contract is this adapter's own documented assumption (Crucix does
-not publish a stable public schema here). Expected shape, any of:
+calesthio/Crucix serves ``GET /api/data`` (markets, news, meta). That
+document has no tier or event score, so it maps to ``source_id="crucix:data"``
+with ``adverse_event`` left false. A legacy alert document is still accepted
+when the payload is already in that shape:
 
 - ``{"alerts": [ ... ]}`` / ``{"data": [ ... ]}`` / a bare list
 - each item: ``tier``/``severity``/``level`` (string or number), optional
@@ -35,7 +37,7 @@ import httpx
 from traderstack.intelligence import NewsSnapshot
 
 DEFAULT_CRUCIX_BASE_URL = "http://host.docker.internal:8787"
-CRUCIX_ALERTS_PATH = "/alerts"
+CRUCIX_DATA_PATH = "/api/data"
 
 _HIGH_TIER_LABELS = frozenset({"high", "critical", "severe", "p0", "p1", "urgent"})
 
@@ -178,11 +180,71 @@ def parse_crucix_alerts(
     )
 
 
+
+
+def _symbol_matches(raw: object, symbol: str) -> bool:
+    text = str(raw or "").upper()
+    return text == symbol or text.startswith(f"{symbol}-") or text.startswith(f"{symbol}/")
+
+
+def _is_dashboard_payload(payload: object) -> bool:
+    """True for a calesthio/Crucix ``GET /api/data`` document."""
+
+    if not isinstance(payload, dict):
+        return False
+    return isinstance(payload.get("markets"), dict) or isinstance(payload.get("news"), list)
+
+
+def parse_crucix_dashboard(payload: dict[str, Any], *, asset: str) -> NewsSnapshot:
+    """Map dashboard JSON to a bounded ``NewsSnapshot``.
+
+    ``markets.crypto`` spot rows and ``news`` titles are observations only.
+    This schema has no tier, severity, or score, so it cannot set
+    ``adverse_event`` or raise ``event_score``. ``item_count`` is the news
+    list length, or the count of spot rows whose symbol matches ``asset``
+    when ``news`` is absent. Nothing here is a Polymarket price or a side.
+    """
+
+    symbol = asset.upper()
+    news = payload.get("news")
+    news_rows = [row for row in news if isinstance(row, dict)] if isinstance(news, list) else []
+    markets = payload.get("markets")
+    crypto = (
+        [row for row in markets.get("crypto", []) if isinstance(row, dict)]
+        if isinstance(markets, dict) and isinstance(markets.get("crypto"), list)
+        else []
+    )
+    matched_quotes = [row for row in crypto if _symbol_matches(row.get("symbol"), symbol)]
+    if not news_rows and not matched_quotes and "meta" not in payload:
+        raise TypeError("unexpected Crucix dashboard payload")
+    return NewsSnapshot(
+        asset=symbol,
+        event_score=0.0,
+        adverse_event=False,
+        item_count=len(news_rows) if news_rows else len(matched_quotes),
+        source_id="crucix:data",
+    )
+
+
+def parse_crucix_payload(
+    payload: object,
+    *,
+    asset: str,
+    high_tier_min: float = 4.0,
+) -> NewsSnapshot:
+    """Parse either a live dashboard document or a legacy alert document."""
+
+    if _is_dashboard_payload(payload):
+        assert isinstance(payload, dict)
+        return parse_crucix_dashboard(payload, asset=asset)
+    return parse_crucix_alerts(payload, asset=asset, high_tier_min=high_tier_min)
+
+
 @dataclass
 class CrucixIntelProvider:
     base_url: str = DEFAULT_CRUCIX_BASE_URL
     api_key: str | None = None
-    alerts_path: str = CRUCIX_ALERTS_PATH
+    data_path: str = CRUCIX_DATA_PATH
     high_tier_min: float = 4.0
     client: httpx.AsyncClient | None = None
 
@@ -191,17 +253,16 @@ class CrucixIntelProvider:
         headers: dict[str, str] = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        params = {"asset": symbol}
         if self.client is not None:
-            response = await self.client.get(self.alerts_path, params=params, headers=headers)
+            response = await self.client.get(self.data_path, headers=headers)
         else:
             async with httpx.AsyncClient(
                 base_url=self.base_url.rstrip("/"),
                 timeout=20,
             ) as client:
-                response = await client.get(self.alerts_path, params=params, headers=headers)
+                response = await client.get(self.data_path, headers=headers)
         response.raise_for_status()
-        return parse_crucix_alerts(
+        return parse_crucix_payload(
             response.json(),
             asset=symbol,
             high_tier_min=self.high_tier_min,
