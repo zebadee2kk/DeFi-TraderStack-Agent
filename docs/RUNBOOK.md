@@ -3013,3 +3013,26 @@ scored signals as a chronological holdout.
 
 `persistent_top10_fade` is a synthetic research control only. No command here submits, signs or
 prepares an order, and no result changes any `PAPER_PROMOTE_*` setting.
+
+
+## WSL API credential helper
+
+For operator-host credential setup, use:
+
+```bash
+make configure-api-credentials
+```
+
+The helper edits only the managed intelligence credential fields in `.env`, reads secret values without terminal echo, preserves unrelated configuration, and enforces mode `0600`. It never stores credentials in Git or command-line arguments.
+
+Status-only check:
+
+```bash
+python3 ops/configure-api-credentials.py --status
+```
+
+Re-prompt existing keys intentionally:
+
+```bash
+python3 ops/configure-api-credentials.py --all
+```
