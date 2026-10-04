@@ -161,7 +161,6 @@ def run_checks(repo_root: Path, env_file: Path) -> int:
         ],
     ]
     env = os.environ.copy()
-    env["ENV_FILE"] = str(env_file)
 
     final_rc = 0
     for command in commands:
@@ -221,6 +220,13 @@ def main(argv: list[str] | None = None) -> int:
         env_file = repo_root / env_file
 
     original_lines, values = parse_env(env_file)
+    if not env_file.exists():
+        template = repo_root / ".env.example"
+        if not template.is_file():
+            print("ERROR: .env is missing and .env.example was not found.", file=sys.stderr)
+            return 2
+        original_lines, values = parse_env(template)
+        print(f"{env_file} does not exist; it will be created from .env.example.")
 
     if args.status:
         print("\n".join(redact_status(values)))
@@ -262,6 +268,15 @@ def main(argv: list[str] | None = None) -> int:
     print("\n".join(redact_status(merged)))
 
     if args.no_check:
+        return 0
+
+    canonical_env = repo_root / ".env"
+    if env_file != canonical_env:
+        print(
+            "SKIP: post-write checks read the repository .env; "
+            "rerun without --env-file to validate runtime configuration.",
+            file=sys.stderr,
+        )
         return 0
 
     return run_checks(repo_root, env_file)
