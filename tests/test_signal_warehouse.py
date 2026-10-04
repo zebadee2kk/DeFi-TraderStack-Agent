@@ -4,7 +4,7 @@ from traderstack.features import AssetFeatureVector, MarketFeatures
 from traderstack.market.models import MarketSource, MarketTick
 from traderstack.pipeline import PipelineResult
 from traderstack.runtime import RuntimeResult
-from traderstack.signal_warehouse import build_feature_rows, wallet_observations
+from traderstack.signal_warehouse import build_feature_rows, collector_health, wallet_observations
 
 
 def _result(*, with_features: bool = True) -> RuntimeResult:
@@ -64,5 +64,17 @@ def test_wallet_observation_table_has_point_in_time_provenance_columns() -> None
         "wallet",
         "observation_type",
         "source_id",
+        "payload",
+    }
+
+
+
+def test_collector_health_table_has_idempotency_and_provenance_columns() -> None:
+    assert set(collector_health.c.keys()) == {
+        "id",
+        "event_key",
+        "observed_at",
+        "provider",
+        "state",
         "payload",
     }
