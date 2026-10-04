@@ -40,7 +40,6 @@ class BrokenReference:
     async def get_prices(self, assets: tuple[str, ...]) -> list[ReferencePrice]:
         raise RuntimeError("provider unavailable")
 
-
 def portfolio() -> PortfolioSnapshot:
     return PortfolioSnapshot(
         nav_usd=10_000,
@@ -49,10 +48,8 @@ def portfolio() -> PortfolioSnapshot:
         peak_nav_usd=10_000,
     )
 
-
 def pipeline() -> VerticalSlicePipeline:
     return VerticalSlicePipeline(risk_engine=RiskEngine(Settings(kill_switch=False)))
-
 
 @pytest.mark.asyncio
 async def test_runtime_tolerates_one_failed_reference_provider() -> None:
@@ -67,7 +64,6 @@ async def test_runtime_tolerates_one_failed_reference_provider() -> None:
     assert result.execution_receipt is None
     assert len(result.references) == 1
 
-
 @pytest.mark.asyncio
 async def test_runtime_fails_closed_when_all_references_fail() -> None:
     runtime = PaperRuntime(
@@ -79,7 +75,6 @@ async def test_runtime_fails_closed_when_all_references_fail() -> None:
     assert result.pipeline.accepted_market_data is False
     assert "no_independent_reference_price" in result.pipeline.rejection_reasons
     assert result.execution_receipt is None
-
 
 @pytest.mark.asyncio
 async def test_runtime_only_submits_when_explicitly_requested() -> None:
@@ -150,4 +145,3 @@ async def test_runtime_retains_normalized_provider_native_intelligence() -> None
         "adverse_event": True,
         "item_count": 2,
     }
-
