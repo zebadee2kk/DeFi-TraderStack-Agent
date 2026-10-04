@@ -135,9 +135,7 @@ def prompt_values(
     skipped: list[str] = []
 
     prompt_secret_keys = (
-        REQUIRED_SECRET_KEYS + OPTIONAL_SECRET_KEYS
-        if include_optional
-        else REQUIRED_SECRET_KEYS
+        REQUIRED_SECRET_KEYS + OPTIONAL_SECRET_KEYS if include_optional else REQUIRED_SECRET_KEYS
     )
     for key in prompt_secret_keys:
         present = bool(current.get(key, "").strip())
