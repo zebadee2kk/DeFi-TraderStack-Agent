@@ -29,8 +29,10 @@ SECRET_KEYS = (
 VISIBLE_KEYS = ("DUNE_QUERY_IDS",)
 ALL_KEYS = SECRET_KEYS + VISIBLE_KEYS
 
-_KEY_RE = re.compile(r"^(?P<prefix>\s*(?:export\s+)?)"
-                     r"(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*=.*$")
+_KEY_RE = re.compile(
+    r"^(?P<prefix>\s*(?:export\s+)?)"
+    r"(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*=.*$"
+)
 
 
 @dataclass(frozen=True)
@@ -213,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Updating {path} (secret values will not be echoed).")
     print("Press Enter at any prompt to leave the existing value unchanged.")
-    replacements, skipped = prompt_values(current, only_missing=not args.all)
+    replacements, _skipped = prompt_values(current, only_missing=not args.all)
 
     if not replacements:
         print("No credential values changed.")
