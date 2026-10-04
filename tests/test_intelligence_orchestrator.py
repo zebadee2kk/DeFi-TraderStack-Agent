@@ -10,6 +10,7 @@ from traderstack.intelligence_orchestrator import (
     IntelligenceOrchestrator,
 )
 
+
 @pytest.fixture
 def market() -> MarketFeatures:
     return MarketFeatures(
