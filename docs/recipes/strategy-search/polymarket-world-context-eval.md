@@ -58,6 +58,12 @@ defined per-signal Sharpe. Sparse or degenerate cells cause DSR for that split t
 `global_catalog_sample_support_incomplete`; the evaluator never drops unavailable cells and
 quietly reduces the trial count after seeing results.
 
+The CLI still permits bounded exploratory overrides for diagnostics, but any change to the frozen
+population/evaluation contract (including delay/cost lists or warehouse limit) sets
+`catalog_frozen_in_issue_193=false` and withholds DSR as
+`non_preregistered_parameters`. An exploratory run cannot relabel a smaller catalog as the
+pre-registered test.
+
 PBO is explicitly withheld in this first conditional slice: treatment cells have different
 signal support. Zero-filling the missing observations merely to create a rectangular CSCV matrix
 would invent trades. A future matched-support implementation may compute PBO; until then it is
