@@ -32,6 +32,7 @@ from traderstack.market.deribit import (
     reduce_instruments,
 )
 from traderstack.market.registry import ProviderRegistry
+from traderstack.provider_health_journal import DEFAULT_PROVIDER_HEALTH_PATH, ProviderHealthJournal
 from traderstack.polymarket.clob import ClobBook, ClobPublicClient, reduce_book
 from traderstack.polymarket.crypto_gate import crucix_status_from_snapshot
 from traderstack.polymarket.crypto_models import (
@@ -149,6 +150,7 @@ def _build_registries(settings: Settings) -> dict[str, ProviderRegistry]:
             cooldown_seconds=settings.provider_breaker_cooldown_seconds,
             calls_per_minute=settings.polymarket_crypto_calls_per_minute,
             cache_ttl_seconds=settings.polymarket_crypto_cache_seconds,
+            health_recorder=ProviderHealthJournal(DEFAULT_PROVIDER_HEALTH_PATH).record,
         )
         for name in _REGISTRY_NAMES
     }
