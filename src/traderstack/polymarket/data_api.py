@@ -140,7 +140,6 @@ class PolymarketDataClient:
                 "limit": str(max(1, min(page_size, 1000))),
             },
             max_pages=max_pages,
-            anchor={"user": wallet},
         )
 
     async def trades(
@@ -158,7 +157,6 @@ class PolymarketDataClient:
                 "limit": str(max(1, min(page_size, 1000))),
             },
             max_pages=max_pages,
-            anchor={"user": wallet},
         )
 
     async def _paged(
@@ -167,7 +165,6 @@ class PolymarketDataClient:
         params: dict[str, str],
         *,
         max_pages: int,
-        anchor: dict[str, str],
     ) -> tuple[dict[str, Any], ...]:
         if max_pages <= 0:
             raise ValueError("max_pages must be positive")
@@ -176,7 +173,6 @@ class PolymarketDataClient:
         for _ in range(max_pages):
             page_params = dict(params)
             if cursor is not None:
-                page_params = dict(anchor)
                 page_params["cursor"] = cursor
             payload = await self._registered_get(path, page_params)
             rows.extend(_rows(payload))
