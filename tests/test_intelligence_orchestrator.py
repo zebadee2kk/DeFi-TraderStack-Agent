@@ -11,7 +11,6 @@ from traderstack.intelligence_orchestrator import (
 )
 
 
-
 @pytest.fixture
 def market() -> MarketFeatures:
     return MarketFeatures(
