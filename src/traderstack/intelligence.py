@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -77,6 +78,79 @@ class OnChainRegimeSnapshot(BaseModel):
     window_days: int = Field(gt=0)
     feature_version: str
     source_id: str
+
+
+ObservationType = Literal["onchain", "social", "news", "altfins", "onchain_regime"]
+ObservationScalar = str | int | float | bool | None
+
+
+class IntelligenceObservation(BaseModel):
+    """Bounded provider-native evidence preserved before canonical feature merge."""
+
+    asset: str
+    observed_at: datetime
+    source_id: str
+    observation_type: ObservationType
+    schema_version: str = "1.0"
+    payload: dict[str, ObservationScalar]
+
+
+def normalize_intelligence_snapshot(
+    snapshot: OnChainSnapshot
+    | SocialSnapshot
+    | NewsSnapshot
+    | AltFinsSignalSnapshot
+    | OnChainRegimeSnapshot,
+) -> IntelligenceObservation:
+    """Convert a typed provider snapshot to an allowlisted research payload.
+
+    This deliberately does not accept arbitrary provider JSON or free-form text.
+    Provider adapters must first map external data into one of the bounded snapshot
+    models above.
+    """
+
+    if isinstance(snapshot, OnChainSnapshot):
+        observation_type: ObservationType = "onchain"
+        payload: dict[str, ObservationScalar] = {
+            "exchange_netflow_z": snapshot.exchange_netflow_z,
+            "large_wallet_accumulation": snapshot.large_wallet_accumulation,
+        }
+    elif isinstance(snapshot, SocialSnapshot):
+        observation_type = "social"
+        payload = {
+            "sentiment": snapshot.sentiment,
+            "mention_velocity_z": snapshot.mention_velocity_z,
+        }
+    elif isinstance(snapshot, NewsSnapshot):
+        observation_type = "news"
+        payload = {
+            "event_score": snapshot.event_score,
+            "adverse_event": snapshot.adverse_event,
+            "item_count": snapshot.item_count,
+        }
+    elif isinstance(snapshot, AltFinsSignalSnapshot):
+        observation_type = "altfins"
+        payload = {"score": snapshot.score}
+    else:
+        observation_type = "onchain_regime"
+        payload = {
+            "source_asset": snapshot.source_asset,
+            "as_of": snapshot.as_of.isoformat(),
+            "mvrv_z": snapshot.mvrv_z,
+            "mvrv_z_percentile": snapshot.mvrv_z_percentile,
+            "nupl": snapshot.nupl,
+            "points": snapshot.points,
+            "window_days": snapshot.window_days,
+            "feature_version": snapshot.feature_version,
+        }
+
+    return IntelligenceObservation(
+        asset=snapshot.asset.upper(),
+        observed_at=snapshot.observed_at,
+        source_id=snapshot.source_id,
+        observation_type=observation_type,
+        payload=payload,
+    )
 
 
 def merge_external_intelligence(
