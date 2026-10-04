@@ -13,6 +13,7 @@ from traderstack.signal_warehouse import (
     wallet_observations,
 )
 
+
 def _result(*, with_features: bool = True) -> RuntimeResult:
     vector = (
         AssetFeatureVector(
