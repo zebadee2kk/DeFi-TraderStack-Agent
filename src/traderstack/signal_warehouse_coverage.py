@@ -37,10 +37,8 @@ async def _run(args: argparse.Namespace) -> int:
         observed_at = row["observed_at"]
         bucket = assets.setdefault(asset, {"rows": 0, "first": observed_at, "last": observed_at})
         bucket["rows"] = int(bucket["rows"]) + 1
-        if observed_at < bucket["first"]:
-            bucket["first"] = observed_at
-        if observed_at > bucket["last"]:
-            bucket["last"] = observed_at
+        bucket["first"] = min(bucket["first"], observed_at)
+        bucket["last"] = max(bucket["last"], observed_at)
 
         for source_id in row.get("source_ids", []) or []:
             source = str(source_id)
