@@ -5,8 +5,6 @@ import asyncio
 import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import Any
-
 from traderstack.config import Settings
 from traderstack.signal_warehouse import PostgresSignalWarehouse
 
@@ -61,7 +59,7 @@ def _as_int(value: object) -> int | None:
 def _parse_dt(value: object, fallback: datetime) -> datetime:
     if isinstance(value, str):
         try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(value)
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=UTC)
             return parsed.astimezone(UTC)
