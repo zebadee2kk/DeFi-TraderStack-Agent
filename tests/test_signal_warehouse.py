@@ -14,7 +14,6 @@ from traderstack.signal_warehouse import (
 )
 
 
-
 def _result(*, with_features: bool = True) -> RuntimeResult:
     vector = (
         AssetFeatureVector(
