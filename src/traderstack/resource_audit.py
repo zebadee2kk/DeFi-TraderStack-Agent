@@ -14,10 +14,10 @@ import argparse
 import asyncio
 import json
 import os
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from collections.abc import Iterable
 
 import httpx
 from pydantic import SecretStr
