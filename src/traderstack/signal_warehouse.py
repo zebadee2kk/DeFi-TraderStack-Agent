@@ -115,7 +115,6 @@ class PostgresSignalWarehouse:
             rows = (await connection.execute(statement)).mappings().all()
         return [dict(row) for row in rows]
 
-
     async def append_wallet_observations(self, rows: list[dict[str, object]]) -> None:
         if not rows:
             return
