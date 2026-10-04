@@ -447,6 +447,7 @@ def evaluate_context_grid(
                 ]
                 if (
                     floor_met
+                    and dsr_skip_reason is None
                     and trial_sharpes is not None
                     and len(trial_sharpes) == catalog_trial_count
                 ):
