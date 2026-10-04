@@ -5,6 +5,7 @@ import pytest
 from traderstack.polymarket.data_api import DataPricePoint
 from traderstack.polymarket.wallet_signal_eval import (
     HYPOTHESES,
+    ScoredSignal,
     build_signal_candidates,
     parse_trade_observations,
     score_candidates,
@@ -231,8 +232,6 @@ def test_hypothesis_catalog_is_frozen_to_three_initial_wallet_rules() -> None:
 
 
 def test_summarize_keeps_chronological_holdout_separate() -> None:
-    from traderstack.polymarket.wallet_signal_eval import ScoredSignal
-
     base = datetime(2026, 10, 1, tzinfo=UTC)
     rows = [
         ScoredSignal(
