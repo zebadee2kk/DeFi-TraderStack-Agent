@@ -13,7 +13,6 @@ from traderstack.signal_warehouse import (
     wallet_observations,
 )
 
-
 def _result(*, with_features: bool = True) -> RuntimeResult:
     vector = (
         AssetFeatureVector(
@@ -60,7 +59,6 @@ def _result(*, with_features: bool = True) -> RuntimeResult:
         ],
     )
 
-
 def test_build_feature_rows_preserves_point_in_time_payload() -> None:
     row, providers = build_feature_rows(_result())
     assert row is not None
@@ -70,12 +68,10 @@ def test_build_feature_rows_preserves_point_in_time_payload() -> None:
     assert row["payload"]["observed_at"] == "2026-10-04T10:00:00Z"
     assert [item["source_id"] for item in providers] == ["dune:q1", "crucix:data"]
 
-
 def test_build_feature_rows_skips_rejected_cycle_without_features() -> None:
     row, providers = build_feature_rows(_result(with_features=False))
     assert row is None
     assert providers == []
-
 
 def test_wallet_observation_table_has_point_in_time_provenance_columns() -> None:
     assert set(wallet_observations.c.keys()) == {
@@ -86,7 +82,6 @@ def test_wallet_observation_table_has_point_in_time_provenance_columns() -> None
         "source_id",
         "payload",
     }
-
 
 def test_collector_health_table_has_idempotency_and_provenance_columns() -> None:
     assert set(collector_health.c.keys()) == {
@@ -115,7 +110,6 @@ def test_build_intelligence_rows_is_deterministic_and_provider_native() -> None:
     }
     assert len(str(first[0]["event_key"])) == 64
 
-
 def test_intelligence_observation_table_has_idempotency_and_provenance_columns() -> None:
     assert set(intelligence_observations.c.keys()) == {
         "id",
@@ -127,4 +121,3 @@ def test_intelligence_observation_table_has_idempotency_and_provenance_columns()
         "schema_version",
         "payload",
     }
-
