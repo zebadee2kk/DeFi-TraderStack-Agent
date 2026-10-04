@@ -173,9 +173,7 @@ def _provider_row(
         action = "run collector/probe and prove fresh durable collection"
     else:
         status = (
-            BLOCKED_CREDENTIAL
-            if credential_source != "not_required"
-            else DELIBERATELY_DISABLED
+            BLOCKED_CREDENTIAL if credential_source != "not_required" else DELIBERATELY_DISABLED
         )
         action = action_if_missing
 
@@ -324,8 +322,7 @@ def build_rows(settings: Settings, *, now: datetime | None = None) -> list[Resou
 _PUBLIC_PROBES: dict[str, str] = {
     "Crucix": "/api/data",
     "Coin Metrics": (
-        "/v4/timeseries/asset-metrics"
-        "?assets=btc&metrics=CapMVRVCur&frequency=1d&page_size=1"
+        "/v4/timeseries/asset-metrics?assets=btc&metrics=CapMVRVCur&frequency=1d&page_size=1"
     ),
     "Polymarket crypto tape": "/events?limit=1",
     "Polymarket weather tape": "/events?limit=1",
@@ -360,9 +357,7 @@ async def probe_public(rows: list[ResourceRow], settings: Settings) -> list[Reso
             if path is None or (row.provider == "Crucix" and not row.configured):
                 updated.append(row)
                 continue
-            status, network = await _probe_one(
-                client, bases[row.provider].rstrip("/") + path
-            )
+            status, network = await _probe_one(client, bases[row.provider].rstrip("/") + path)
             values = asdict(row)
             values["network"] = network
             values["auth"] = (
