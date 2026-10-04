@@ -260,3 +260,43 @@ def test_summarize_keeps_chronological_holdout_separate() -> None:
     assert discovery.signals == 3
     assert holdout.signals == 1
     assert holdout.net_pnl_usd == pytest.approx(-0.5)
+
+
+
+@pytest.mark.asyncio
+async def test_paced_price_lookup_caches_and_spaces_unique_requests() -> None:
+    upstream_calls: list[tuple[str, int]] = []
+    sleeps: list[float] = []
+    times = iter((0.0, 0.0, 0.1, 0.1))
+
+    async def upstream(token_id: str, timestamp: int) -> DataPricePoint | None:
+        upstream_calls.append((token_id, timestamp))
+        return DataPricePoint(timestamp=timestamp, price=0.5, resolution_seconds=60)
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    paced = wallet_signal_eval.PacedPriceLookup(
+        lookup=upstream,
+        calls_per_minute=60,
+        sleep=fake_sleep,
+        monotonic=lambda: next(times),
+    )
+
+    first = await paced("token-a", 100)
+    cached = await paced("token-a", 100)
+    second = await paced("token-b", 200)
+
+    assert first == cached
+    assert second is not None
+    assert upstream_calls == [("token-a", 100), ("token-b", 200)]
+    assert sleeps == [pytest.approx(0.9)]
+    assert paced.cached_points == 2
+
+
+def test_paced_price_lookup_refuses_budget_above_provider_ceiling() -> None:
+    async def upstream(_: str, __: int) -> DataPricePoint | None:
+        return None
+
+    with pytest.raises(ValueError, match="between 1 and 120"):
+        wallet_signal_eval.PacedPriceLookup(lookup=upstream, calls_per_minute=121)
