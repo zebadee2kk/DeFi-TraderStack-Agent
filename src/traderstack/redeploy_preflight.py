@@ -24,6 +24,8 @@ STRICT_RESOURCE_NAMES = (
     "Perplexity",
     "altFINS",
     "Crucix",
+    "CoinGecko",
+    "CoinMarketCap",
 )
 
 BASELINE_DISABLED_FLAGS = (
@@ -102,6 +104,7 @@ def resource_checks(
     rows: list[ResourceRow],
     *,
     strict_resources: bool,
+    require_active_resources: bool = False,
 ) -> list[PreflightCheck]:
     by_name = {row.provider: row for row in rows}
     checks: list[PreflightCheck] = []
@@ -122,20 +125,19 @@ def resource_checks(
     for name in STRICT_RESOURCE_NAMES:
         row = by_name.get(name)
         configured = row is not None and row.configured
-        active_or_configured = configured and (
-            row.status not in {BLOCKED_CREDENTIAL}
-        )
+        active_or_configured = configured and row.status not in {BLOCKED_CREDENTIAL}
+        ready = row is not None and row.status == ACTIVE if require_active_resources else active_or_configured
         checks.append(
             PreflightCheck(
                 name=f"resource:{name}",
-                ok=active_or_configured if strict_resources else True,
+                ok=ready if strict_resources or require_active_resources else True,
                 detail=(
                     f"{row.status}; configured={row.configured}; "
                     f"credential_source={row.credential_source}; network={row.network}"
                     if row is not None
                     else "resource row missing"
                 ),
-                blocking=strict_resources,
+                blocking=strict_resources or require_active_resources,
             )
         )
     return checks
@@ -178,6 +180,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--require-active-resources",
+        action="store_true",
+        help=(
+            "post-start gate: require every strict resource to have ACTIVE health "
+            "evidence, not merely configuration"
+        ),
+    )
+    parser.add_argument(
         "--skip-network",
         action="store_true",
         help="skip read-only public endpoint probes",
@@ -193,19 +203,27 @@ async def _run(args: argparse.Namespace) -> int:
     rows = apply_journal_health(build_rows(settings))
     if not args.skip_network:
         rows = await probe_public(rows, settings)
-    checks.extend(resource_checks(rows, strict_resources=args.strict_resources))
+    strict_resources = bool(args.strict_resources or args.require_active_resources)
+    checks.extend(
+        resource_checks(
+            rows,
+            strict_resources=strict_resources,
+            require_active_resources=bool(args.require_active_resources),
+        )
+    )
     checks.append(await database_check(settings))
 
     ready = all(check.ok or not check.blocking for check in checks)
     payload = {
         "ready": ready,
         "mode": "bootstrap",
-        "strict_resources": bool(args.strict_resources),
+        "strict_resources": strict_resources,
+        "require_active_resources": bool(args.require_active_resources),
         "checks": [asdict(check) for check in checks],
         "operator_actions": [
             row.action
             for row in rows
-            if args.strict_resources
+            if strict_resources
             and row.provider in STRICT_RESOURCE_NAMES
             and not row.configured
         ],
