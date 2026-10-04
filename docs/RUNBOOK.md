@@ -2942,3 +2942,30 @@ traderstack-signal-export \
 The first JSONL record is a manifest containing the canonical query and its SHA-256 query hash; subsequent records are the selected feature snapshots in ascending observation-time order. This is the supported handoff into governed pattern discovery (#57).
 
 Use `traderstack-signal-coverage` for a machine-readable summary of stored rows by asset and source ID, including first/last observation timestamps.
+
+
+## Polymarket wallet intelligence snapshot (#193)
+
+`traderstack-polymarket-wallet-snapshot` performs a bounded, read-only public Data API collection into the #192 PostgreSQL warehouse.
+
+Example:
+
+```bash
+traderstack-polymarket-wallet-snapshot \
+  --category CRYPTO \
+  --time-period MONTH \
+  --limit 10 \
+  --max-pages 2
+```
+
+For each wallet discovered from the point-in-time leaderboard cohort, the collector stores separate observations for:
+
+- leaderboard row/rank context;
+- user stats;
+- cumulative PnL series;
+- portfolio value;
+- open positions;
+- closed positions;
+- trade history pages.
+
+The collector has no signing/order method and no execution output. Endpoint failures are stored as typed collection-error observations so missing data is never treated as zero. The first slice intentionally does **not** generate copy-trading recommendations; later #193 research must reconstruct historical cohort membership and test follow/fade/lead-lag hypotheses net of fees, spread and copy delay.
