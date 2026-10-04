@@ -49,14 +49,22 @@ docker compose ps
 
 Wait for PostgreSQL to be healthy.
 
-## 4. Run strict resource/deployment preflight
+## 4. Run safe bootstrap preflight and resource audit
 
 ```bash
-.venv/bin/traderstack-redeploy-preflight --strict-resources --host-published-services
+.venv/bin/traderstack-redeploy-preflight --host-published-services
 .venv/bin/traderstack-resource-audit --probe-public
 ```
 
-The strict preflight deliberately blocks when any intended resource is missing.
+The bootstrap preflight is the rebuild gate: paper mode, kill switch, promotion/diagnostic flags, public Polymarket reachability, and the warehouse must be safe/available.
+
+Then record the stricter resource-completeness result:
+
+```bash
+.venv/bin/traderstack-redeploy-preflight --strict-resources --host-published-services
+```
+
+A strict-resource failure caused only by missing optional/keyed intelligence credentials is an **activation/readiness blocker**, not a reason to keep running an obsolete app image. The app may still be rebuilt with `KILL_SWITCH=true` so public/available collectors and health evidence can run. Do not declare the deployment resource-complete and do not disengage the kill switch until the strict gate passes.
 
 The current programme expects explicit operator decisions/configuration for:
 
@@ -71,7 +79,7 @@ The current programme expects explicit operator decisions/configuration for:
 
 Polymarket Data API v2 is public/no-key and must be reachable.
 
-If a paid/keyed resource is unavailable, **stop and report the exact variable/resource name**. Do not generate a key, commit a secret, silently substitute another provider, or weaken the strict preflight.
+If a paid/keyed resource is unavailable, report the exact variable/resource name and keep it as an activation blocker. Do not generate a key, commit a secret, silently substitute another provider, weaken the strict preflight, or disengage the kill switch. Continue safe rebuild/collection steps that do not require that credential.
 
 ## 5. Initialize/verify the intelligence warehouse
 
