@@ -10,7 +10,6 @@ from traderstack.intelligence_orchestrator import (
     IntelligenceOrchestrator,
 )
 
-
 @pytest.fixture
 def market() -> MarketFeatures:
     return MarketFeatures(
@@ -20,7 +19,6 @@ def market() -> MarketFeatures:
         relative_volume=1.2,
         spread_bps=3.0,
     )
-
 
 @pytest.mark.asyncio
 async def test_orchestrator_merges_and_caches_external_features(market: MarketFeatures) -> None:
@@ -70,7 +68,6 @@ async def test_orchestrator_merges_and_caches_external_features(market: MarketFe
     assert second.source_ids == first.source_ids
     assert calls == {"onchain": 1, "social": 1, "news": 1}
 
-
 @pytest.mark.asyncio
 async def test_orchestrator_combines_news_and_isolates_provider_failure(
     market: MarketFeatures,
@@ -94,7 +91,6 @@ async def test_orchestrator_combines_news_and_isolates_provider_failure(
     assert vector.news.adverse_event is True
     assert vector.source_ids == ["perplexity:test"]
 
-
 @pytest.mark.asyncio
 async def test_orchestrator_can_require_external_evidence(market: MarketFeatures) -> None:
     async def broken(asset: str) -> NewsSnapshot:
@@ -103,7 +99,6 @@ async def test_orchestrator_can_require_external_evidence(market: MarketFeatures
     orchestrator = IntelligenceOrchestrator(news=(broken,), require_any_external=True)
     with pytest.raises(RuntimeError, match="all external intelligence providers unavailable"):
         await orchestrator.build("SOL", market)
-
 
 @pytest.mark.asyncio
 async def test_fail_closed_news_outage_marks_provider_unavailable(
@@ -120,7 +115,6 @@ async def test_fail_closed_news_outage_marks_provider_unavailable(
     vector = await orchestrator.build("BTC", market)
     assert vector.news.adverse_event is False
     assert PROVIDER_UNAVAILABLE_REASON == "intelligence_provider_unavailable"
-
 
 @pytest.mark.asyncio
 async def test_fail_closed_news_outage_still_merges_optional_news(
@@ -146,7 +140,6 @@ async def test_fail_closed_news_outage_still_merges_optional_news(
     assert bundle.news.source_id == "cryptopanic:test"
     assert bundle.news.adverse_event is False
 
-
 @pytest.mark.asyncio
 async def test_optional_news_outage_does_not_mark_fail_closed() -> None:
     async def broken(asset: str) -> NewsSnapshot:
@@ -167,7 +160,6 @@ async def test_optional_news_outage_does_not_mark_fail_closed() -> None:
     assert bundle.provider_unavailable is False
     assert bundle.news is not None
     assert bundle.news.source_id == "crucix:alerts"
-
 
 @pytest.mark.asyncio
 async def test_fail_closed_outage_is_not_cached() -> None:
@@ -194,7 +186,6 @@ async def test_fail_closed_outage_is_not_cached() -> None:
     assert second.provider_unavailable is False
     assert second.news is not None
     assert calls["n"] == 2
-
 
 @pytest.mark.asyncio
 async def test_require_any_external_returns_unavailable_instead_of_raising() -> None:
@@ -255,4 +246,3 @@ async def test_orchestrator_retains_individual_news_observations_across_cache() 
     ]
     assert second.observations == first.observations
     assert calls == {"a": 1, "b": 1}
-
