@@ -1,3 +1,4 @@
+# ruff: noqa: I001  # Keep resource_audit module-qualified in this operator boundary.
 from __future__ import annotations
 
 import argparse
