@@ -80,17 +80,14 @@ def test_jsonl_evidence_counts_point_in_time_rows(tmp_path: Path) -> None:
     assert stale == "no"
 
 
-def test_dotenv_source_is_reported_without_secret_value(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_dotenv_source_is_reported_without_secret_value(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text(
         "LUNARCRUSH_API_KEY=secret-from-file\n",
         encoding="utf-8",
     )
     rows = {
-        row.provider: row
-        for row in build_rows(_settings(lunarcrush_api_key="secret-from-file"))
+        row.provider: row for row in build_rows(_settings(lunarcrush_api_key="secret-from-file"))
     }
     lunar = rows["LunarCrush"]
     assert lunar.credential_source == ".env"
