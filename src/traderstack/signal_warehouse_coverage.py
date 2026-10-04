@@ -16,6 +16,13 @@ class CoverageBucket(TypedDict):
     last: datetime
 
 
+class HealthCoverageBucket(TypedDict):
+    rows: int
+    first: datetime
+    last: datetime
+    latest_state: str
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Report signal-warehouse feature coverage.")
     parser.add_argument("--asset")
@@ -60,7 +67,7 @@ async def _run(args: argparse.Namespace) -> int:
             source = str(source_id)
             sources[source] = sources.get(source, 0) + 1
 
-    provider_health: dict[str, dict[str, object]] = {}
+    provider_health: dict[str, HealthCoverageBucket] = {}
     for row in health_rows:
         provider = str(row["provider"])
         observed_at = row["observed_at"]
@@ -76,7 +83,7 @@ async def _run(args: argparse.Namespace) -> int:
                 "latest_state": state,
             },
         )
-        bucket["rows"] = int(bucket["rows"]) + 1
+        bucket["rows"] += 1
         bucket["first"] = min(bucket["first"], observed_at)
         if observed_at >= bucket["last"]:
             bucket["last"] = observed_at
@@ -84,10 +91,10 @@ async def _run(args: argparse.Namespace) -> int:
 
     serializable_health = {
         provider: {
-            "rows": int(bucket["rows"]),
+            "rows": bucket["rows"],
             "first": bucket["first"].isoformat(),
             "last": bucket["last"].isoformat(),
-            "latest_state": str(bucket["latest_state"]),
+            "latest_state": bucket["latest_state"],
         }
         for provider, bucket in provider_health.items()
     }
