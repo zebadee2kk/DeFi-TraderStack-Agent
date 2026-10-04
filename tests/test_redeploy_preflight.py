@@ -75,8 +75,7 @@ def test_strict_resources_fail_when_keyed_source_missing() -> None:
 def test_non_strict_resources_report_missing_without_blocking() -> None:
     rows = [row("Polymarket Data API", configured=True, status="ACTIVE")]
     rows.extend(
-        row(name, configured=False, status=BLOCKED_CREDENTIAL)
-        for name in STRICT_RESOURCE_NAMES
+        row(name, configured=False, status=BLOCKED_CREDENTIAL) for name in STRICT_RESOURCE_NAMES
     )
     checks = resource_checks(rows, strict_resources=False)
     assert all(check.ok or not check.blocking for check in checks)
@@ -94,8 +93,7 @@ def test_strict_resources_accept_configured_not_yet_proven_sources() -> None:
 def test_require_active_resources_rejects_configured_unproven() -> None:
     rows = [row("Polymarket Data API", configured=True, status="ACTIVE")]
     rows.extend(
-        row(name, configured=True, status=IMPLEMENTED_NOT_PROVEN)
-        for name in STRICT_RESOURCE_NAMES
+        row(name, configured=True, status=IMPLEMENTED_NOT_PROVEN) for name in STRICT_RESOURCE_NAMES
     )
     checks = resource_checks(
         rows,
