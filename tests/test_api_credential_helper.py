@@ -124,7 +124,6 @@ def test_main_initializes_missing_env_from_example(
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
 
 
-
 def test_optional_reference_keys_do_not_count_as_missing() -> None:
     values = {key: "set" for key in helper.REQUIRED_KEYS}
     assert helper._missing_keys(values) == []
