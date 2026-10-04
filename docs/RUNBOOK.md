@@ -2942,7 +2942,20 @@ traderstack-signal-export \
 
 The first JSONL record is a manifest containing the canonical query and its SHA-256 query hash; subsequent records are the selected feature snapshots in ascending observation-time order. This is the supported handoff into governed pattern discovery (#57).
 
-Use `traderstack-signal-coverage` for a machine-readable summary of stored rows by asset and source ID, including first/last observation timestamps.
+Export the provider-native normalized evidence separately when research needs source-specific observations:
+
+```bash
+traderstack-signal-export \
+  --dataset intelligence \
+  --asset BTC \
+  --start 2026-10-01T00:00:00Z \
+  --end 2026-10-31T23:59:59Z \
+  --output var/research/btc-intelligence-october.jsonl
+```
+
+The intelligence dataset has its own query-hash namespace. The default feature export keeps the original query-hash contract.
+
+Use `traderstack-signal-coverage` for a machine-readable summary of stored rows by asset and source ID, including first/last observation timestamps. Its `intelligence_sources` section reports provider-native row counts, first/last timestamps and observation types separately from canonical feature-vector source IDs.
 
 
 ## Polymarket wallet intelligence snapshot (#193)
