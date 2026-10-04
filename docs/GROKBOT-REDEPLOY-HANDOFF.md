@@ -66,6 +66,29 @@ Then record the stricter resource-completeness result:
 
 A strict-resource failure caused only by missing optional/keyed intelligence credentials is an **activation/readiness blocker**, not a reason to keep running an obsolete app image. The app may still be rebuilt with `KILL_SWITCH=true` so public/available collectors and health evidence can run. Do not declare the deployment resource-complete and do not disengage the kill switch until the strict gate passes.
 
+Before treating missing credentials as a manual file-edit task, run the WSL helper:
+
+```bash
+make configure-api-credentials
+```
+
+or directly:
+
+```bash
+python3 ops/configure-api-credentials.py
+```
+
+The helper:
+- prompts only for missing managed credentials by default;
+- hides secret input from the terminal;
+- never accepts secret values on the command line;
+- preserves unrelated `.env` settings;
+- sets `.env` mode to `0600`;
+- manages `DUNE_API_KEY`, `DUNE_QUERY_IDS`, `LUNARCRUSH_API_KEY`, `CRYPTOPANIC_API_KEY`, `PERPLEXITY_API_KEY`, `ALTFINS_API_KEY`, `COINGECKO_API_KEY`, and `COINMARKETCAP_API_KEY`;
+- does not modify Crucix or trading/risk settings.
+
+Use `python3 ops/configure-api-credentials.py --status` to show only SET/MISSING state without printing values. Use `--all` only when intentionally rotating an existing key.
+
 The current programme expects explicit operator decisions/configuration for:
 
 - Dune;
