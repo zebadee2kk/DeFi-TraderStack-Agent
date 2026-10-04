@@ -18,6 +18,9 @@ STRICT_RESOURCE_NAMES = (
     "Perplexity",
     "altFINS",
     "Crucix",
+)
+
+ACTIVE_RESOURCE_NAMES = STRICT_RESOURCE_NAMES + (
     "CoinGecko",
     "CoinMarketCap",
 )
@@ -128,7 +131,8 @@ def resource_checks(
         )
     )
 
-    for name in STRICT_RESOURCE_NAMES:
+    names = ACTIVE_RESOURCE_NAMES if require_active_resources else STRICT_RESOURCE_NAMES
+    for name in names:
         row = by_name.get(name)
         active_or_configured = (
             row is not None and row.configured and row.status != resource_audit.BLOCKED_CREDENTIAL
