@@ -100,3 +100,24 @@ def test_prompt_values_skips_existing_keys_in_missing_only_mode(
 
     assert replacements == {}
     assert set(skipped) == set(helper.ALL_KEYS)
+
+
+
+def test_main_initializes_missing_env_from_example(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env = tmp_path / ".env"
+    example = tmp_path / ".env.example"
+    example.write_text("TRADING_MODE=paper\nKILL_SWITCH=true\n", encoding="utf-8")
+    monkeypatch.setattr(
+        helper,
+        "prompt_values",
+        lambda current, only_missing: ({}, tuple(helper.ALL_KEYS)),
+    )
+
+    assert helper.main(["--env-file", str(env)]) == 0
+    text = env.read_text(encoding="utf-8")
+    assert "TRADING_MODE=paper" in text
+    assert "KILL_SWITCH=true" in text
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
