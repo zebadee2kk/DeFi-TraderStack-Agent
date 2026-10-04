@@ -140,6 +140,7 @@ class ProviderRegistry:
     # leave it at 0 — an unanswered reference stays unanswered.
     last_good_ttl_seconds: float = 0.0
     clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))
+    health_recorder: Callable[[ProviderHealthReport], None] | None = None
 
     _state: BreakerState = field(init=False, default=BreakerState.CLOSED)
     _consecutive_failures: int = field(init=False, default=0)
@@ -246,6 +247,7 @@ class ProviderRegistry:
             self._state = BreakerState.OPEN
             self._opened_at = self._now()
         provider_breaker_state.labels(provider=self.name).set(_STATE_VALUE[self._state])
+        self._emit_health()
 
     def _record_success(self, latency_seconds: float) -> None:
         self._consecutive_failures = 0
@@ -256,6 +258,15 @@ class ProviderRegistry:
         provider_calls_total.labels(provider=self.name, outcome="success").inc()
         provider_last_latency_seconds.labels(provider=self.name).set(latency_seconds)
         provider_breaker_state.labels(provider=self.name).set(_STATE_VALUE[self._state])
+        self._emit_health()
+
+    def _emit_health(self) -> None:
+        if self.health_recorder is None:
+            return
+        try:
+            self.health_recorder(self.health())
+        except Exception:  # noqa: BLE001 - monitoring must never break provider calls.
+            return
 
     def _cache_get(self, key: Hashable, now: datetime) -> Any:
         entry = self._cache.get(key)

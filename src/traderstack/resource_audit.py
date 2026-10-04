@@ -24,6 +24,10 @@ from pydantic import SecretStr
 
 from traderstack.config import Settings
 from traderstack.market.crucix import crucix_effective_base_url, crucix_should_register
+from traderstack.provider_health_journal import (
+    DEFAULT_PROVIDER_HEALTH_PATH,
+    load_latest_provider_health,
+)
 
 ACTIVE = "ACTIVE"
 DELIBERATELY_DISABLED = "DELIBERATELY_DISABLED"
@@ -371,6 +375,59 @@ async def probe_public(rows: list[ResourceRow], settings: Settings) -> list[Reso
     return updated
 
 
+_JOURNAL_PROVIDER_NAMES: dict[str, str] = {
+    "Dune": "dune",
+    "LunarCrush": "lunarcrush",
+    "CryptoPanic": "cryptopanic",
+    "Perplexity": "perplexity",
+    "altFINS": "altfins",
+    "Crucix": "crucix",
+    "CoinGecko": "coingecko",
+    "CoinMarketCap": "coinmarketcap",
+    "Coin Metrics": "coinmetrics",
+}
+
+
+def apply_journal_health(
+    rows: list[ResourceRow],
+    *,
+    path: Path = DEFAULT_PROVIDER_HEALTH_PATH,
+    now: datetime | None = None,
+) -> list[ResourceRow]:
+    now = now or datetime.now(UTC)
+    latest = load_latest_provider_health(path)
+    updated: list[ResourceRow] = []
+
+    for row in rows:
+        registry_name = _JOURNAL_PROVIDER_NAMES.get(row.provider)
+        event = latest.get(registry_name) if registry_name is not None else None
+        if event is None:
+            updated.append(row)
+            continue
+
+        values = asdict(row)
+        if event.last_success_at is not None:
+            values["last_success"] = event.last_success_at.isoformat()
+            age = now - event.last_success_at.astimezone(UTC)
+            values["stale"] = "yes" if age > timedelta(days=7) else "no"
+
+        if event.state == "open":
+            values["status"] = BLOCKED_NETWORK
+            values["network"] = "breaker_open"
+            values["action"] = (
+                "provider circuit is open; inspect latest provider error and upstream reachability"
+            )
+        elif event.last_success_at is not None and (
+            now - event.last_success_at.astimezone(UTC)
+        ) <= timedelta(days=7):
+            values["status"] = ACTIVE
+            values["network"] = "recent_success"
+            values["auth"] = "validated_by_success"
+
+        updated.append(ResourceRow(**values))
+    return updated
+
+
 def render_table(rows: list[ResourceRow]) -> str:
     headers = (
         "provider",
@@ -441,7 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     settings = Settings()
-    rows = build_rows(settings)
+    rows = apply_journal_health(build_rows(settings))
     if args.probe_public:
         rows = asyncio.run(probe_public(rows, settings))
     if args.json:

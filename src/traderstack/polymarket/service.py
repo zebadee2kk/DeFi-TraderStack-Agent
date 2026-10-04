@@ -29,6 +29,10 @@ from traderstack.polymarket.models import (
     ParsedTemperatureMarket,
 )
 from traderstack.polymarket.parse import parse_temperature_market
+from traderstack.provider_health_journal import (
+    DEFAULT_PROVIDER_HEALTH_PATH,
+    ProviderHealthJournal,
+)
 
 
 @dataclass
@@ -123,6 +127,7 @@ def _build_registries(settings: Settings) -> dict[str, ProviderRegistry]:
             cooldown_seconds=settings.provider_breaker_cooldown_seconds,
             calls_per_minute=quota,
             cache_ttl_seconds=ttl,
+            health_recorder=ProviderHealthJournal(DEFAULT_PROVIDER_HEALTH_PATH).record,
         )
         for name in names
     }

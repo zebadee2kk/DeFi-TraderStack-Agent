@@ -50,6 +50,10 @@ from traderstack.polymarket.crypto_threshold import (
 from traderstack.polymarket.gamma import GammaClient
 from traderstack.polymarket.option_implied import implied_digital_probability
 from traderstack.polymarket.service import require_paper_trading_mode
+from traderstack.provider_health_journal import (
+    DEFAULT_PROVIDER_HEALTH_PATH,
+    ProviderHealthJournal,
+)
 
 _REGISTRY_NAMES = ("polymarket_gamma", "polymarket_clob", "deribit", "crucix")
 
@@ -149,6 +153,7 @@ def _build_registries(settings: Settings) -> dict[str, ProviderRegistry]:
             cooldown_seconds=settings.provider_breaker_cooldown_seconds,
             calls_per_minute=settings.polymarket_crypto_calls_per_minute,
             cache_ttl_seconds=settings.polymarket_crypto_cache_seconds,
+            health_recorder=ProviderHealthJournal(DEFAULT_PROVIDER_HEALTH_PATH).record,
         )
         for name in _REGISTRY_NAMES
     }
