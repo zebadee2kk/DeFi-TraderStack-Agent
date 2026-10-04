@@ -14,7 +14,6 @@ def test_wallet_from_leaderboard_row_accepts_current_field_spellings() -> None:
     )
 
 
-
 @pytest.mark.asyncio
 async def test_leaderboard_uses_v2_without_retired_offset() -> None:
     wallet = "0x" + "56" * 20
