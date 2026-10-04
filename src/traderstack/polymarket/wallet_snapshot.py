@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from dataclasses import dataclass
+from collections.abc import Awaitable
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -83,7 +84,7 @@ async def collect_wallet_snapshot(
         async def capture(
             observation_type: str,
             source_id: str,
-            fetch: Any,
+            fetch: Awaitable[Any],
         ) -> None:
             nonlocal errors
             try:
@@ -190,7 +191,7 @@ async def _run(args: argparse.Namespace) -> int:
     finally:
         await warehouse.close()
 
-    print(json.dumps(summary.__dict__, sort_keys=True))
+    print(json.dumps(asdict(summary), sort_keys=True))
     return 0
 
 
