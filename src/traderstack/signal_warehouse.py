@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 import hashlib
 import json
+from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Integer, MetaData, String, Table, insert, select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -192,7 +192,8 @@ class PostgresSignalWarehouse:
     ) -> int:
         if not rows:
             return 0
-        keys = [str(row["event_key"]) for row in rows]
+        by_key = {str(row["event_key"]): row for row in rows}
+        keys = list(by_key)
         async with self._engine().begin() as connection:
             existing = set(
                 (
@@ -203,7 +204,7 @@ class PostgresSignalWarehouse:
                     )
                 ).scalars()
             )
-            fresh = [row for row in rows if str(row["event_key"]) not in existing]
+            fresh = [row for key, row in by_key.items() if key not in existing]
             if fresh:
                 await connection.execute(insert(intelligence_observations).values(fresh))
         return len(fresh)
