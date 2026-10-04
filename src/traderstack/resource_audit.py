@@ -17,7 +17,7 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 import httpx
 from pydantic import SecretStr
@@ -203,11 +203,10 @@ def build_rows(settings: Settings, *, now: datetime | None = None) -> list[Resou
     def source(*names: str) -> str:
         return _credential_source(names, dotenv_keys=dotenv_keys)
 
-    crucix_key = (
-        settings.crucix_api_key.get_secret_value().strip()
-        if _secret_present(settings.crucix_api_key)
-        else None
-    )
+    crucix_key = None
+    if settings.crucix_api_key is not None:
+        candidate = settings.crucix_api_key.get_secret_value().strip()
+        crucix_key = candidate or None
     crucix_on = crucix_should_register(
         enabled=settings.crucix_enabled,
         base_url=settings.crucix_base_url,
@@ -368,7 +367,7 @@ async def probe_public(rows: list[ResourceRow], settings: Settings) -> list[Reso
             values["network"] = network
             values["auth"] = (
                 "not_required"
-                if network.startswith("http_2") or network.startswith("http_3")
+                if network.startswith(("http_2", "http_3"))
                 else row.auth
             )
             if row.configured or row.provider == "Coin Metrics":
