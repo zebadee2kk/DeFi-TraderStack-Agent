@@ -18,7 +18,7 @@ from traderstack.market.registry import ProviderRegistry
 
 _ALLOWED_PATHS = frozenset(
     {
-        "/v1/leaderboard",
+        "/v2/leaderboard",
         "/v2/positions",
         "/v2/user-pnl",
         "/v2/user-stats",
@@ -98,9 +98,8 @@ class PolymarketDataClient:
             "timePeriod": time_period.upper(),
             "orderBy": order_by.upper(),
             "limit": str(max(1, min(limit, 50))),
-            "offset": "0",
         }
-        return _rows(await self._registered_get("/v1/leaderboard", params))
+        return _rows(await self._registered_get("/v2/leaderboard", params))
 
     async def user_stats(self, wallet: str) -> dict[str, Any] | None:
         payload = await self._registered_get("/v2/user-stats", {"user": wallet})
