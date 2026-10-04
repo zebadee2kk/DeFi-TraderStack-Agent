@@ -77,8 +77,7 @@ async def _run(args: argparse.Namespace) -> int:
             },
         )
         bucket["rows"] = int(bucket["rows"]) + 1
-        if observed_at < bucket["first"]:
-            bucket["first"] = observed_at
+        bucket["first"] = min(bucket["first"], observed_at)
         if observed_at >= bucket["last"]:
             bucket["last"] = observed_at
             bucket["latest_state"] = state
