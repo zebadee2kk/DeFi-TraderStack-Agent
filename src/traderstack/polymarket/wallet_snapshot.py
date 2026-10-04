@@ -82,63 +82,79 @@ async def collect_wallet_snapshot(
         ]
 
         async def capture(
+            *,
+            target_wallet: str,
+            target_batch: list[dict[str, object]],
             observation_type: str,
             source_id: str,
             fetch: Awaitable[Any],
-        ) -> None:
-            nonlocal errors
+        ) -> bool:
             try:
                 payload = await fetch
             except Exception as exc:  # noqa: BLE001 - preserve the cohort even if one endpoint fails.
-                errors += 1
-                batch.append(
+                target_batch.append(
                     _observation(
-                        wallet=wallet,
+                        wallet=target_wallet,
                         observation_type=f"{observation_type}_error",
                         source_id=source_id,
                         payload={"error_type": type(exc).__name__},
                     )
                 )
-                return
-            batch.append(
+                return False
+            target_batch.append(
                 _observation(
-                    wallet=wallet,
+                    wallet=target_wallet,
                     observation_type=observation_type,
                     source_id=source_id,
                     payload=payload,
                 )
             )
+            return True
 
-        await capture(
-            "user_stats",
-            "polymarket:data-api:/v2/user-stats",
-            client.user_stats(wallet),
+        if not await capture(
+            target_wallet=wallet,
+            target_batch=batch,
+            observation_type="user_stats",
+            source_id="polymarket:data-api:/v2/user-stats",
+            fetch=client.user_stats(wallet),
+        ):
+            errors += 1
+        if not await capture(
+            target_wallet=wallet,
+            target_batch=batch,
+            observation_type="user_pnl",
+            source_id="polymarket:data-api:/v2/user-pnl",
+            fetch=client.user_pnl(wallet),
         )
-        await capture(
-            "user_pnl",
-            "polymarket:data-api:/v2/user-pnl",
-            client.user_pnl(wallet),
+        if not await capture(
+            target_wallet=wallet,
+            target_batch=batch,
+            observation_type="portfolio_value",
+            source_id="polymarket:data-api:/v2/value",
+            fetch=client.value(wallet),
         )
-        await capture(
-            "portfolio_value",
-            "polymarket:data-api:/v2/value",
-            client.value(wallet),
+        if not await capture(
+            target_wallet=wallet,
+            target_batch=batch,
+            observation_type="positions_open",
+            source_id="polymarket:data-api:/v2/positions?status=OPEN",
+            fetch=client.positions(wallet, status="OPEN", max_pages=max_pages),
         )
-        await capture(
-            "positions_open",
-            "polymarket:data-api:/v2/positions?status=OPEN",
-            client.positions(wallet, status="OPEN", max_pages=max_pages),
+        if not await capture(
+            target_wallet=wallet,
+            target_batch=batch,
+            observation_type="positions_closed",
+            source_id="polymarket:data-api:/v2/positions?status=CLOSED",
+            fetch=client.positions(wallet, status="CLOSED", max_pages=max_pages),
         )
-        await capture(
-            "positions_closed",
-            "polymarket:data-api:/v2/positions?status=CLOSED",
-            client.positions(wallet, status="CLOSED", max_pages=max_pages),
-        )
-        await capture(
-            "trades",
-            "polymarket:data-api:/v2/trades",
-            client.trades(wallet, max_pages=max_pages),
-        )
+        if not await capture(
+            target_wallet=wallet,
+            target_batch=batch,
+            observation_type="trades",
+            source_id="polymarket:data-api:/v2/trades",
+            fetch=client.trades(wallet, max_pages=max_pages),
+        ):
+            errors += 1
 
         await warehouse.append_wallet_observations(batch)
         written += len(batch)
