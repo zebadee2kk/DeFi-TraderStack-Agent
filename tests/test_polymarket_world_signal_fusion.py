@@ -8,7 +8,9 @@ from traderstack.polymarket.wallet_signal_eval import SignalCandidate, WalletTra
 from traderstack.polymarket.world_signal_fusion import fuse_signal_context
 
 
-def _candidate(*, signal_at: datetime, title: str = "Will Bitcoin be above $100k?") -> SignalCandidate:
+def _candidate(
+    *, signal_at: datetime, title: str = "Will Bitcoin be above $100k?"
+) -> SignalCandidate:
     trade = WalletTrade(
         wallet="0x" + "1" * 40,
         trade_at=signal_at,
@@ -68,8 +70,8 @@ def test_fusion_uses_latest_point_in_time_matching_asset_and_global_context() ->
     assert len(fused) == 1
     context = fused[0].provider_context
     assert [(item.source_id, item.asset) for item in context] == [
-        ("cryptopanic", "GLOBAL"),
         ("crucix", "BTC"),
+        ("cryptopanic", "GLOBAL"),
     ]
     crucix = next(item for item in context if item.source_id == "crucix")
     assert crucix.payload["version"] == 2
