@@ -9,7 +9,9 @@ from traderstack.polymarket.data_api import PolymarketDataClient, wallet_from_le
 def test_wallet_from_leaderboard_row_accepts_current_field_spellings() -> None:
     wallet = "0x" + "ab" * 20
     assert wallet_from_leaderboard_row({"proxyWallet": wallet}) == wallet
-    assert wallet_from_leaderboard_row({"proxy_wallet": wallet.upper().replace("0X", "0x")}) == wallet
+    assert (
+        wallet_from_leaderboard_row({"proxy_wallet": wallet.upper().replace("0X", "0x")}) == wallet
+    )
 
 
 @pytest.mark.asyncio
