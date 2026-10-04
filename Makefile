@@ -1,4 +1,4 @@
-.PHONY: setup lint typecheck test check run-paper run-shadow run-observability check-config docker-build soak-ci soak-24h
+.PHONY: setup lint typecheck test check run-paper run-shadow run-observability check-config redeploy-preflight docker-build soak-ci soak-24h
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -23,6 +23,9 @@ check: lint typecheck test
 
 check-config:
 	$(VENV)/bin/traderstack-check-config
+
+redeploy-preflight:
+	$(VENV)/bin/traderstack-redeploy-preflight --strict-resources
 
 run-paper:
 	$(VENV)/bin/traderstack-paper --persistent-events \
