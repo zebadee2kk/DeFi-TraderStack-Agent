@@ -42,6 +42,18 @@ def _bool_setting(settings: Settings, name: str) -> bool:
     return bool(getattr(settings, name, False))
 
 
+def host_published_settings(settings: Settings) -> Settings:
+    """Translate compose service DNS names to host-published loopback endpoints."""
+    database_url = settings.database_url.replace("@postgres:", "@127.0.0.1:")
+    redis_url = settings.redis_url.replace("://redis:", "://127.0.0.1:")
+    return settings.model_copy(
+        update={
+            "database_url": database_url,
+            "redis_url": redis_url,
+        }
+    )
+
+
 def build_static_checks(settings: Settings) -> list[PreflightCheck]:
     checks = [
         PreflightCheck(
@@ -187,6 +199,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--host-published-services",
+        action="store_true",
+        help=(
+            "run from the Docker host: translate compose DNS names postgres/redis "
+            "to their 127.0.0.1 published endpoints"
+        ),
+    )
+    parser.add_argument(
         "--skip-network",
         action="store_true",
         help="skip read-only public endpoint probes",
@@ -197,6 +217,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 async def _run(args: argparse.Namespace) -> int:
     settings = Settings()
+    if args.host_published_services:
+        settings = host_published_settings(settings)
     checks = build_static_checks(settings)
 
     rows = resource_audit.apply_journal_health(resource_audit.build_rows(settings))
@@ -228,6 +250,7 @@ async def _run(args: argparse.Namespace) -> int:
         "mode": "bootstrap",
         "strict_resources": strict_resources,
         "require_active_resources": bool(args.require_active_resources),
+        "host_published_services": bool(args.host_published_services),
         "checks": [asdict(check) for check in checks],
         "operator_actions": operator_actions,
         "safety": {

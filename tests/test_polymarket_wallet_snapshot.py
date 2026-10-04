@@ -10,8 +10,8 @@ from traderstack.polymarket.wallet_snapshot import collect_wallet_snapshot
 class FakeClient:
     async def leaderboard(self, **_: Any) -> tuple[dict[str, Any], ...]:
         return (
-            {"rank": 1, "proxyWallet": "0x" + "11" * 20, "pnl": 100},
-            {"rank": 2, "proxyWallet": "0x" + "22" * 20, "pnl": 50},
+            {"rank": 1, "user_id": "0x" + "11" * 20, "pnl": 100},
+            {"rank": 2, "user_id": "0x" + "22" * 20, "pnl": 50},
         )
 
     async def user_stats(self, wallet: str) -> dict[str, Any]:

@@ -70,7 +70,7 @@ class DataPricePoint:
 
 
 def wallet_from_leaderboard_row(row: dict[str, Any]) -> str | None:
-    for key in ("proxy_wallet", "proxyWallet", "address"):
+    for key in ("user_id", "proxy_wallet", "proxyWallet", "address"):
         value = row.get(key)
         if isinstance(value, str) and value.startswith("0x") and len(value) == 42:
             return value.lower()
