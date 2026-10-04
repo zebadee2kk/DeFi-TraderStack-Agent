@@ -176,6 +176,7 @@ traderstack-signal-health-import = "traderstack.signal_health_import:main"
 traderstack-polymarket-wallet-snapshot = "traderstack.polymarket.wallet_snapshot:main"
 traderstack-polymarket-wallet-cohorts = "traderstack.polymarket.wallet_cohorts:main"
 traderstack-polymarket-wallet-signal-eval = "traderstack.polymarket.wallet_signal_eval:main"
+traderstack-polymarket-world-signal-fusion = "traderstack.polymarket.world_signal_fusion:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
 traderstack-soak = "traderstack.acceptance.soak:main"
