@@ -366,9 +366,7 @@ async def probe_public(rows: list[ResourceRow], settings: Settings) -> list[Reso
             values = asdict(row)
             values["network"] = network
             values["auth"] = (
-                "not_required"
-                if network.startswith(("http_2", "http_3"))
-                else row.auth
+                "not_required" if network.startswith(("http_2", "http_3")) else row.auth
             )
             if row.configured or row.provider == "Coin Metrics":
                 values["status"] = status
@@ -418,8 +416,7 @@ def render_table(rows: list[ResourceRow]) -> str:
 
     lines = [
         " | ".join(
-            clip(header, widths[index]).ljust(widths[index])
-            for index, header in enumerate(headers)
+            clip(header, widths[index]).ljust(widths[index]) for index, header in enumerate(headers)
         ),
         "-+-".join("-" * width for width in widths),
     ]
