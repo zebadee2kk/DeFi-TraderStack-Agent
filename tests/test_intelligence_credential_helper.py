@@ -79,10 +79,6 @@ def test_backup_is_written_under_gitignored_var_tree(tmp_path: Path) -> None:
 
 def test_no_secret_command_line_arguments_are_supported() -> None:
     parser = credential_helper.build_parser()
-    option_strings = {
-        option
-        for action in parser._actions
-        for option in action.option_strings
-    }
+    option_strings = {option for action in parser._actions for option in action.option_strings}
     for field in credential_helper.FIELDS:
         assert f"--{field.name.lower()}" not in option_strings
