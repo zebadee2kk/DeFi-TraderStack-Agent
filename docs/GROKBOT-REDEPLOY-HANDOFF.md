@@ -167,19 +167,20 @@ If this fails, leave the kill switch engaged and resolve the named provider/netw
 
 Run `ops/polymarket-intelligence-collect.sh` every **30–60 minutes**.
 
-Run `ops/polymarket-wallet-signal-eval.sh` **daily** after snapshots begin accumulating.
+Run `ops/polymarket-daily-research-eval.sh` **daily** after snapshots begin accumulating. It executes the wallet evaluator and then the world-context evaluator sequentially so their paced Polymarket price-history calls do not overlap.
 
-Use the host's existing scheduler (systemd timer/cron/orchestrator). Do not put credentials in timer unit files or command lines.
+Use the host's existing scheduler (systemd timer/cron/orchestrator). Do not put credentials in timer unit files or command lines. Do not schedule the two underlying evaluator scripts separately as well as the combined daily job.
 
 The collector job writes the latest cohort report to:
 
 `var/research/polymarket-wallet-cohorts-latest.json`
 
-The evaluator writes:
+The daily evaluators write:
 
-`var/research/polymarket-wallet-signal-eval-latest.json`
+- `var/research/polymarket-wallet-signal-eval-latest.json`;
+- `var/research/polymarket-world-context-eval-latest.json`.
 
-The evaluator is research-only. It tests the frozen wallet hypotheses at 60/300/900-second copy delays and 25/50/100 bps per-side cost sensitivity. It never creates an order. Unique Polymarket price-history calls are paced at 100/minute by default (below the 120/minute provider ceiling) and cached across cost/delay sensitivity runs; do not raise the provider budget to force completion.
+Both evaluators are research-only. The wallet evaluator tests the frozen wallet hypotheses at 60/300/900-second copy delays and 25/50/100 bps per-side cost sensitivity. The world-context evaluator applies the pre-registered C0-C9 context catalog without retuning those wallet hypotheses. Neither creates an order or changes promotion state. Unique Polymarket price-history calls are paced at 100/minute by default (below the 120/minute provider ceiling); do not raise the provider budget to force completion.
 
 ## 9. Human gate before disengaging the kill switch
 
