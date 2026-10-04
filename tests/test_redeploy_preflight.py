@@ -1,5 +1,6 @@
 from traderstack.config import Settings
 from traderstack.redeploy_preflight import (
+    ACTIVE_RESOURCE_NAMES,
     STRICT_RESOURCE_NAMES,
     build_static_checks,
     host_published_settings,
@@ -132,3 +133,11 @@ def test_host_published_settings_leaves_existing_host_urls_alone() -> None:
     host = host_published_settings(cfg)
     assert host.database_url == cfg.database_url
     assert host.redis_url == cfg.redis_url
+
+
+
+def test_public_reference_providers_are_active_gate_only() -> None:
+    assert "CoinGecko" not in STRICT_RESOURCE_NAMES
+    assert "CoinMarketCap" not in STRICT_RESOURCE_NAMES
+    assert "CoinGecko" in ACTIVE_RESOURCE_NAMES
+    assert "CoinMarketCap" in ACTIVE_RESOURCE_NAMES
