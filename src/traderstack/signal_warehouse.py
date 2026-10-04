@@ -232,7 +232,12 @@ class PostgresSignalWarehouse:
             statement = statement.where(intelligence_observations.c.observed_at >= start)
         if end is not None:
             statement = statement.where(intelligence_observations.c.observed_at <= end)
-        statement = statement.order_by(intelligence_observations.c.observed_at.asc()).limit(limit)
+        statement = statement.order_by(
+            intelligence_observations.c.observed_at.asc(),
+            intelligence_observations.c.source_id.asc(),
+            intelligence_observations.c.observation_type.asc(),
+            intelligence_observations.c.event_key.asc(),
+        ).limit(limit)
         async with self._engine().connect() as connection:
             rows = (await connection.execute(statement)).mappings().all()
         return [dict(row) for row in rows]
