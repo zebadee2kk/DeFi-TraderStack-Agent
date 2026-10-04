@@ -10,6 +10,7 @@ from traderstack.resource_audit import (
     DELIBERATELY_DISABLED,
     IMPLEMENTED_NOT_PROVEN,
     _evidence,
+    apply_journal_health,
     build_rows,
 )
 
@@ -92,3 +93,58 @@ def test_dotenv_source_is_reported_without_secret_value(monkeypatch, tmp_path: P
     lunar = rows["LunarCrush"]
     assert lunar.credential_source == ".env"
     assert "secret-from-file" not in json.dumps(lunar.__dict__)
+
+
+
+def test_resource_audit_promotes_recent_journal_success_to_active(tmp_path: Path) -> None:
+    from traderstack.market.registry import BreakerState, ProviderHealthReport
+    from traderstack.provider_health_journal import ProviderHealthJournal
+    from traderstack.resource_audit import ACTIVE
+
+    now = datetime(2026, 10, 4, 12, tzinfo=UTC)
+    path = tmp_path / "health.jsonl"
+    ProviderHealthJournal(path).record(
+        ProviderHealthReport(
+            name="dune",
+            state=BreakerState.CLOSED,
+            consecutive_failures=0,
+            last_latency_seconds=0.2,
+            last_success_at=now - timedelta(minutes=5),
+            last_error=None,
+            calls_last_minute=1,
+            calls_today=10,
+        )
+    )
+    rows = build_rows(_settings(dune_api_key="x", dune_query_ids="BTC:1"), now=now)
+    rows = apply_journal_health(rows, path=path, now=now)
+    dune = next(row for row in rows if row.provider == "Dune")
+    assert dune.status == ACTIVE
+    assert dune.network == "recent_success"
+    assert dune.auth == "validated_by_success"
+
+
+def test_resource_audit_surfaces_open_breaker(tmp_path: Path) -> None:
+    from traderstack.market.registry import BreakerState, ProviderHealthReport
+    from traderstack.provider_health_journal import ProviderHealthJournal
+    from traderstack.resource_audit import BLOCKED_NETWORK
+
+    now = datetime(2026, 10, 4, 12, tzinfo=UTC)
+    path = tmp_path / "health.jsonl"
+    ProviderHealthJournal(path).record(
+        ProviderHealthReport(
+            name="dune",
+            state=BreakerState.OPEN,
+            consecutive_failures=3,
+            last_latency_seconds=None,
+            last_success_at=now - timedelta(days=8),
+            last_error="HTTPStatusError: upstream unavailable",
+            calls_last_minute=0,
+            calls_today=3,
+        )
+    )
+    rows = build_rows(_settings(dune_api_key="x", dune_query_ids="BTC:1"), now=now)
+    rows = apply_journal_health(rows, path=path, now=now)
+    dune = next(row for row in rows if row.provider == "Dune")
+    assert dune.status == BLOCKED_NETWORK
+    assert dune.network == "breaker_open"
+    assert dune.stale == "yes"
