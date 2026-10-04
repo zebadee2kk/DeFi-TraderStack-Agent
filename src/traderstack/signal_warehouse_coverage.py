@@ -3,9 +3,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from datetime import datetime
+from typing import TypedDict
 
 from traderstack.config import Settings
 from traderstack.signal_warehouse import PostgresSignalWarehouse
+
+
+class CoverageBucket(TypedDict):
+    rows: int
+    first: datetime
+    last: datetime
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,30 +38,45 @@ async def _run(args: argparse.Namespace) -> int:
         print(json.dumps({"rows": 0, "assets": {}, "sources": {}}, sort_keys=True))
         return 0
 
-    assets: dict[str, dict[str, object]] = {}
+    assets: dict[str, CoverageBucket] = {}
     sources: dict[str, int] = {}
     for row in rows:
         asset = str(row["asset"])
         observed_at = row["observed_at"]
-        bucket = assets.setdefault(asset, {"rows": 0, "first": observed_at, "last": observed_at})
-        bucket["rows"] = int(bucket["rows"]) + 1
+        if not isinstance(observed_at, datetime):
+            raise TypeError("warehouse observed_at must be a datetime")
+
+        bucket = assets.setdefault(
+            asset,
+            {"rows": 0, "first": observed_at, "last": observed_at},
+        )
+        bucket["rows"] += 1
         bucket["first"] = min(bucket["first"], observed_at)
         bucket["last"] = max(bucket["last"], observed_at)
 
-        for source_id in row.get("source_ids", []) or []:
+        raw_source_ids = row.get("source_ids")
+        if raw_source_ids is None:
+            continue
+        if not isinstance(raw_source_ids, list):
+            raise TypeError("warehouse source_ids must be a list")
+        for source_id in raw_source_ids:
             source = str(source_id)
             sources[source] = sources.get(source, 0) + 1
 
-    for bucket in assets.values():
-        for key in ("first", "last"):
-            value = bucket[key]
-            bucket[key] = value.isoformat() if hasattr(value, "isoformat") else str(value)
+    serializable_assets = {
+        asset: {
+            "rows": bucket["rows"],
+            "first": bucket["first"].isoformat(),
+            "last": bucket["last"].isoformat(),
+        }
+        for asset, bucket in assets.items()
+    }
 
     print(
         json.dumps(
             {
                 "rows": len(rows),
-                "assets": assets,
+                "assets": serializable_assets,
                 "sources": dict(sorted(sources.items())),
             },
             sort_keys=True,
