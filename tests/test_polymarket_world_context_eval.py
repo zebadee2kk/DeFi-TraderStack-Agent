@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -8,6 +9,7 @@ from traderstack.polymarket.wallet_signal_eval import ScoredSignal
 from traderstack.polymarket.world_context_eval import (
     CONTEXT_IDS,
     bootstrap_incremental_mean,
+    build_global_trial_sharpes,
     context_matches,
     evaluate_context_grid,
 )
@@ -171,6 +173,103 @@ def test_sparse_context_cell_is_explicitly_insufficient() -> None:
     assert not cell.sample_bar_met
     assert cell.deflated_sharpe["computed"] is False
     assert cell.deflated_sharpe["skipped_reason"] == "minimum_signal_count_not_met"
+
+
+def test_dsr_catalog_uses_all_270_frozen_logical_trials() -> None:
+    start = datetime(2026, 10, 1, tzinfo=UTC)
+    payload = {
+        "news": {"adverse_event": True, "event_score": 0.7},
+        "narrative": {"mention_velocity_z": 1.2, "sentiment": 0.6},
+        "onchain": {
+            "exchange_netflow_z": 1.6,
+            "large_wallet_accumulation": 0.55,
+        },
+        "market": {"external_signal_score": 0.6},
+        "edge": {"liq_notional_long_z": 1.6, "liq_notional_short_z": 0.0},
+    }
+    pnls = (-1.0, 0.5, 1.0, 2.0)
+    scored = [
+        _signal(
+            start + timedelta(hours=index),
+            pnl,
+            hypothesis=hypothesis,
+        )
+        for hypothesis in ("persistent_top10_follow", "top3_follow", "persistent_top10_fade")
+        for index, pnl in enumerate(pnls)
+    ]
+    contexts = [
+        replace(
+            _context(row.trade_at, payload),
+            hypothesis=row.hypothesis,
+        )
+        for row in scored
+    ]
+
+    catalogs = build_global_trial_sharpes(
+        [scored] * 9,
+        contexts,
+        holdout_fraction=0.30,
+        discovery_min=1,
+        holdout_min=1,
+    )
+
+    assert all(values is not None and len(values) == 270 for values in catalogs.values())
+
+    cells = evaluate_context_grid(
+        scored,
+        contexts,
+        holdout_fraction=0.30,
+        discovery_min=1,
+        holdout_min=1,
+        global_trial_sharpes=catalogs,
+        catalog_trial_count=270,
+    )
+    cell = next(
+        item
+        for item in cells
+        if item.hypothesis == "top3_follow"
+        and item.context_id == "baseline_all"
+        and item.split == "holdout"
+    )
+
+    assert cell.deflated_sharpe["trials"] == 270
+    assert cell.deflated_sharpe["skipped_reason"] == "trial_sharpes_have_no_dispersion"
+
+
+def test_global_dsr_is_withheld_when_any_frozen_trial_lacks_support() -> None:
+    now = datetime(2026, 10, 4, 12, tzinfo=UTC)
+    scored = [_signal(now, 1.0)]
+    contexts = [_context(now, {"news": {"adverse_event": True}})]
+
+    catalogs = build_global_trial_sharpes(
+        [scored] * 9,
+        contexts,
+        discovery_min=1,
+        holdout_min=1,
+    )
+
+    assert catalogs == {"discovery": None, "holdout": None, "all": None}
+
+    cells = evaluate_context_grid(
+        scored,
+        contexts,
+        discovery_min=1,
+        holdout_min=1,
+        global_trial_sharpes=catalogs,
+        catalog_trial_count=270,
+    )
+    cell = next(
+        item
+        for item in cells
+        if item.hypothesis == "top3_follow"
+        and item.context_id == "baseline_all"
+        and item.split == "discovery"
+    )
+
+    assert cell.sample_bar_met
+    assert cell.deflated_sharpe["computed"] is False
+    assert cell.deflated_sharpe["trials"] == 270
+    assert cell.deflated_sharpe["skipped_reason"] == "global_catalog_sample_support_incomplete"
 
 
 def test_unknown_context_id_is_refused() -> None:
