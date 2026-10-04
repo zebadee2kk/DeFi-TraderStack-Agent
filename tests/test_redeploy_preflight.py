@@ -1,5 +1,6 @@
 from traderstack.config import Settings
 from traderstack.redeploy_preflight import (
+    ACTIVE_RESOURCE_NAMES,
     STRICT_RESOURCE_NAMES,
     build_static_checks,
     host_published_settings,
@@ -108,7 +109,7 @@ def test_require_active_resources_rejects_configured_unproven() -> None:
 
 def test_require_active_resources_accepts_recent_successes() -> None:
     rows = [row("Polymarket Data API", configured=True, status="ACTIVE")]
-    rows.extend(row(name, configured=True, status="ACTIVE") for name in STRICT_RESOURCE_NAMES)
+    rows.extend(row(name, configured=True, status="ACTIVE") for name in ACTIVE_RESOURCE_NAMES)
     checks = resource_checks(
         rows,
         strict_resources=True,
@@ -132,3 +133,10 @@ def test_host_published_settings_leaves_existing_host_urls_alone() -> None:
     host = host_published_settings(cfg)
     assert host.database_url == cfg.database_url
     assert host.redis_url == cfg.redis_url
+
+
+def test_public_reference_providers_are_active_gate_only() -> None:
+    assert "CoinGecko" not in STRICT_RESOURCE_NAMES
+    assert "CoinMarketCap" not in STRICT_RESOURCE_NAMES
+    assert "CoinGecko" in ACTIVE_RESOURCE_NAMES
+    assert "CoinMarketCap" in ACTIVE_RESOURCE_NAMES
