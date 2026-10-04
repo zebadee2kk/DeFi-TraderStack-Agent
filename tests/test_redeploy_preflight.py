@@ -92,3 +92,31 @@ def test_strict_resources_accept_configured_not_yet_proven_sources() -> None:
     )
     checks = resource_checks(rows, strict_resources=True)
     assert all(check.ok for check in checks)
+
+
+
+def test_require_active_resources_rejects_configured_unproven() -> None:
+    rows = [row("Polymarket Data API", configured=True, status="ACTIVE")]
+    rows.extend(
+        row(name, configured=True, status=IMPLEMENTED_NOT_PROVEN)
+        for name in STRICT_RESOURCE_NAMES
+    )
+    checks = resource_checks(
+        rows,
+        strict_resources=True,
+        require_active_resources=True,
+    )
+    dune = next(check for check in checks if check.name == "resource:Dune")
+    assert not dune.ok
+    assert dune.blocking
+
+
+def test_require_active_resources_accepts_recent_successes() -> None:
+    rows = [row("Polymarket Data API", configured=True, status="ACTIVE")]
+    rows.extend(row(name, configured=True, status="ACTIVE") for name in STRICT_RESOURCE_NAMES)
+    checks = resource_checks(
+        rows,
+        strict_resources=True,
+        require_active_resources=True,
+    )
+    assert all(check.ok for check in checks)
