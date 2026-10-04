@@ -32,7 +32,6 @@ from traderstack.market.deribit import (
     reduce_instruments,
 )
 from traderstack.market.registry import ProviderRegistry
-from traderstack.provider_health_journal import DEFAULT_PROVIDER_HEALTH_PATH, ProviderHealthJournal
 from traderstack.polymarket.clob import ClobBook, ClobPublicClient, reduce_book
 from traderstack.polymarket.crypto_gate import crucix_status_from_snapshot
 from traderstack.polymarket.crypto_models import (
@@ -51,6 +50,10 @@ from traderstack.polymarket.crypto_threshold import (
 from traderstack.polymarket.gamma import GammaClient
 from traderstack.polymarket.option_implied import implied_digital_probability
 from traderstack.polymarket.service import require_paper_trading_mode
+from traderstack.provider_health_journal import (
+    DEFAULT_PROVIDER_HEALTH_PATH,
+    ProviderHealthJournal,
+)
 
 _REGISTRY_NAMES = ("polymarket_gamma", "polymarket_clob", "deribit", "crucix")
 
