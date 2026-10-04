@@ -2911,3 +2911,15 @@ are polite one-request-per-station-per-day reads.
 | `book_unavailable` | `/book` did not answer (HTTP error, timeout, quota or breaker), so nothing was recorded for that market this cycle. |
 | `forecast_missing` | Open-Meteo did not answer for that city/date. |
 | `closed` | The local close (or the forecast's issue time) is already past. |
+
+
+## Signal warehouse (#192)
+
+When `--persistent-events` is enabled, accepted runtime feature vectors are now persisted to PostgreSQL in addition to the existing runtime-event and candle stores.
+
+Tables introduced by the first #192 slice:
+
+- `feature_snapshots` — canonical point-in-time `AssetFeatureVector` payload, schema version and source IDs.
+- `provider_observations` — one provenance row per `source_id` attached to that feature vector.
+
+This is a research/evidence store only. It does not authorize trades, change risk limits, or replace the independent JSONL/hash-chained audit trail.
