@@ -5,9 +5,9 @@ import asyncio
 import json
 from dataclasses import asdict, dataclass
 
-from traderstack import resource_audit
 from traderstack.config import Settings
 from traderstack.signal_warehouse import PostgresSignalWarehouse
+from traderstack import resource_audit
 
 
 STRICT_RESOURCE_NAMES = (
