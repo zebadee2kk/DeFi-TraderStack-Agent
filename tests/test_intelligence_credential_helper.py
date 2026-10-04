@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import stat
+import sys
 from pathlib import Path
 
 
@@ -10,6 +11,7 @@ SCRIPT_PATH = Path(__file__).resolve().parents[1] / "ops" / "configure-intellige
 SPEC = importlib.util.spec_from_file_location("credential_helper", SCRIPT_PATH)
 assert SPEC is not None and SPEC.loader is not None
 credential_helper = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = credential_helper
 SPEC.loader.exec_module(credential_helper)
 
 
