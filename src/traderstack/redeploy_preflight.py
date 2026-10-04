@@ -5,7 +5,7 @@ import asyncio
 import json
 from dataclasses import asdict, dataclass
 
-import traderstack.resource_audit as resource_audit
+from traderstack import resource_audit
 from traderstack.config import Settings
 from traderstack.signal_warehouse import PostgresSignalWarehouse
 
@@ -219,7 +219,7 @@ async def _run(args: argparse.Namespace) -> int:
         and row.provider in STRICT_RESOURCE_NAMES
         and (
             not row.configured
-            or (args.require_active_resources and row.status != ACTIVE)
+            or (args.require_active_resources and row.status != resource_audit.ACTIVE)
         )
     ]
     payload = {
