@@ -147,3 +147,15 @@ def test_resource_audit_surfaces_open_breaker(tmp_path: Path) -> None:
     assert dune.status == BLOCKED_NETWORK
     assert dune.network == "breaker_open"
     assert dune.stale == "yes"
+
+
+
+def test_public_reference_providers_do_not_require_keys(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    rows = {row.provider: row for row in build_rows(_settings())}
+    assert rows["CoinGecko"].configured
+    assert rows["CoinGecko"].status == IMPLEMENTED_NOT_PROVEN
+    assert rows["CoinGecko"].credential_source == "optional_unset"
+    assert rows["CoinMarketCap"].configured
+    assert rows["CoinMarketCap"].status == IMPLEMENTED_NOT_PROVEN
+    assert rows["CoinMarketCap"].credential_source == "optional_unset"
