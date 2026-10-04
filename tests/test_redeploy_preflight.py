@@ -135,7 +135,6 @@ def test_host_published_settings_leaves_existing_host_urls_alone() -> None:
     assert host.redis_url == cfg.redis_url
 
 
-
 def test_public_reference_providers_are_active_gate_only() -> None:
     assert "CoinGecko" not in STRICT_RESOURCE_NAMES
     assert "CoinMarketCap" not in STRICT_RESOURCE_NAMES
