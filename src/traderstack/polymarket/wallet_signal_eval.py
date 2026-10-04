@@ -326,8 +326,7 @@ def _acceptable_price(
     if target_timestamp - point.timestamp > max_staleness_seconds:
         return False
     return not (
-        point.resolution_seconds is not None
-        and point.resolution_seconds > max_resolution_seconds
+        point.resolution_seconds is not None and point.resolution_seconds > max_resolution_seconds
     )
 
 
@@ -586,10 +585,13 @@ async def _run(args: argparse.Namespace) -> int:
                     "candidate_count": len(candidates),
                     "scored_count": len(scored),
                     "skipped": skipped,
-                    "summaries": [asdict(summary) for summary in summarize(
-                        scored,
-                        holdout_fraction=args.holdout_fraction,
-                    )],
+                    "summaries": [
+                        asdict(summary)
+                        for summary in summarize(
+                            scored,
+                            holdout_fraction=args.holdout_fraction,
+                        )
+                    ],
                 }
             )
 
