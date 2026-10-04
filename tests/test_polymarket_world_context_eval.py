@@ -107,10 +107,7 @@ def test_incremental_bootstrap_resamples_baseline_and_subset_together() -> None:
 
 def test_context_evaluation_uses_baseline_chronology_for_holdout() -> None:
     start = datetime(2026, 10, 1, tzinfo=UTC)
-    scored = [
-        _signal(start + timedelta(hours=index), pnl=float(index - 4))
-        for index in range(10)
-    ]
+    scored = [_signal(start + timedelta(hours=index), pnl=float(index - 4)) for index in range(10)]
     contexts = [
         _context(
             row.trade_at,
