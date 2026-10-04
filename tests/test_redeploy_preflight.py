@@ -109,7 +109,7 @@ def test_require_active_resources_rejects_configured_unproven() -> None:
 
 def test_require_active_resources_accepts_recent_successes() -> None:
     rows = [row("Polymarket Data API", configured=True, status="ACTIVE")]
-    rows.extend(row(name, configured=True, status="ACTIVE") for name in STRICT_RESOURCE_NAMES)
+    rows.extend(row(name, configured=True, status="ACTIVE") for name in ACTIVE_RESOURCE_NAMES)
     checks = resource_checks(
         rows,
         strict_resources=True,
