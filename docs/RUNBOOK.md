@@ -2969,3 +2969,16 @@ For each wallet discovered from the point-in-time leaderboard cohort, the collec
 - trade history pages.
 
 The collector has no signing/order method and no execution output. Endpoint failures are stored as typed collection-error observations so missing data is never treated as zero. The first slice intentionally does **not** generate copy-trading recommendations; later #193 research must reconstruct historical cohort membership and test follow/fade/lead-lag hypotheses net of fees, spread and copy delay.
+
+
+### Import provider health into the signal warehouse
+
+The provider-health journal remains the first-write operational record so health evidence survives even when PostgreSQL is unavailable. Import it into the #192 warehouse with:
+
+```bash
+traderstack-signal-health-import
+```
+
+The import is idempotent: each health event receives a deterministic SHA-256 event key and an already-imported event is not duplicated. After import, `traderstack-signal-coverage` includes a `collector_health` section with row counts, first/last observations and latest state by provider.
+
+This matters for research validity: an absent feature can be distinguished from a collector that was open/stale/broken at that time.

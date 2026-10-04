@@ -16,6 +16,13 @@ class CoverageBucket(TypedDict):
     last: datetime
 
 
+class HealthCoverageBucket(TypedDict):
+    rows: int
+    first: datetime
+    last: datetime
+    latest_state: str
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Report signal-warehouse feature coverage.")
     parser.add_argument("--asset")
@@ -31,12 +38,9 @@ async def _run(args: argparse.Namespace) -> int:
     warehouse = PostgresSignalWarehouse(settings.database_url)
     try:
         rows = await warehouse.load_features(asset=args.asset, limit=args.limit)
+        health_rows = await warehouse.load_collector_health(limit=args.limit)
     finally:
         await warehouse.close()
-
-    if not rows:
-        print(json.dumps({"rows": 0, "assets": {}, "sources": {}}, sort_keys=True))
-        return 0
 
     assets: dict[str, CoverageBucket] = {}
     sources: dict[str, int] = {}
@@ -63,6 +67,38 @@ async def _run(args: argparse.Namespace) -> int:
             source = str(source_id)
             sources[source] = sources.get(source, 0) + 1
 
+    provider_health: dict[str, HealthCoverageBucket] = {}
+    for row in health_rows:
+        provider = str(row["provider"])
+        observed_at = row["observed_at"]
+        if not isinstance(observed_at, datetime):
+            raise TypeError("collector health observed_at must be a datetime")
+        state = str(row["state"])
+        bucket = provider_health.setdefault(
+            provider,
+            {
+                "rows": 0,
+                "first": observed_at,
+                "last": observed_at,
+                "latest_state": state,
+            },
+        )
+        bucket["rows"] += 1
+        bucket["first"] = min(bucket["first"], observed_at)
+        if observed_at >= bucket["last"]:
+            bucket["last"] = observed_at
+            bucket["latest_state"] = state
+
+    serializable_health = {
+        provider: {
+            "rows": bucket["rows"],
+            "first": bucket["first"].isoformat(),
+            "last": bucket["last"].isoformat(),
+            "latest_state": bucket["latest_state"],
+        }
+        for provider, bucket in provider_health.items()
+    }
+
     serializable_assets = {
         asset: {
             "rows": bucket["rows"],
@@ -78,6 +114,7 @@ async def _run(args: argparse.Namespace) -> int:
                 "rows": len(rows),
                 "assets": serializable_assets,
                 "sources": dict(sorted(sources.items())),
+                "collector_health": dict(sorted(serializable_health.items())),
             },
             sort_keys=True,
         )

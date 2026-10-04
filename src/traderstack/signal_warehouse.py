@@ -31,6 +31,17 @@ provider_observations = Table(
     Column("payload", JSON, nullable=False),
 )
 
+collector_health = Table(
+    "collector_health",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("event_key", String(64), nullable=False, unique=True, index=True),
+    Column("observed_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("provider", String(128), nullable=False, index=True),
+    Column("state", String(32), nullable=False, index=True),
+    Column("payload", JSON, nullable=False),
+)
+
 wallet_observations = Table(
     "wallet_observations",
     metadata,
@@ -111,6 +122,41 @@ class PostgresSignalWarehouse:
         if end is not None:
             statement = statement.where(feature_snapshots.c.observed_at <= end)
         statement = statement.order_by(feature_snapshots.c.observed_at.asc()).limit(limit)
+        async with self._engine().connect() as connection:
+            rows = (await connection.execute(statement)).mappings().all()
+        return [dict(row) for row in rows]
+
+    async def append_collector_health(self, rows: list[dict[str, object]]) -> int:
+        if not rows:
+            return 0
+        keys = [str(row["event_key"]) for row in rows]
+        async with self._engine().begin() as connection:
+            existing = set(
+                (
+                    await connection.execute(
+                        select(collector_health.c.event_key).where(
+                            collector_health.c.event_key.in_(keys)
+                        )
+                    )
+                ).scalars()
+            )
+            fresh = [row for row in rows if str(row["event_key"]) not in existing]
+            if fresh:
+                await connection.execute(insert(collector_health).values(fresh))
+        return len(fresh)
+
+    async def load_collector_health(
+        self,
+        *,
+        provider: str | None = None,
+        limit: int = 100000,
+    ) -> list[dict[str, object]]:
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        statement = select(collector_health)
+        if provider is not None:
+            statement = statement.where(collector_health.c.provider == provider)
+        statement = statement.order_by(collector_health.c.observed_at.asc()).limit(limit)
         async with self._engine().connect() as connection:
             rows = (await connection.execute(statement)).mappings().all()
         return [dict(row) for row in rows]
