@@ -67,6 +67,7 @@ def test_wallet_observation_table_has_point_in_time_provenance_columns() -> None
         "payload",
     }
 
+
 def test_collector_health_table_has_idempotency_and_provenance_columns() -> None:
     assert set(collector_health.c.keys()) == {
         "id",
