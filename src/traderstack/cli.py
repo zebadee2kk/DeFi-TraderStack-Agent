@@ -301,6 +301,7 @@ def build_provider_registry(
         calls_per_day=calls_per_day,
         cache_ttl_seconds=cache_ttl_seconds,
         last_good_ttl_seconds=last_good_ttl_seconds,
+        health_recorder=ProviderHealthJournal(DEFAULT_PROVIDER_HEALTH_PATH).record,
     )
 
 
