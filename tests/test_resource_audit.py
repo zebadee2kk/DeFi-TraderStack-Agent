@@ -94,6 +94,7 @@ def test_dotenv_source_is_reported_without_secret_value(monkeypatch, tmp_path: P
     assert lunar.credential_source == ".env"
     assert "secret-from-file" not in json.dumps(lunar.__dict__)
 
+
 def test_resource_audit_promotes_recent_journal_success_to_active(tmp_path: Path) -> None:
     from traderstack.market.registry import BreakerState, ProviderHealthReport
     from traderstack.provider_health_journal import ProviderHealthJournal
