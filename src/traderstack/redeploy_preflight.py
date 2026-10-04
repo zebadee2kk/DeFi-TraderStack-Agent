@@ -5,15 +5,8 @@ import asyncio
 import json
 from dataclasses import asdict, dataclass
 
+import traderstack.resource_audit as resource_audit
 from traderstack.config import Settings
-from traderstack.resource_audit import (
-    ACTIVE,
-    BLOCKED_CREDENTIAL,
-    ResourceRow,
-    apply_journal_health,
-    build_rows,
-    probe_public,
-)
 from traderstack.signal_warehouse import PostgresSignalWarehouse
 
 
@@ -101,7 +94,7 @@ def build_static_checks(settings: Settings) -> list[PreflightCheck]:
 
 
 def resource_checks(
-    rows: list[ResourceRow],
+    rows: list[resource_audit.ResourceRow],
     *,
     strict_resources: bool,
     require_active_resources: bool = False,
@@ -113,7 +106,7 @@ def resource_checks(
     checks.append(
         PreflightCheck(
             name="polymarket_data_api",
-            ok=polymarket is not None and polymarket.status == ACTIVE,
+            ok=polymarket is not None and polymarket.status == resource_audit.ACTIVE,
             detail=(
                 f"{polymarket.status}; network={polymarket.network}"
                 if polymarket is not None
@@ -125,10 +118,10 @@ def resource_checks(
     for name in STRICT_RESOURCE_NAMES:
         row = by_name.get(name)
         active_or_configured = (
-            row is not None and row.configured and row.status != BLOCKED_CREDENTIAL
+            row is not None and row.configured and row.status != resource_audit.BLOCKED_CREDENTIAL
         )
         ready = (
-            row is not None and row.status == ACTIVE
+            row is not None and row.status == resource_audit.ACTIVE
             if require_active_resources
             else active_or_configured
         )
@@ -205,9 +198,9 @@ async def _run(args: argparse.Namespace) -> int:
     settings = Settings()
     checks = build_static_checks(settings)
 
-    rows = apply_journal_health(build_rows(settings))
+    rows = resource_audit.apply_journal_health(resource_audit.build_rows(settings))
     if not args.skip_network:
-        rows = await probe_public(rows, settings)
+        rows = await resource_audit.probe_public(rows, settings)
     strict_resources = bool(args.strict_resources or args.require_active_resources)
     checks.extend(
         resource_checks(
