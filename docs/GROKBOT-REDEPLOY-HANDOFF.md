@@ -65,7 +65,9 @@ The current programme expects explicit operator decisions/configuration for:
 - CryptoPanic;
 - Perplexity;
 - altFINS;
-- Crucix.
+- Crucix;
+- CoinGecko;
+- CoinMarketCap.
 
 Polymarket Data API v2 is public/no-key and must be reachable.
 
@@ -118,6 +120,14 @@ Confirm:
 - no secret value in logs;
 - no `PAPER_PROMOTE_*` pin became true;
 - no live/Hummingbot execution profile was started.
+
+After enough runtime cycles for provider health to be recorded, require **actual successful calls**, not just configured keys:
+
+```bash
+.venv/bin/traderstack-redeploy-preflight --require-active-resources
+```
+
+If this fails, leave the kill switch engaged and resolve the named provider/network/auth failure. Do not downgrade the check to configured-only.
 
 ## 8. Schedule intelligence accumulation
 
