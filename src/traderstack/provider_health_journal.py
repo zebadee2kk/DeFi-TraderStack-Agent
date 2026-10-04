@@ -105,8 +105,6 @@ def load_latest_provider_health(path: Path) -> dict[str, ProviderHealthEvent]:
             latest[event.provider] = event
     return latest
 
-
-
 def load_provider_health_events(path: Path) -> list[ProviderHealthEvent]:
     if not path.is_file():
         return []
