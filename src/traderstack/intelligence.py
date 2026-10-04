@@ -1,7 +1,8 @@
+import math
 from datetime import UTC, date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from traderstack.features import (
     AssetFeatureVector,
@@ -83,16 +84,51 @@ class OnChainRegimeSnapshot(BaseModel):
 ObservationType = Literal["onchain", "social", "news", "altfins", "onchain_regime"]
 ObservationScalar = str | int | float | bool | None
 
+_ALLOWED_OBSERVATION_PAYLOAD_FIELDS: dict[ObservationType, frozenset[str]] = {
+    "onchain": frozenset({"exchange_netflow_z", "large_wallet_accumulation"}),
+    "social": frozenset({"sentiment", "mention_velocity_z"}),
+    "news": frozenset({"event_score", "adverse_event", "item_count"}),
+    "altfins": frozenset({"score"}),
+    "onchain_regime": frozenset(
+        {
+            "source_asset",
+            "as_of",
+            "mvrv_z",
+            "mvrv_z_percentile",
+            "nupl",
+            "points",
+            "window_days",
+            "feature_version",
+        }
+    ),
+}
+
 
 class IntelligenceObservation(BaseModel):
     """Bounded provider-native evidence preserved before canonical feature merge."""
 
-    asset: str
+    asset: str = Field(min_length=1, max_length=32)
     observed_at: datetime
-    source_id: str
+    source_id: str = Field(min_length=1, max_length=128)
     observation_type: ObservationType
-    schema_version: str = "1.0"
+    schema_version: str = Field(default="1.0", min_length=1, max_length=32)
     payload: dict[str, ObservationScalar]
+
+    @model_validator(mode="after")
+    def _validate_payload_boundary(self) -> "IntelligenceObservation":
+        allowed = _ALLOWED_OBSERVATION_PAYLOAD_FIELDS[self.observation_type]
+        unexpected = set(self.payload) - allowed
+        if unexpected:
+            raise ValueError(
+                "unsupported intelligence observation payload fields: "
+                + ", ".join(sorted(unexpected))
+            )
+        for key, value in self.payload.items():
+            if isinstance(value, str) and (len(value) > 64 or "\n" in value or "\r" in value):
+                raise ValueError(f"unsafe string value for intelligence field {key}")
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError(f"non-finite value for intelligence field {key}")
+        return self
 
 
 def normalize_intelligence_snapshot(
