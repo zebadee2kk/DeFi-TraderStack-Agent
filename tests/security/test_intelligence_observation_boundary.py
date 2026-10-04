@@ -6,7 +6,13 @@ instructions or fields that could become trading authority.
 
 from datetime import UTC, datetime
 
-from traderstack.intelligence import NewsSnapshot, normalize_intelligence_snapshot
+import pytest
+
+from traderstack.intelligence import (
+    IntelligenceObservation,
+    NewsSnapshot,
+    normalize_intelligence_snapshot,
+)
 
 FORBIDDEN_AUTHORITY_FIELDS = {
     "side",
@@ -75,3 +81,20 @@ def test_provider_authored_instruction_fields_cannot_survive_normalization() -> 
     assert "ignore policy" not in payload_text
     assert "PAPER_PROMOTE_ALL" not in payload_text
     assert "do-not-store" not in payload_text
+
+def test_direct_observation_construction_rejects_instruction_shaped_payload_keys() -> None:
+    with pytest.raises(ValueError, match="unsupported intelligence observation payload fields"):
+        IntelligenceObservation(
+            asset="BTC",
+            observed_at=datetime(2026, 10, 4, 10, tzinfo=UTC),
+            source_id="provider:test",
+            observation_type="news",
+            payload={
+                "event_score": 0.5,
+                "adverse_event": False,
+                "item_count": 1,
+                "side": "BUY",
+                "promote": True,
+            },
+        )
+
