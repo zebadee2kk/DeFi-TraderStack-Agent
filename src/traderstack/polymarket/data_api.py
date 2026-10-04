@@ -18,7 +18,7 @@ from traderstack.market.registry import ProviderRegistry
 
 _ALLOWED_PATHS = frozenset(
     {
-        "/v1/leaderboard",
+        "/v2/leaderboard",
         "/v2/positions",
         "/v2/user-pnl",
         "/v2/user-stats",
@@ -27,6 +27,7 @@ _ALLOWED_PATHS = frozenset(
         "/v2/trades",
         "/v2/activity",
         "/v2/status",
+        "/v2/prices-history",
     }
 )
 
@@ -61,6 +62,13 @@ def _next_cursor(payload: Any) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+@dataclass(frozen=True)
+class DataPricePoint:
+    timestamp: int
+    price: float
+    resolution_seconds: int | None = None
+
+
 def wallet_from_leaderboard_row(row: dict[str, Any]) -> str | None:
     for key in ("proxy_wallet", "proxyWallet", "address"):
         value = row.get(key)
@@ -90,9 +98,8 @@ class PolymarketDataClient:
             "timePeriod": time_period.upper(),
             "orderBy": order_by.upper(),
             "limit": str(max(1, min(limit, 50))),
-            "offset": "0",
         }
-        return _rows(await self._registered_get("/v1/leaderboard", params))
+        return _rows(await self._registered_get("/v2/leaderboard", params))
 
     async def user_stats(self, wallet: str) -> dict[str, Any] | None:
         payload = await self._registered_get("/v2/user-stats", {"user": wallet})
@@ -145,6 +152,58 @@ class PolymarketDataClient:
             },
             max_pages=max_pages,
         )
+
+    async def price_as_of(self, token_id: str, as_of: int) -> DataPricePoint | None:
+        if not token_id.strip():
+            raise ValueError("token_id is required")
+        if as_of <= 0:
+            raise ValueError("as_of must be a positive unix timestamp")
+        payload = await self._registered_get(
+            "/v2/prices-history",
+            {"token_id": token_id, "as_of": str(as_of)},
+        )
+        if not isinstance(payload, dict):
+            raise TypeError("unexpected prices-history payload")
+        rows = payload.get("data")
+        if rows is None:
+            return None
+        if not isinstance(rows, list):
+            raise TypeError("unexpected prices-history data")
+        points: list[DataPricePoint] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            timestamp = row.get("timestamp")
+            price = row.get("price")
+            if (
+                not isinstance(timestamp, int | float | str)
+                or isinstance(timestamp, bool)
+                or not isinstance(price, int | float | str)
+                or isinstance(price, bool)
+            ):
+                continue
+            try:
+                timestamp_i = int(timestamp)
+                price_f = float(price)
+            except ValueError:
+                continue
+            resolution_raw = row.get("resolution_seconds")
+            resolution: int | None = None
+            if resolution_raw is not None and not isinstance(resolution_raw, bool):
+                try:
+                    parsed_resolution = int(resolution_raw)
+                except (TypeError, ValueError):
+                    parsed_resolution = -1
+                resolution = parsed_resolution if parsed_resolution >= 0 else None
+            if timestamp_i <= as_of and 0.0 <= price_f <= 1.0:
+                points.append(
+                    DataPricePoint(
+                        timestamp=timestamp_i,
+                        price=price_f,
+                        resolution_seconds=resolution,
+                    )
+                )
+        return max(points, key=lambda item: item.timestamp) if points else None
 
     async def trades(
         self,

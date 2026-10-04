@@ -2995,3 +2995,21 @@ traderstack-polymarket-wallet-cohorts --category CRYPTO --time-period MONTH --to
 New snapshots carry a shared `snapshot_id` and `snapshot_at` across the exact leaderboard cohort. Legacy rows without an explicit snapshot ID are grouped only for backward-compatible analysis using their observation minute and are therefore lower-confidence provenance.
 
 The ranking reports appearances, first/last seen, mean/best/latest rank and latest reported PnL. It is a **research ranking only**: persistence on a leaderboard is not a copy-trading recommendation and does not authorize execution. The next #193 layer must evaluate delayed follow/fade hypotheses with fees, spread, market liquidity and point-in-time cohort membership.
+
+
+### Delayed wallet follow/fade evaluation (#193)
+
+After enough repeated wallet snapshots have accumulated, run the pre-registered research grid:
+
+```bash
+traderstack-polymarket-wallet-signal-eval
+```
+
+The frozen rules live in `docs/recipes/strategy-search/polymarket-wallet-signal-eval-recipe.md`.
+The evaluator uses only cohort membership known at the time of the leader trade, deduplicates repeated
+trade-history snapshots, tests 60/300/900-second copy delay, rejects price history that is too coarse,
+caps copied capacity, applies 25/50/100-bps per-side cost sensitivities and keeps the final 30% of
+scored signals as a chronological holdout.
+
+`persistent_top10_fade` is a synthetic research control only. No command here submits, signs or
+prepares an order, and no result changes any `PAPER_PROMOTE_*` setting.

@@ -285,3 +285,15 @@ def test_collector_never_writes_the_paper_intent_ledger() -> None:
     collector = (POLYMARKET_SRC / "collect_cli.py").read_text(encoding="utf-8")
     assert "PolymarketWeatherPaperLedger" not in collector
     assert "PaperIntent" not in collector
+
+
+def test_wallet_intelligence_modules_define_no_execution_methods() -> None:
+    for name in ("data_api.py", "wallet_snapshot.py", "wallet_cohorts.py", "wallet_signal_eval.py"):
+        tree = ast.parse((POLYMARKET_SRC / name).read_text(encoding="utf-8"))
+        forbidden = [
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
+            and node.name in {"post", "order", "submit", "sign", "place_order", "prepare_order"}
+        ]
+        assert forbidden == [], f"{name} defines execution-like methods: {forbidden}"

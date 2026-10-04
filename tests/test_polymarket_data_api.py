@@ -15,6 +15,38 @@ def test_wallet_from_leaderboard_row_accepts_current_field_spellings() -> None:
 
 
 @pytest.mark.asyncio
+async def test_leaderboard_uses_v2_without_retired_offset() -> None:
+    wallet = "0x" + "56" * 20
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"rank": 1, "proxy_wallet": wallet, "pnl": 42}],
+                "pagination": {"next_cursor": None, "has_more": False},
+            },
+        )
+
+    async with httpx.AsyncClient(
+        base_url="https://data-api.polymarket.com",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        rows = await PolymarketDataClient(client=http).leaderboard(
+            category="CRYPTO",
+            time_period="MONTH",
+            limit=10,
+        )
+
+    assert rows[0]["proxy_wallet"] == wallet
+    assert seen[0].url.path == "/v2/leaderboard"
+    assert seen[0].url.params["category"] == "CRYPTO"
+    assert seen[0].url.params["timePeriod"] == "MONTH"
+    assert "offset" not in seen[0].url.params
+
+
+@pytest.mark.asyncio
 async def test_positions_follow_cursor_with_wallet_anchor() -> None:
     wallet = "0x" + "12" * 20
     requests: list[httpx.Request] = []
@@ -78,3 +110,36 @@ async def test_data_api_retries_retry_after_for_503(monkeypatch) -> None:
     assert value["value"] == 1
     assert calls == 2
     assert sleeps == [0.0]
+
+
+@pytest.mark.asyncio
+async def test_price_as_of_preserves_resolution_and_refuses_future_point() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"timestamp": 100, "price": 0.4, "resolution_seconds": 60},
+                    {"timestamp": 110, "price": 0.5, "resolution_seconds": 60},
+                    {"timestamp": 121, "price": 0.9, "resolution_seconds": 60},
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(
+        base_url="https://data-api.polymarket.com",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        client = PolymarketDataClient(client=http)
+        point = await client.price_as_of("token-1", 120)
+
+    assert point is not None
+    assert point.timestamp == 110
+    assert point.price == 0.5
+    assert point.resolution_seconds == 60
+    assert seen[0].url.path == "/v2/prices-history"
+    assert seen[0].url.params["token_id"] == "token-1"
+    assert seen[0].url.params["as_of"] == "120"

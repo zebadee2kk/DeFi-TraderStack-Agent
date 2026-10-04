@@ -106,7 +106,7 @@ async def collect_wallet_snapshot(
             _observation(
                 wallet=wallet,
                 observation_type="leaderboard",
-                source_id="polymarket:data-api:/v1/leaderboard",
+                source_id="polymarket:data-api:/v2/leaderboard",
                 payload={
                     "snapshot_id": snapshot_id,
                     "snapshot_at": snapshot_at.isoformat(),
