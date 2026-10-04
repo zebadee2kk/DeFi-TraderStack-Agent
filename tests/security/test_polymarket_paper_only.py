@@ -287,7 +287,6 @@ def test_collector_never_writes_the_paper_intent_ledger() -> None:
     assert "PaperIntent" not in collector
 
 
-
 def test_wallet_intelligence_modules_define_no_execution_methods() -> None:
     for name in ("data_api.py", "wallet_snapshot.py", "wallet_cohorts.py", "wallet_signal_eval.py"):
         tree = ast.parse((POLYMARKET_SRC / name).read_text(encoding="utf-8"))
