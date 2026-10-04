@@ -14,7 +14,7 @@ run_ts() {
     "$@"
   fi
 }
-if [[ ! -x run_ts "$VENV/bin/traderstack-polymarket-wallet-signal-eval" ]]; then
+if [[ ! -x "$VENV/bin/traderstack-polymarket-wallet-signal-eval" ]]; then
   echo "missing wallet signal evaluator; run make setup from current main" >&2
   exit 2
 fi
