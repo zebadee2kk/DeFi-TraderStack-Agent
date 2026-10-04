@@ -167,7 +167,7 @@ traderstack-lead-lag = "traderstack.research.lead_lag_cli:main"
 # dual-print is success. Not an EMA / residual / XS / Donchian /
 # TSMOM / Bollinger / calendar / lead-lag reprint.
 traderstack-volume-breakout = "traderstack.research.volume_breakout_cli:main"
-traderstack-check-config = "traderstack.cli_check:main"
+traderstack-check-config = "traderstack.cli_check:main"\ntraderstack-resource-audit = "traderstack.resource_audit:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
 traderstack-soak = "traderstack.acceptance.soak:main"
