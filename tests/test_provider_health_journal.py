@@ -56,3 +56,46 @@ def test_journal_preserves_sanitized_error_text(tmp_path: Path) -> None:
     assert event.state == "open"
     assert event.consecutive_failures == 3
     assert event.last_error == "HTTPStatusError: upstream unavailable"
+
+
+import pytest
+
+from traderstack.market.registry import ProviderRegistry
+
+
+@pytest.mark.asyncio
+async def test_provider_registry_emits_health_after_success(tmp_path: Path) -> None:
+    path = tmp_path / "provider-health.jsonl"
+    journal = ProviderHealthJournal(path)
+    registry = ProviderRegistry(name="perplexity", health_recorder=journal.record)
+
+    async def fetch() -> str:
+        return "ok"
+
+    assert await registry.call(fetch) == "ok"
+    event = load_latest_provider_health(path)["perplexity"]
+    assert event.state == "closed"
+    assert event.last_success_at is not None
+    assert event.consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_provider_registry_emits_health_after_failure(tmp_path: Path) -> None:
+    path = tmp_path / "provider-health.jsonl"
+    journal = ProviderHealthJournal(path)
+    registry = ProviderRegistry(
+        name="dune",
+        failure_threshold=1,
+        health_recorder=journal.record,
+    )
+
+    async def fail() -> str:
+        raise RuntimeError("upstream unavailable")
+
+    with pytest.raises(RuntimeError, match="upstream unavailable"):
+        await registry.call(fail)
+
+    event = load_latest_provider_health(path)["dune"]
+    assert event.state == "open"
+    assert event.consecutive_failures == 1
+    assert "upstream unavailable" in (event.last_error or "")
