@@ -180,8 +180,6 @@ def parse_crucix_alerts(
     )
 
 
-
-
 def _symbol_matches(raw: object, symbol: str) -> bool:
     text = str(raw or "").upper()
     return text == symbol or text.startswith((f"{symbol}-", f"{symbol}/"))
