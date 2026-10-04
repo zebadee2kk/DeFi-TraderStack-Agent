@@ -143,3 +143,9 @@ async def test_price_as_of_preserves_resolution_and_refuses_future_point() -> No
     assert seen[0].url.path == "/v2/prices-history"
     assert seen[0].url.params["token_id"] == "token-1"
     assert seen[0].url.params["as_of"] == "120"
+
+
+
+def test_wallet_from_leaderboard_row_accepts_v2_user_id() -> None:
+    wallet = "0x" + "ab" * 20
+    assert wallet_from_leaderboard_row({"user_id": wallet}) == wallet
