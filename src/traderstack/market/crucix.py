@@ -184,7 +184,7 @@ def parse_crucix_alerts(
 
 def _symbol_matches(raw: object, symbol: str) -> bool:
     text = str(raw or "").upper()
-    return text == symbol or text.startswith(f"{symbol}-") or text.startswith(f"{symbol}/")
+    return text == symbol or text.startswith((f"{symbol}-", f"{symbol}/"))
 
 
 def _is_dashboard_payload(payload: object) -> bool:
