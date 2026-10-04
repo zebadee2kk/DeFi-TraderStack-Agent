@@ -111,7 +111,9 @@ def render_env(original_lines: list[str], updates: dict[str, str]) -> str:
     if remaining:
         if rendered and rendered[-1] != "":
             rendered.append("")
-        rendered.append("# Intelligence credentials populated by ops/configure-intelligence-credentials.py")
+        rendered.append(
+            "# Intelligence credentials populated by ops/configure-intelligence-credentials.py"
+        )
         for field in FIELDS:
             if field.name in remaining:
                 rendered.append(f"{field.name}={remaining.pop(field.name)}")
