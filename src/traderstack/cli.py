@@ -107,8 +107,8 @@ from traderstack.reconciliation import HummingbotPortfolioReconciler
 from traderstack.risk import RiskEngine
 from traderstack.risk_audit import JsonlRiskAuditTrail
 from traderstack.runtime import PaperRuntime, RuntimeResult
-from traderstack.signal_warehouse import PostgresSignalWarehouse
 from traderstack.service import ContinuousPaperService
+from traderstack.signal_warehouse import PostgresSignalWarehouse
 from traderstack.strategies import PaperResearchStrategy, StrategyEnsemble
 from traderstack.tracing import configure_tracing  # observability (Epic 9)
 from traderstack.walkforward import WalkForwardEvaluator
