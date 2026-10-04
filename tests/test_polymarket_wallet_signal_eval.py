@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-import traderstack.polymarket.wallet_signal_eval as wallet_signal_eval
+from traderstack.polymarket import wallet_signal_eval
 from traderstack.polymarket.data_api import DataPricePoint
 
 
