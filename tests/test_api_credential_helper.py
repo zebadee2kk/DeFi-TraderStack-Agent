@@ -25,10 +25,7 @@ helper = _module()
 def test_update_env_preserves_unrelated_lines_and_sets_mode_0600(tmp_path: Path) -> None:
     env = tmp_path / ".env"
     env.write_text(
-        "TRADING_MODE=paper\n"
-        "KILL_SWITCH=true\n"
-        "DUNE_API_KEY=old\n"
-        "# keep this comment\n",
+        "TRADING_MODE=paper\nKILL_SWITCH=true\nDUNE_API_KEY=old\n# keep this comment\n",
         encoding="utf-8",
     )
     env.chmod(0o644)
@@ -54,8 +51,7 @@ def test_update_env_preserves_unrelated_lines_and_sets_mode_0600(tmp_path: Path)
 def test_read_env_values_handles_quoted_values_and_equals(tmp_path: Path) -> None:
     env = tmp_path / ".env"
     env.write_text(
-        'DUNE_API_KEY="abc=123"\n'
-        "DUNE_QUERY_IDS='BTC:100,ETH:200'\n",
+        "DUNE_API_KEY=\"abc=123\"\nDUNE_QUERY_IDS='BTC:100,ETH:200'\n",
         encoding="utf-8",
     )
     values = helper.read_env_values(env)
