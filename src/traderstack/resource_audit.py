@@ -414,8 +414,12 @@ def apply_journal_health(
         if event.state == "open":
             values["status"] = BLOCKED_NETWORK
             values["network"] = "breaker_open"
-            values["action"] = "provider circuit is open; inspect latest provider error and upstream reachability"
-        elif event.last_success_at is not None and (now - event.last_success_at.astimezone(UTC)) <= timedelta(days=7):
+            values["action"] = (
+                "provider circuit is open; inspect latest provider error and upstream reachability"
+            )
+        elif event.last_success_at is not None and (
+            now - event.last_success_at.astimezone(UTC)
+        ) <= timedelta(days=7):
             values["status"] = ACTIVE
             values["network"] = "recent_success"
             values["auth"] = "validated_by_success"
