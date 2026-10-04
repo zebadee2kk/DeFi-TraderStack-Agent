@@ -52,7 +52,7 @@ Wait for PostgreSQL to be healthy.
 ## 4. Run strict resource/deployment preflight
 
 ```bash
-.venv/bin/traderstack-redeploy-preflight --strict-resources
+.venv/bin/traderstack-redeploy-preflight --strict-resources --host-published-services
 .venv/bin/traderstack-resource-audit --probe-public
 ```
 
@@ -124,7 +124,7 @@ Confirm:
 After enough runtime cycles for provider health to be recorded, require **actual successful calls**, not just configured keys:
 
 ```bash
-.venv/bin/traderstack-redeploy-preflight --require-active-resources
+.venv/bin/traderstack-redeploy-preflight --require-active-resources --host-published-services
 ```
 
 If this fails, leave the kill switch engaged and resolve the named provider/network/auth failure. Do not downgrade the check to configured-only.
