@@ -273,17 +273,25 @@ def build_rows(settings: Settings, *, now: datetime | None = None) -> list[Resou
         _provider_row(
             provider="CoinGecko",
             role="reference price",
-            configured=_secret_present(settings.coingecko_api_key),
-            credential_source=source("COINGECKO_API_KEY"),
-            action_if_missing="provision COINGECKO_API_KEY or confirm fallback policy",
+            configured=True,
+            credential_source=(
+                source("COINGECKO_API_KEY")
+                if _secret_present(settings.coingecko_api_key)
+                else "optional_unset"
+            ),
+            action_if_missing="public no-key mode supported; API key is optional for quota/headroom",
             now=now,
         ),
         _provider_row(
             provider="CoinMarketCap",
             role="secondary reference price",
-            configured=_secret_present(settings.coinmarketcap_api_key),
-            credential_source=source("COINMARKETCAP_API_KEY"),
-            action_if_missing="provision COINMARKETCAP_API_KEY or deliberately disable",
+            configured=True,
+            credential_source=(
+                source("COINMARKETCAP_API_KEY")
+                if _secret_present(settings.coinmarketcap_api_key)
+                else "optional_unset"
+            ),
+            action_if_missing="public no-key mode supported; API key is optional for quota/headroom",
             now=now,
         ),
         _provider_row(
