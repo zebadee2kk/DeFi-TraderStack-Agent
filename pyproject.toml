@@ -169,6 +169,8 @@ traderstack-lead-lag = "traderstack.research.lead_lag_cli:main"
 traderstack-volume-breakout = "traderstack.research.volume_breakout_cli:main"
 traderstack-check-config = "traderstack.cli_check:main"
 traderstack-resource-audit = "traderstack.resource_audit:main"
+traderstack-signal-export = "traderstack.signal_warehouse_export:main"
+traderstack-signal-coverage = "traderstack.signal_warehouse_coverage:main"
 # Paper-trading acceptance (Epic 10): the soak runner and the paper
 # performance-versus-baselines report. Both are offline by construction.
 traderstack-soak = "traderstack.acceptance.soak:main"
