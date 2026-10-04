@@ -44,6 +44,10 @@ def _rows(payload: Any) -> tuple[dict[str, Any], ...]:
             value = payload.get(key)
             if isinstance(value, list):
                 return tuple(row for row in value if isinstance(row, dict))
+            if isinstance(value, dict):
+                nested = value.get("leaderboard") or value.get("results")
+                if isinstance(nested, list):
+                    return tuple(row for row in nested if isinstance(row, dict))
     raise TypeError("unexpected Polymarket Data API list payload")
 
 
