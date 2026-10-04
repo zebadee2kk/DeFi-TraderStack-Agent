@@ -104,3 +104,47 @@ def load_latest_provider_health(path: Path) -> dict[str, ProviderHealthEvent]:
         if previous is None or event.observed_at >= previous.observed_at:
             latest[event.provider] = event
     return latest
+
+
+
+def load_provider_health_events(path: Path) -> list[ProviderHealthEvent]:
+    if not path.is_file():
+        return []
+
+    events: list[ProviderHealthEvent] = []
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            payload = json.loads(raw)
+            observed_at = datetime.fromisoformat(str(payload["observed_at"]))
+            last_success_raw = payload.get("last_success_at")
+            last_success_at = (
+                datetime.fromisoformat(str(last_success_raw))
+                if last_success_raw is not None
+                else None
+            )
+            events.append(
+                ProviderHealthEvent(
+                    observed_at=observed_at,
+                    provider=str(payload["provider"]),
+                    state=str(payload["state"]),
+                    consecutive_failures=int(payload["consecutive_failures"]),
+                    last_latency_seconds=(
+                        float(payload["last_latency_seconds"])
+                        if payload.get("last_latency_seconds") is not None
+                        else None
+                    ),
+                    last_success_at=last_success_at,
+                    last_error=(
+                        str(payload["last_error"])
+                        if payload.get("last_error") is not None
+                        else None
+                    ),
+                    calls_last_minute=int(payload["calls_last_minute"]),
+                    calls_today=int(payload["calls_today"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+    return events
