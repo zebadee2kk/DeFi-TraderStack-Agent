@@ -82,6 +82,7 @@ def test_provider_authored_instruction_fields_cannot_survive_normalization() -> 
     assert "PAPER_PROMOTE_ALL" not in payload_text
     assert "do-not-store" not in payload_text
 
+
 def test_direct_observation_construction_rejects_instruction_shaped_payload_keys() -> None:
     with pytest.raises(ValueError, match="unsupported intelligence observation payload fields"):
         IntelligenceObservation(
