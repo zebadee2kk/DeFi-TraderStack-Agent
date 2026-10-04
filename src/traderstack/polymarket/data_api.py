@@ -175,12 +175,17 @@ class PolymarketDataClient:
                 continue
             timestamp = row.get("timestamp")
             price = row.get("price")
-            if isinstance(timestamp, bool) or isinstance(price, bool):
+            if (
+                not isinstance(timestamp, int | float | str)
+                or isinstance(timestamp, bool)
+                or not isinstance(price, int | float | str)
+                or isinstance(price, bool)
+            ):
                 continue
             try:
                 timestamp_i = int(timestamp)
                 price_f = float(price)
-            except (TypeError, ValueError):
+            except ValueError:
                 continue
             resolution_raw = row.get("resolution_seconds")
             resolution: int | None = None
