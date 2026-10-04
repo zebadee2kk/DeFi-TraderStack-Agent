@@ -187,9 +187,7 @@ class PostgresSignalWarehouse:
             rows = (await connection.execute(statement)).mappings().all()
         return [dict(row) for row in rows]
 
-    async def append_intelligence_observations(
-        self, rows: list[dict[str, object]]
-    ) -> int:
+    async def append_intelligence_observations(self, rows: list[dict[str, object]]) -> int:
         if not rows:
             return 0
         by_key = {str(row["event_key"]): row for row in rows}
