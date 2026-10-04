@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Safely populate intelligence-provider credentials in a local .env file.
 
 Designed for interactive use on WSL/Linux. Secret values are read with
