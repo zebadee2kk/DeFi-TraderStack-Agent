@@ -149,7 +149,6 @@ def test_resource_audit_surfaces_open_breaker(tmp_path: Path) -> None:
     assert dune.stale == "yes"
 
 
-
 def test_public_reference_providers_do_not_require_keys(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     rows = {row.provider: row for row in build_rows(_settings())}
