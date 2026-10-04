@@ -149,3 +149,32 @@ def test_optional_keys_are_only_prompted_when_requested(
     helper.prompt_values(current, only_missing=True, include_optional=True)
     assert any("COINGECKO_API_KEY" in prompt for prompt in prompts)
     assert any("COINMARKETCAP_API_KEY" in prompt for prompt in prompts)
+
+
+
+def test_guide_never_prints_secret_values(capsys: pytest.CaptureFixture[str]) -> None:
+    helper._print_guide()
+    output = capsys.readouterr().out
+    assert "DUNE_API_KEY [required]" in output
+    assert "COINGECKO_API_KEY [optional]" in output
+    assert "DUNE_QUERY_IDS [required]" in output
+
+
+def test_main_guide_does_not_prompt_or_touch_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env = tmp_path / ".env"
+    env.write_text("TRADING_MODE=paper\nKILL_SWITCH=true\n", encoding="utf-8")
+    before = env.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        helper.getpass,
+        "getpass",
+        lambda prompt: pytest.fail(f"unexpected prompt: {prompt}"),
+    )
+
+    assert helper.main(["--env-file", str(env), "--guide"]) == 0
+    assert env.read_text(encoding="utf-8") == before
+    output = capsys.readouterr().out
+    assert "PERPLEXITY_API_KEY [required]" in output
