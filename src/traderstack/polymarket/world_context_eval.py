@@ -325,6 +325,61 @@ def _sample_floor(split: str, discovery_min: int, holdout_min: int) -> int:
     return discovery_min + holdout_min
 
 
+def build_global_trial_sharpes(
+    scored_runs: list[list[ScoredSignal]],
+    contexts: list[FusedSignalContext],
+    *,
+    holdout_fraction: float = 0.30,
+    discovery_min: int = DISCOVERY_MIN_SIGNALS,
+    holdout_min: int = HOLDOUT_MIN_SIGNALS,
+) -> dict[str, tuple[float, ...] | None]:
+    """Build one DSR trial catalog per split across the entire frozen grid.
+
+    DSR is withheld for a split unless every logical trial has the required
+    sample support and a defined Sharpe. Dropping sparse trials would shrink
+    the pre-registered search after seeing the data and understate multiplicity.
+    """
+
+    if discovery_min <= 0 or holdout_min <= 0:
+        raise ValueError("sample floors must be positive")
+    index = build_context_index(contexts)
+    catalogs: dict[str, list[float]] = {"discovery": [], "holdout": [], "all": []}
+    ready = {"discovery": True, "holdout": True, "all": True}
+
+    for scored in scored_runs:
+        for hypothesis in HYPOTHESES:
+            hypothesis_rows = [row for row in scored if row.hypothesis == hypothesis]
+            splits = _split_rows(hypothesis_rows, holdout_fraction=holdout_fraction)
+            for split, baseline in splits.items():
+                floor = _sample_floor(split, discovery_min, holdout_min)
+                for context_id in CONTEXT_IDS:
+                    treatment = [
+                        row
+                        for row in baseline
+                        if context_matches(_context_for(row, index), context_id)
+                    ]
+                    normalized = [
+                        row.net_pnl_usd / row.copied_notional_usd
+                        for row in treatment
+                        if row.copied_notional_usd > 0
+                    ]
+                    trial_sharpe = sharpe_ratio(normalized)
+                    if len(treatment) < floor or trial_sharpe is None:
+                        ready[split] = False
+                    else:
+                        catalogs[split].append(trial_sharpe)
+
+    expected_trials = len(scored_runs) * len(HYPOTHESES) * len(CONTEXT_IDS)
+    return {
+        split: (
+            tuple(values)
+            if ready[split] and len(values) == expected_trials
+            else None
+        )
+        for split, values in catalogs.items()
+    }
+
+
 def evaluate_context_grid(
     scored: list[ScoredSignal],
     contexts: list[FusedSignalContext],
@@ -332,6 +387,8 @@ def evaluate_context_grid(
     holdout_fraction: float = 0.30,
     discovery_min: int = DISCOVERY_MIN_SIGNALS,
     holdout_min: int = HOLDOUT_MIN_SIGNALS,
+    global_trial_sharpes: dict[str, tuple[float, ...] | None] | None = None,
+    catalog_trial_count: int = TRIALS_PER_BASE_GRID,
 ) -> list[ContextCell]:
     if discovery_min <= 0 or holdout_min <= 0:
         raise ValueError("sample floors must be positive")
@@ -362,26 +419,9 @@ def evaluate_context_grid(
                 ]
 
             floor = _sample_floor(split, discovery_min, holdout_min)
-            per_context_sharpes = {
-                context_id: sharpe_ratio(
-                    [
-                        row.net_pnl_usd / row.copied_notional_usd
-                        for row in context_rows[context_id]
-                        if row.copied_notional_usd > 0
-                    ]
-                )
-                for context_id in CONTEXT_IDS
-            }
-            catalog_ready = all(
-                len(context_rows[context_id]) >= floor
-                and per_context_sharpes[context_id] is not None
-                for context_id in CONTEXT_IDS
+            trial_sharpes = (
+                None if global_trial_sharpes is None else global_trial_sharpes.get(split)
             )
-            trial_sharpes = [
-                value
-                for context_id in CONTEXT_IDS
-                if (value := per_context_sharpes[context_id]) is not None
-            ]
 
             for context_id in CONTEXT_IDS:
                 treatment = context_rows[context_id]
@@ -403,20 +443,26 @@ def evaluate_context_grid(
                     for row in treatment
                     if row.copied_notional_usd > 0
                 ]
-                if floor_met and catalog_ready:
+                if (
+                    floor_met
+                    and trial_sharpes is not None
+                    and len(trial_sharpes) == catalog_trial_count
+                ):
                     dsr = deflated_sharpe_ratio(
                         returns=normalized,
                         trial_sharpes=trial_sharpes,
                     ).model_dump(mode="json")
                 else:
+                    if not floor_met:
+                        skipped_reason = "minimum_signal_count_not_met"
+                    elif trial_sharpes is None:
+                        skipped_reason = "global_catalog_sample_support_incomplete"
+                    else:
+                        skipped_reason = "global_catalog_trial_count_mismatch"
                     dsr = {
                         "computed": False,
-                        "skipped_reason": (
-                            "minimum_signal_count_not_met"
-                            if not floor_met
-                            else "catalog_sample_support_incomplete"
-                        ),
-                        "trials": TRIALS_PER_BASE_GRID,
+                        "skipped_reason": skipped_reason,
+                        "trials": catalog_trial_count,
                         "observations": len(normalized),
                     }
 
@@ -536,7 +582,7 @@ async def _run(args: argparse.Namespace) -> int:
     )
 
     hold_seconds = int(args.hold_hours * 3600)
-    runs: list[dict[str, object]] = []
+    scored_runs: list[tuple[int, float, list[ScoredSignal], dict[str, int]]] = []
     for delay in args.copy_delays:
         for cost_bps in args.cost_bps:
             scored, skipped = await score_candidates(
@@ -551,30 +597,48 @@ async def _run(args: argparse.Namespace) -> int:
                 max_staleness_seconds=args.max_staleness_seconds,
                 max_signals=args.max_signals,
             )
-            runs.append(
-                {
-                    "copy_delay_seconds": delay,
-                    "cost_bps_per_side": cost_bps,
-                    "candidate_count": len(candidates),
-                    "scored_count": len(scored),
-                    "skipped": skipped,
-                    "cells": [
-                        asdict(cell)
-                        for cell in evaluate_context_grid(
-                            scored,
-                            contexts,
-                            holdout_fraction=args.holdout_fraction,
-                        )
-                    ],
-                    "pbo": {
-                        "computed": False,
-                        "skipped_reason": (
-                            "context filters have non-common signal support; "
-                            "zero-filling missing treatment observations is forbidden"
-                        ),
-                    },
-                }
-            )
+            scored_runs.append((delay, cost_bps, scored, skipped))
+
+    catalog_trial_count = (
+        len(HYPOTHESES)
+        * len(args.copy_delays)
+        * len(args.cost_bps)
+        * len(CONTEXT_IDS)
+    )
+    global_trial_sharpes = build_global_trial_sharpes(
+        [scored for _, _, scored, _ in scored_runs],
+        contexts,
+        holdout_fraction=args.holdout_fraction,
+    )
+
+    runs: list[dict[str, object]] = []
+    for delay, cost_bps, scored, skipped in scored_runs:
+        runs.append(
+            {
+                "copy_delay_seconds": delay,
+                "cost_bps_per_side": cost_bps,
+                "candidate_count": len(candidates),
+                "scored_count": len(scored),
+                "skipped": skipped,
+                "cells": [
+                    asdict(cell)
+                    for cell in evaluate_context_grid(
+                        scored,
+                        contexts,
+                        holdout_fraction=args.holdout_fraction,
+                        global_trial_sharpes=global_trial_sharpes,
+                        catalog_trial_count=catalog_trial_count,
+                    )
+                ],
+                "pbo": {
+                    "computed": False,
+                    "skipped_reason": (
+                        "context filters have non-common signal support; "
+                        "zero-filling missing treatment observations is forbidden"
+                    ),
+                },
+            }
+        )
 
     print(
         json.dumps(
@@ -585,9 +649,12 @@ async def _run(args: argparse.Namespace) -> int:
                 "catalog_frozen_in_issue_193": True,
                 "context_ids": list(CONTEXT_IDS),
                 "context_cells_per_base_grid": TRIALS_PER_BASE_GRID,
-                "grid_cell_count_expected": (
-                    len(HYPOTHESES) * len(args.copy_delays) * len(args.cost_bps) * len(CONTEXT_IDS)
-                ),
+                "dsr_global_trial_count": catalog_trial_count,
+                "dsr_catalog_ready_by_split": {
+                    split: values is not None
+                    for split, values in global_trial_sharpes.items()
+                },
+                "grid_cell_count_expected": catalog_trial_count,
                 "split_row_count_expected": (
                     len(HYPOTHESES)
                     * len(args.copy_delays)
