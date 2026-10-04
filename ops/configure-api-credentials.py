@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Interactively populate TraderStack API credentials in .env.
 
 Designed for a trusted WSL/operator shell. Secret values are read with getpass,
