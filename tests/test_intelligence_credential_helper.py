@@ -1,3 +1,4 @@
+# ruff: noqa: I001  # Dynamic import test intentionally keeps stdlib loader grouping explicit.
 from __future__ import annotations
 
 import importlib.util
