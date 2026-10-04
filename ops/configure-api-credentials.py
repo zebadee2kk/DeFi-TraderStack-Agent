@@ -16,17 +16,21 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-SECRET_KEYS = (
+REQUIRED_SECRET_KEYS = (
     "DUNE_API_KEY",
     "LUNARCRUSH_API_KEY",
     "CRYPTOPANIC_API_KEY",
     "PERPLEXITY_API_KEY",
     "ALTFINS_API_KEY",
+)
+OPTIONAL_SECRET_KEYS = (
     "COINGECKO_API_KEY",
     "COINMARKETCAP_API_KEY",
 )
 VISIBLE_KEYS = ("DUNE_QUERY_IDS",)
+SECRET_KEYS = REQUIRED_SECRET_KEYS + OPTIONAL_SECRET_KEYS
 ALL_KEYS = SECRET_KEYS + VISIBLE_KEYS
+REQUIRED_KEYS = REQUIRED_SECRET_KEYS + VISIBLE_KEYS
 
 _KEY_RE = re.compile(
     r"^(?P<prefix>\s*(?:export\s+)?)"
@@ -125,11 +129,17 @@ def prompt_values(
     current: dict[str, str],
     *,
     only_missing: bool,
+    include_optional: bool = False,
 ) -> tuple[dict[str, str], tuple[str, ...]]:
     replacements: dict[str, str] = {}
     skipped: list[str] = []
 
-    for key in SECRET_KEYS:
+    prompt_secret_keys = (
+        REQUIRED_SECRET_KEYS + OPTIONAL_SECRET_KEYS
+        if include_optional
+        else REQUIRED_SECRET_KEYS
+    )
+    for key in prompt_secret_keys:
         present = bool(current.get(key, "").strip())
         if only_missing and present:
             skipped.append(key)
@@ -177,6 +187,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="prompt for already-populated keys too; default prompts only for missing keys",
     )
     parser.add_argument(
+        "--include-optional",
+        action="store_true",
+        help=(
+            "also prompt for optional CoinGecko/CoinMarketCap keys; "
+            "their public no-key modes are valid"
+        ),
+    )
+    parser.add_argument(
         "--status",
         action="store_true",
         help="show only set/missing status; never print values",
@@ -185,13 +203,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _missing_keys(values: dict[str, str]) -> list[str]:
-    return [key for key in ALL_KEYS if not values.get(key, "").strip()]
+    return [key for key in REQUIRED_KEYS if not values.get(key, "").strip()]
 
 
 def _print_status(values: dict[str, str]) -> None:
     for key in ALL_KEYS:
-        state = "SET" if values.get(key, "").strip() else "MISSING"
-        print(f"{state:7} {key}")
+        present = bool(values.get(key, "").strip())
+        if present:
+            state = "SET"
+        elif key in OPTIONAL_SECRET_KEYS:
+            state = "OPTIONAL"
+        else:
+            state = "MISSING"
+        print(f"{state:8} {key}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -212,7 +236,11 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Updating {path} (secret values will not be echoed).")
     print("Press Enter at any prompt to leave the existing value unchanged.")
-    replacements, _skipped = prompt_values(current, only_missing=not args.all)
+    replacements, _skipped = prompt_values(
+        current,
+        only_missing=not args.all,
+        include_optional=args.include_optional or args.all,
+    )
 
     if not replacements:
         print("No credential values changed.")
@@ -229,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Still missing: " + ", ".join(missing))
         return 2
 
-    print("All managed credential fields are populated.")
+    print("All required credential fields are populated.")
     print(
         "Next: run .venv/bin/traderstack-resource-audit --probe-public "
         "and .venv/bin/traderstack-redeploy-preflight "
