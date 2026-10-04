@@ -15,6 +15,7 @@ from typing import Any
 from traderstack.config import Settings
 from traderstack.killswitch import KillSwitch
 from traderstack.market.registry import ProviderRegistry
+from traderstack.provider_health_journal import DEFAULT_PROVIDER_HEALTH_PATH, ProviderHealthJournal
 from traderstack.polymarket.cities import CITY_CATALOG, match_city, resolve_allowlist
 from traderstack.polymarket.clob import ClobPublicClient
 from traderstack.polymarket.edge import calculate_edge
@@ -123,6 +124,7 @@ def _build_registries(settings: Settings) -> dict[str, ProviderRegistry]:
             cooldown_seconds=settings.provider_breaker_cooldown_seconds,
             calls_per_minute=quota,
             cache_ttl_seconds=ttl,
+            health_recorder=ProviderHealthJournal(DEFAULT_PROVIDER_HEALTH_PATH).record,
         )
         for name in names
     }
