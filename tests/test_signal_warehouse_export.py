@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from traderstack.signal_warehouse_export import WarehouseExportSpec, _parse_dt
 
+
 def test_export_query_hash_is_deterministic() -> None:
     spec_a = WarehouseExportSpec(
         asset="btc",
