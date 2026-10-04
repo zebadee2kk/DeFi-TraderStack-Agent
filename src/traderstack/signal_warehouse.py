@@ -32,7 +32,9 @@ provider_observations = Table(
 )
 
 
-def build_feature_rows(result: RuntimeResult) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
+def build_feature_rows(
+    result: RuntimeResult,
+) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
     vector = result.pipeline.feature_vector
     if vector is None:
         return None, []
