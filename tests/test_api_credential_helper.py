@@ -102,7 +102,6 @@ def test_prompt_values_skips_existing_keys_in_missing_only_mode(
     assert set(skipped) == set(helper.ALL_KEYS)
 
 
-
 def test_main_initializes_missing_env_from_example(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
