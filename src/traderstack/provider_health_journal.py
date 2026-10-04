@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from traderstack.market.registry import ProviderHealthReport
 
+DEFAULT_PROVIDER_HEALTH_PATH = Path("var/ops/provider_health.jsonl")
+
 
 @dataclass(frozen=True)
 class ProviderHealthEvent:
