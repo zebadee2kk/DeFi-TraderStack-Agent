@@ -8,8 +8,10 @@ import pytest
 from traderstack.polymarket.wallet_signal_eval import ScoredSignal
 from traderstack.polymarket.world_context_eval import (
     CONTEXT_IDS,
+    _is_preregistered_contract,
     bootstrap_incremental_mean,
     build_global_trial_sharpes,
+    build_parser,
     context_matches,
     evaluate_context_grid,
 )
@@ -270,6 +272,60 @@ def test_global_dsr_is_withheld_when_any_frozen_trial_lacks_support() -> None:
     assert cell.deflated_sharpe["computed"] is False
     assert cell.deflated_sharpe["trials"] == 270
     assert cell.deflated_sharpe["skipped_reason"] == "global_catalog_sample_support_incomplete"
+
+
+def test_cli_overrides_are_not_mislabeled_as_preregistered() -> None:
+    parser = build_parser()
+
+    assert _is_preregistered_contract(parser.parse_args([]))
+    assert not _is_preregistered_contract(parser.parse_args(["--copy-delays", "60"]))
+    assert not _is_preregistered_contract(parser.parse_args(["--cost-bps", "25"]))
+    assert not _is_preregistered_contract(parser.parse_args(["--warehouse-limit", "1000"]))
+
+
+def test_non_preregistered_run_cannot_emit_dsr() -> None:
+    start = datetime(2026, 10, 1, tzinfo=UTC)
+    payload = {
+        "news": {"adverse_event": True, "event_score": 0.7},
+        "narrative": {"mention_velocity_z": 1.2, "sentiment": 0.6},
+        "onchain": {
+            "exchange_netflow_z": 1.6,
+            "large_wallet_accumulation": 0.55,
+        },
+        "market": {"external_signal_score": 0.6},
+        "edge": {"liq_notional_long_z": 1.6, "liq_notional_short_z": 0.0},
+    }
+    scored = [
+        _signal(start + timedelta(hours=index), pnl)
+        for index, pnl in enumerate((-1.0, 0.5, 1.0, 2.0))
+    ]
+    contexts = [_context(row.trade_at, payload) for row in scored]
+    trial_catalog = tuple(float(index) / 100.0 for index in range(270))
+
+    cells = evaluate_context_grid(
+        scored,
+        contexts,
+        discovery_min=1,
+        holdout_min=1,
+        global_trial_sharpes={
+            "discovery": trial_catalog,
+            "holdout": trial_catalog,
+            "all": trial_catalog,
+        },
+        catalog_trial_count=270,
+        dsr_skip_reason="non_preregistered_parameters",
+    )
+    cell = next(
+        item
+        for item in cells
+        if item.hypothesis == "top3_follow"
+        and item.context_id == "baseline_all"
+        and item.split == "holdout"
+    )
+
+    assert cell.deflated_sharpe["computed"] is False
+    assert cell.deflated_sharpe["trials"] == 270
+    assert cell.deflated_sharpe["skipped_reason"] == "non_preregistered_parameters"
 
 
 def test_unknown_context_id_is_refused() -> None:
