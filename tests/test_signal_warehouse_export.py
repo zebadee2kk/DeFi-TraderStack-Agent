@@ -39,3 +39,23 @@ def test_export_query_hash_changes_with_bounds() -> None:
 def test_parse_dt_normalizes_naive_and_zulu_to_utc() -> None:
     assert _parse_dt("2026-10-04T10:00:00Z") == datetime(2026, 10, 4, 10, tzinfo=UTC)
     assert _parse_dt("2026-10-04T10:00:00") == datetime(2026, 10, 4, 10, tzinfo=UTC)
+
+def test_intelligence_export_has_distinct_reproducible_query_hash() -> None:
+    feature = WarehouseExportSpec(
+        asset="BTC",
+        start=datetime(2026, 10, 1, tzinfo=UTC),
+        end=datetime(2026, 10, 2, tzinfo=UTC),
+        limit=100,
+    )
+    intelligence = WarehouseExportSpec(
+        asset="BTC",
+        start=datetime(2026, 10, 1, tzinfo=UTC),
+        end=datetime(2026, 10, 2, tzinfo=UTC),
+        limit=100,
+        dataset="intelligence",
+    )
+
+    assert feature.query_hash() != intelligence.query_hash()
+    assert '"dataset":"intelligence"' in intelligence.canonical_json()
+    assert '"dataset"' not in feature.canonical_json()
+
