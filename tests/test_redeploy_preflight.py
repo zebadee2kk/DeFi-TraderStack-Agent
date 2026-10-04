@@ -55,8 +55,7 @@ def test_static_bootstrap_rejects_disengaged_kill_switch() -> None:
 
 def test_static_bootstrap_rejects_promotion_pin() -> None:
     checks = {
-        check.name: check
-        for check in build_static_checks(settings(paper_promote_ema_9_21=True))
+        check.name: check for check in build_static_checks(settings(paper_promote_ema_9_21=True))
     }
     assert not checks["promotion_flags"].ok
     assert "paper_promote_ema_9_21" in checks["promotion_flags"].detail
@@ -65,8 +64,7 @@ def test_static_bootstrap_rejects_promotion_pin() -> None:
 def test_strict_resources_fail_when_keyed_source_missing() -> None:
     rows = [row("Polymarket Data API", configured=True, status="ACTIVE")]
     rows.extend(
-        row(name, configured=False, status=BLOCKED_CREDENTIAL)
-        for name in STRICT_RESOURCE_NAMES
+        row(name, configured=False, status=BLOCKED_CREDENTIAL) for name in STRICT_RESOURCE_NAMES
     )
     checks = resource_checks(rows, strict_resources=True)
     dune = next(check for check in checks if check.name == "resource:Dune")
@@ -87,12 +85,10 @@ def test_non_strict_resources_report_missing_without_blocking() -> None:
 def test_strict_resources_accept_configured_not_yet_proven_sources() -> None:
     rows = [row("Polymarket Data API", configured=True, status="ACTIVE")]
     rows.extend(
-        row(name, configured=True, status=IMPLEMENTED_NOT_PROVEN)
-        for name in STRICT_RESOURCE_NAMES
+        row(name, configured=True, status=IMPLEMENTED_NOT_PROVEN) for name in STRICT_RESOURCE_NAMES
     )
     checks = resource_checks(rows, strict_resources=True)
     assert all(check.ok for check in checks)
-
 
 
 def test_require_active_resources_rejects_configured_unproven() -> None:
