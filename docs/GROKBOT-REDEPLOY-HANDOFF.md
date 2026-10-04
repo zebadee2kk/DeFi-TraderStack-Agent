@@ -176,7 +176,7 @@ The evaluator writes:
 
 `var/research/polymarket-wallet-signal-eval-latest.json`
 
-The evaluator is research-only. It tests the frozen wallet hypotheses at 60/300/900-second copy delays and 25/50/100 bps per-side cost sensitivity. It never creates an order.
+The evaluator is research-only. It tests the frozen wallet hypotheses at 60/300/900-second copy delays and 25/50/100 bps per-side cost sensitivity. It never creates an order. Unique Polymarket price-history calls are paced at 100/minute by default (below the 120/minute provider ceiling) and cached across cost/delay sensitivity runs; do not raise the provider budget to force completion.
 
 ## 9. Human gate before disengaging the kill switch
 
