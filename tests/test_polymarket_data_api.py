@@ -78,3 +78,37 @@ async def test_data_api_retries_retry_after_for_503(monkeypatch) -> None:
     assert value["value"] == 1
     assert calls == 2
     assert sleeps == [0.0]
+
+
+
+@pytest.mark.asyncio
+async def test_price_as_of_preserves_resolution_and_refuses_future_point() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"timestamp": 100, "price": 0.4, "resolution_seconds": 60},
+                    {"timestamp": 110, "price": 0.5, "resolution_seconds": 60},
+                    {"timestamp": 121, "price": 0.9, "resolution_seconds": 60},
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(
+        base_url="https://data-api.polymarket.com",
+        transport=httpx.MockTransport(handler),
+    ) as http:
+        client = PolymarketDataClient(client=http)
+        point = await client.price_as_of("token-1", 120)
+
+    assert point is not None
+    assert point.timestamp == 110
+    assert point.price == 0.5
+    assert point.resolution_seconds == 60
+    assert seen[0].url.path == "/v2/prices-history"
+    assert seen[0].url.params["token_id"] == "token-1"
+    assert seen[0].url.params["as_of"] == "120"
