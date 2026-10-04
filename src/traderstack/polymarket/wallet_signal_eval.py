@@ -325,9 +325,10 @@ def _acceptable_price(
         return False
     if target_timestamp - point.timestamp > max_staleness_seconds:
         return False
-    if point.resolution_seconds is not None and point.resolution_seconds > max_resolution_seconds:
-        return False
-    return True
+    return not (
+        point.resolution_seconds is not None
+        and point.resolution_seconds > max_resolution_seconds
+    )
 
 
 async def score_candidates(
