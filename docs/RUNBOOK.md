@@ -2921,6 +2921,7 @@ Tables introduced by the first #192 slice:
 
 - `feature_snapshots` — canonical point-in-time `AssetFeatureVector` payload, schema version and source IDs.
 - `provider_observations` — one provenance row per `source_id` attached to that feature vector.
+- `intelligence_observations` — idempotent provider-native normalized snapshots captured before canonical merge. Payloads are allowlisted typed fields only; arbitrary upstream text/raw JSON is not persisted here.
 
 This is a research/evidence store only. It does not authorize trades, change risk limits, or replace the independent JSONL/hash-chained audit trail.
 
