@@ -70,9 +70,7 @@ def _dotenv_value(value: str) -> str:
 
 def update_env(path: Path, replacements: dict[str, str]) -> EditResult:
     original_lines = (
-        path.read_text(encoding="utf-8", errors="strict").splitlines()
-        if path.exists()
-        else []
+        path.read_text(encoding="utf-8", errors="strict").splitlines() if path.exists() else []
     )
     remaining = dict(replacements)
     output: list[str] = []
@@ -165,9 +163,7 @@ def prompt_values(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=(
-            "Safely prompt for TraderStack external API credentials and update .env."
-        )
+        description=("Safely prompt for TraderStack external API credentials and update .env.")
     )
     parser.add_argument(
         "--env-file",
@@ -204,9 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     if not path.exists():
         example = path.parent / ".env.example"
         if not example.is_file():
-            raise FileNotFoundError(
-                f"{path} does not exist and no {example} template is available"
-            )
+            raise FileNotFoundError(f"{path} does not exist and no {example} template is available")
         path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
         path.chmod(stat.S_IRUSR | stat.S_IWUSR)
         print(f"Initialized {path} from {example} with mode 0600.")
