@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from traderstack.market.registry import BreakerState, ProviderHealthReport
+import pytest
+
+from traderstack.market.registry import BreakerState, ProviderHealthReport, ProviderRegistry
 from traderstack.provider_health_journal import ProviderHealthJournal, load_latest_provider_health
 
 
@@ -56,11 +58,6 @@ def test_journal_preserves_sanitized_error_text(tmp_path: Path) -> None:
     assert event.state == "open"
     assert event.consecutive_failures == 3
     assert event.last_error == "HTTPStatusError: upstream unavailable"
-
-
-import pytest
-
-from traderstack.market.registry import ProviderRegistry
 
 
 @pytest.mark.asyncio
