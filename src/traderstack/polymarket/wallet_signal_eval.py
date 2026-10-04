@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
@@ -98,6 +99,46 @@ class EvalSummary:
     win_rate: float | None
     max_drawdown_usd: float
     mean_net_pnl_usd: float | None
+
+
+@dataclass
+class PacedPriceLookup:
+    lookup: Callable[[str, int], Awaitable[DataPricePoint | None]]
+    calls_per_minute: int = 100
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+    monotonic: Callable[[], float] = time.monotonic
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.calls_per_minute <= 120:
+            raise ValueError("calls_per_minute must be between 1 and 120")
+        self._cache: dict[tuple[str, int], DataPricePoint | None] = {}
+        self._last_network_call_at: float | None = None
+        self._lock = asyncio.Lock()
+
+    async def __call__(self, token_id: str, timestamp: int) -> DataPricePoint | None:
+        key = (token_id, timestamp)
+        if key in self._cache:
+            return self._cache[key]
+
+        async with self._lock:
+            if key in self._cache:
+                return self._cache[key]
+
+            interval = 60.0 / self.calls_per_minute
+            now = self.monotonic()
+            if self._last_network_call_at is not None:
+                wait = interval - (now - self._last_network_call_at)
+                if wait > 0:
+                    await self.sleep(wait)
+
+            value = await self.lookup(token_id, timestamp)
+            self._last_network_call_at = self.monotonic()
+            self._cache[key] = value
+            return value
+
+    @property
+    def cached_points(self) -> int:
+        return len(self._cache)
 
 
 def _float(value: object) -> float | None:
@@ -526,6 +567,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-staleness-seconds", type=int, default=1800)
     parser.add_argument("--holdout-fraction", type=float, default=0.30)
     parser.add_argument("--max-signals", type=int, default=500)
+    parser.add_argument(
+        "--price-calls-per-minute",
+        type=int,
+        default=100,
+        help="pace unique Polymarket price-history calls below the 120/min provider ceiling",
+    )
     parser.add_argument("--warehouse-limit", type=int, default=100000)
     return parser
 
@@ -561,6 +608,10 @@ async def _run(args: argparse.Namespace) -> int:
         health_recorder=ProviderHealthJournal(DEFAULT_PROVIDER_HEALTH_PATH).record,
     )
     client = PolymarketDataClient(registry=registry)
+    paced_price_lookup = PacedPriceLookup(
+        lookup=client.price_as_of,
+        calls_per_minute=args.price_calls_per_minute,
+    )
 
     all_runs: list[dict[str, object]] = []
     hold_seconds = int(args.hold_hours * 3600)
@@ -568,7 +619,7 @@ async def _run(args: argparse.Namespace) -> int:
         for cost_bps in args.cost_bps:
             scored, skipped = await score_candidates(
                 candidates,
-                price_lookup=client.price_as_of,
+                price_lookup=paced_price_lookup,
                 copy_delay_seconds=delay,
                 hold_seconds=hold_seconds,
                 cost_bps_per_side=cost_bps,
@@ -610,6 +661,8 @@ async def _run(args: argparse.Namespace) -> int:
                 "max_resolution_seconds": args.max_resolution_seconds,
                 "max_staleness_seconds": args.max_staleness_seconds,
                 "holdout_fraction": args.holdout_fraction,
+                "price_calls_per_minute": args.price_calls_per_minute,
+                "unique_price_points_fetched": paced_price_lookup.cached_points,
                 "runs": all_runs,
             },
             default=str,
