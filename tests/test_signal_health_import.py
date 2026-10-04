@@ -27,9 +27,7 @@ def test_health_event_key_is_deterministic() -> None:
 
 def test_health_event_key_changes_when_state_changes() -> None:
     first = _event()
-    second = ProviderHealthEvent(
-        **{**first.__dict__, "state": "open", "consecutive_failures": 3}
-    )
+    second = ProviderHealthEvent(**{**first.__dict__, "state": "open", "consecutive_failures": 3})
     assert health_event_key(first) != health_event_key(second)
 
 
