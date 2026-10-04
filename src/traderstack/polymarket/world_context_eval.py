@@ -371,11 +371,7 @@ def build_global_trial_sharpes(
 
     expected_trials = len(scored_runs) * len(HYPOTHESES) * len(CONTEXT_IDS)
     return {
-        split: (
-            tuple(values)
-            if ready[split] and len(values) == expected_trials
-            else None
-        )
+        split: (tuple(values) if ready[split] and len(values) == expected_trials else None)
         for split, values in catalogs.items()
     }
 
@@ -600,10 +596,7 @@ async def _run(args: argparse.Namespace) -> int:
             scored_runs.append((delay, cost_bps, scored, skipped))
 
     catalog_trial_count = (
-        len(HYPOTHESES)
-        * len(args.copy_delays)
-        * len(args.cost_bps)
-        * len(CONTEXT_IDS)
+        len(HYPOTHESES) * len(args.copy_delays) * len(args.cost_bps) * len(CONTEXT_IDS)
     )
     global_trial_sharpes = build_global_trial_sharpes(
         [scored for _, _, scored, _ in scored_runs],
@@ -651,8 +644,7 @@ async def _run(args: argparse.Namespace) -> int:
                 "context_cells_per_base_grid": TRIALS_PER_BASE_GRID,
                 "dsr_global_trial_count": catalog_trial_count,
                 "dsr_catalog_ready_by_split": {
-                    split: values is not None
-                    for split, values in global_trial_sharpes.items()
+                    split: values is not None for split, values in global_trial_sharpes.items()
                 },
                 "grid_cell_count_expected": catalog_trial_count,
                 "split_row_count_expected": (
