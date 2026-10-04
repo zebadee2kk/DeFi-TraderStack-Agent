@@ -84,21 +84,24 @@ The helper:
 - never accepts secret values on the command line;
 - preserves unrelated `.env` settings;
 - sets `.env` mode to `0600`;
-- manages `DUNE_API_KEY`, `DUNE_QUERY_IDS`, `LUNARCRUSH_API_KEY`, `CRYPTOPANIC_API_KEY`, `PERPLEXITY_API_KEY`, `ALTFINS_API_KEY`, `COINGECKO_API_KEY`, and `COINMARKETCAP_API_KEY`;
+- manages required `DUNE_API_KEY`, `DUNE_QUERY_IDS`, `LUNARCRUSH_API_KEY`, `CRYPTOPANIC_API_KEY`, `PERPLEXITY_API_KEY`, and `ALTFINS_API_KEY`;
+- can optionally manage `COINGECKO_API_KEY` and `COINMARKETCAP_API_KEY` for quota/headroom;
 - does not modify Crucix or trading/risk settings.
 
-Use `python3 ops/configure-api-credentials.py --status` to show only SET/MISSING state without printing values. Use `--all` only when intentionally rotating an existing key.
+Use `python3 ops/configure-api-credentials.py --status` to show only SET/MISSING/OPTIONAL state without printing values.
+Use `python3 ops/configure-api-credentials.py --guide` for acquisition guidance without prompting for secrets.
+Use `--include-optional` only when you want CoinGecko/CoinMarketCap keys, and `--all` only when intentionally rotating existing values.
 
-The current programme expects explicit operator decisions/configuration for:
+The strict configuration gate requires explicit operator decisions/configuration for:
 
-- Dune;
+- Dune (API key + query IDs);
 - LunarCrush;
 - CryptoPanic;
 - Perplexity;
 - altFINS;
-- Crucix;
-- CoinGecko;
-- CoinMarketCap.
+- Crucix.
+
+CoinGecko and CoinMarketCap keys are optional because TraderStack supports their public/no-key reference-price paths. Their **post-start health** still matters and remains part of the active-resource gate.
 
 Polymarket Data API v2 is public/no-key and must be reachable.
 
@@ -176,7 +179,7 @@ The evaluator writes:
 
 `var/research/polymarket-wallet-signal-eval-latest.json`
 
-The evaluator is research-only. It tests the frozen wallet hypotheses at 60/300/900-second copy delays and 25/50/100 bps per-side cost sensitivity. It never creates an order. Unique Polymarket price-history calls are paced at 100/minute by default (below the 120/minute provider ceiling) and cached across cost/delay sensitivity runs; do not raise the provider budget to force completion.
+The evaluator is research-only. It tests the frozen wallet hypotheses at 60/300/900-second copy delays and 25/50/100 bps per-side cost sensitivity. It never creates an order.
 
 ## 9. Human gate before disengaging the kill switch
 
