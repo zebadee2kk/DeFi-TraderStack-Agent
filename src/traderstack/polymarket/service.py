@@ -15,7 +15,6 @@ from typing import Any
 from traderstack.config import Settings
 from traderstack.killswitch import KillSwitch
 from traderstack.market.registry import ProviderRegistry
-from traderstack.provider_health_journal import DEFAULT_PROVIDER_HEALTH_PATH, ProviderHealthJournal
 from traderstack.polymarket.cities import CITY_CATALOG, match_city, resolve_allowlist
 from traderstack.polymarket.clob import ClobPublicClient
 from traderstack.polymarket.edge import calculate_edge
@@ -30,6 +29,10 @@ from traderstack.polymarket.models import (
     ParsedTemperatureMarket,
 )
 from traderstack.polymarket.parse import parse_temperature_market
+from traderstack.provider_health_journal import (
+    DEFAULT_PROVIDER_HEALTH_PATH,
+    ProviderHealthJournal,
+)
 
 
 @dataclass
