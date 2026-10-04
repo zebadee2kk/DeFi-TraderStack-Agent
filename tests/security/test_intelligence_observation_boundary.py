@@ -98,4 +98,3 @@ def test_direct_observation_construction_rejects_instruction_shaped_payload_keys
                 "promote": True,
             },
         )
-
