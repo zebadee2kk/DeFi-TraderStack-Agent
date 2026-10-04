@@ -27,6 +27,7 @@ _ALLOWED_PATHS = frozenset(
         "/v2/trades",
         "/v2/activity",
         "/v2/status",
+        "/v2/prices-history",
     }
 )
 
@@ -145,6 +146,39 @@ class PolymarketDataClient:
             },
             max_pages=max_pages,
         )
+
+    async def price_as_of(self, token_id: str, as_of: int) -> tuple[int, float] | None:
+        if not token_id.strip():
+            raise ValueError("token_id is required")
+        if as_of <= 0:
+            raise ValueError("as_of must be a positive unix timestamp")
+        payload = await self._registered_get(
+            "/v2/prices-history",
+            {"token_id": token_id, "as_of": str(as_of)},
+        )
+        if not isinstance(payload, dict):
+            raise TypeError("unexpected prices-history payload")
+        rows = payload.get("data")
+        if rows is None:
+            return None
+        if not isinstance(rows, list):
+            raise TypeError("unexpected prices-history data")
+        points: list[tuple[int, float]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            timestamp = row.get("timestamp")
+            price = row.get("price")
+            if isinstance(timestamp, bool) or isinstance(price, bool):
+                continue
+            try:
+                timestamp_i = int(timestamp)
+                price_f = float(price)
+            except (TypeError, ValueError):
+                continue
+            if timestamp_i <= as_of and 0.0 <= price_f <= 1.0:
+                points.append((timestamp_i, price_f))
+        return max(points, key=lambda item: item[0]) if points else None
 
     async def trades(
         self,
