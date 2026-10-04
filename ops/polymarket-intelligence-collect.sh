@@ -17,7 +17,7 @@ run_ts() {
 LIMIT="${POLYMARKET_WALLET_LIMIT:-25}"
 MAX_PAGES="${POLYMARKET_WALLET_MAX_PAGES:-2}"
 
-if [[ ! -x run_ts "$VENV/bin/traderstack-polymarket-wallet-snapshot" ]]; then
+if [[ ! -x "$VENV/bin/traderstack-polymarket-wallet-snapshot" ]]; then
   echo "missing $VENV/bin/traderstack-polymarket-wallet-snapshot; run make setup" >&2
   exit 2
 fi
