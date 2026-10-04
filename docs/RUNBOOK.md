@@ -2923,3 +2923,22 @@ Tables introduced by the first #192 slice:
 - `provider_observations` — one provenance row per `source_id` attached to that feature vector.
 
 This is a research/evidence store only. It does not authorize trades, change risk limits, or replace the independent JSONL/hash-chained audit trail.
+
+
+### Reproducible warehouse research export
+
+Use `traderstack-signal-export` to create a deterministic JSONL research dataset from the point-in-time warehouse.
+
+Example:
+
+```bash
+traderstack-signal-export \
+  --asset BTC \
+  --start 2026-10-01T00:00:00Z \
+  --end 2026-10-31T23:59:59Z \
+  --output var/research/btc-october.jsonl
+```
+
+The first JSONL record is a manifest containing the canonical query and its SHA-256 query hash; subsequent records are the selected feature snapshots in ascending observation-time order. This is the supported handoff into governed pattern discovery (#57).
+
+Use `traderstack-signal-coverage` for a machine-readable summary of stored rows by asset and source ID, including first/last observation timestamps.
