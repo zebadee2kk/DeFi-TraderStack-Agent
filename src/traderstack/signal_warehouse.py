@@ -31,6 +31,17 @@ provider_observations = Table(
     Column("payload", JSON, nullable=False),
 )
 
+wallet_observations = Table(
+    "wallet_observations",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("observed_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("wallet", String(42), nullable=False, index=True),
+    Column("observation_type", String(64), nullable=False, index=True),
+    Column("source_id", String(128), nullable=False, index=True),
+    Column("payload", JSON, nullable=False),
+)
+
 
 def build_feature_rows(
     result: RuntimeResult,
@@ -100,6 +111,31 @@ class PostgresSignalWarehouse:
         if end is not None:
             statement = statement.where(feature_snapshots.c.observed_at <= end)
         statement = statement.order_by(feature_snapshots.c.observed_at.asc()).limit(limit)
+        async with self._engine().connect() as connection:
+            rows = (await connection.execute(statement)).mappings().all()
+        return [dict(row) for row in rows]
+
+    async def append_wallet_observations(self, rows: list[dict[str, object]]) -> None:
+        if not rows:
+            return
+        async with self._engine().begin() as connection:
+            await connection.execute(insert(wallet_observations).values(rows))
+
+    async def load_wallet_observations(
+        self,
+        *,
+        wallet: str | None = None,
+        observation_type: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, object]]:
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        statement = select(wallet_observations)
+        if wallet is not None:
+            statement = statement.where(wallet_observations.c.wallet == wallet.lower())
+        if observation_type is not None:
+            statement = statement.where(wallet_observations.c.observation_type == observation_type)
+        statement = statement.order_by(wallet_observations.c.observed_at.asc()).limit(limit)
         async with self._engine().connect() as connection:
             rows = (await connection.execute(statement)).mappings().all()
         return [dict(row) for row in rows]
