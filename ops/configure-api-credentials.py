@@ -32,6 +32,41 @@ SECRET_KEYS = REQUIRED_SECRET_KEYS + OPTIONAL_SECRET_KEYS
 ALL_KEYS = SECRET_KEYS + VISIBLE_KEYS
 REQUIRED_KEYS = REQUIRED_SECRET_KEYS + VISIBLE_KEYS
 
+PROVIDER_GUIDE: dict[str, tuple[str, str]] = {
+    "DUNE_API_KEY": (
+        "Dune",
+        "Create an API key in your Dune account/API settings; DUNE_QUERY_IDS must map assets to existing query IDs.",
+    ),
+    "DUNE_QUERY_IDS": (
+        "Dune queries",
+        'Use existing Dune query IDs in the repo format, for example "BTC:123456,ETH:234567".',
+    ),
+    "LUNARCRUSH_API_KEY": (
+        "LunarCrush",
+        "Create a LunarCrush developer API key with access to the social endpoints required by TraderStack.",
+    ),
+    "CRYPTOPANIC_API_KEY": (
+        "CryptoPanic",
+        "Create/use the auth token from your CryptoPanic developer/API account.",
+    ),
+    "PERPLEXITY_API_KEY": (
+        "Perplexity",
+        "Create an API key in the Perplexity API portal/account settings.",
+    ),
+    "ALTFINS_API_KEY": (
+        "altFINS",
+        "Create an altFINS Data API key under Account -> API Key.",
+    ),
+    "COINGECKO_API_KEY": (
+        "CoinGecko (optional)",
+        "Optional quota/headroom key; TraderStack supports public no-key reference-price mode.",
+    ),
+    "COINMARKETCAP_API_KEY": (
+        "CoinMarketCap (optional)",
+        "Optional quota/headroom key; TraderStack supports public no-key reference-price mode.",
+    ),
+}
+
 _KEY_RE = re.compile(
     r"^(?P<prefix>\s*(?:export\s+)?)"
     r"(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*=.*$"
@@ -197,6 +232,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="show only set/missing status; never print values",
     )
+    parser.add_argument(
+        "--guide",
+        action="store_true",
+        help="show provider acquisition guidance without printing or requesting secrets",
+    )
     return parser
 
 
@@ -216,6 +256,14 @@ def _print_status(values: dict[str, str]) -> None:
         print(f"{state:8} {key}")
 
 
+def _print_guide() -> None:
+    for key in ALL_KEYS:
+        provider, guidance = PROVIDER_GUIDE[key]
+        requirement = "optional" if key in OPTIONAL_SECRET_KEYS else "required"
+        print(f"{key} [{requirement}] - {provider}")
+        print(f"  {guidance}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     path: Path = args.env_file
@@ -227,6 +275,10 @@ def main(argv: list[str] | None = None) -> int:
         path.chmod(stat.S_IRUSR | stat.S_IWUSR)
         print(f"Initialized {path} from {example} with mode 0600.")
     current = read_env_values(path)
+
+    if args.guide:
+        _print_guide()
+        return 0
 
     if args.status:
         _print_status(current)
