@@ -262,7 +262,6 @@ def test_summarize_keeps_chronological_holdout_separate() -> None:
     assert holdout.net_pnl_usd == pytest.approx(-0.5)
 
 
-
 @pytest.mark.asyncio
 async def test_paced_price_lookup_caches_and_spaces_unique_requests() -> None:
     upstream_calls: list[tuple[str, int]] = []
