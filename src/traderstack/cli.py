@@ -99,6 +99,10 @@ from traderstack.metrics import record_trading_mode  # shadow-live (Roadmap Phas
 from traderstack.pipeline import VerticalSlicePipeline
 from traderstack.portfolio import InMemoryPortfolioBook
 from traderstack.pretrade import PreTradeBacktestGate
+from traderstack.provider_health_journal import (
+    DEFAULT_PROVIDER_HEALTH_PATH,
+    ProviderHealthJournal,
+)
 from traderstack.reconciliation import HummingbotPortfolioReconciler
 from traderstack.risk import RiskEngine
 from traderstack.risk_audit import JsonlRiskAuditTrail
