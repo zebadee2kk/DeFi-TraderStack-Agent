@@ -134,13 +134,10 @@ def context_matches(context: FusedSignalContext | None, context_id: str) -> bool
         return any(value >= 0.50 for value in _floats(context, ("news", "event_score")))
     if context_id == "narrative_attention_high":
         return any(
-            abs(value) >= 1.0
-            for value in _floats(context, ("narrative", "mention_velocity_z"))
+            abs(value) >= 1.0 for value in _floats(context, ("narrative", "mention_velocity_z"))
         )
     if context_id == "narrative_sentiment_extreme":
-        return any(
-            abs(value) >= 0.50 for value in _floats(context, ("narrative", "sentiment"))
-        )
+        return any(abs(value) >= 0.50 for value in _floats(context, ("narrative", "sentiment")))
     if context_id == "onchain_flow_extreme":
         return any(
             abs(value) >= 1.5 for value in _floats(context, ("onchain", "exchange_netflow_z"))
@@ -152,8 +149,7 @@ def context_matches(context: FusedSignalContext | None, context_id: str) -> bool
         )
     if context_id == "external_technical_extreme":
         return any(
-            abs(value) >= 0.50
-            for value in _floats(context, ("market", "external_signal_score"))
+            abs(value) >= 0.50 for value in _floats(context, ("market", "external_signal_score"))
         )
     liquidation = _floats(context, ("edge", "liq_notional_long_z")) + _floats(
         context, ("edge", "liq_notional_short_z")
@@ -240,9 +236,7 @@ def bootstrap_incremental_mean(
     baseline_mean = mean(baseline_pnl)
     treatment_mean = mean(treatment)
     point = (
-        None
-        if baseline_mean is None or treatment_mean is None
-        else treatment_mean - baseline_mean
+        None if baseline_mean is None or treatment_mean is None else treatment_mean - baseline_mean
     )
 
     def skipped(reason: str) -> IncrementalInterval:
@@ -275,9 +269,7 @@ def bootstrap_incremental_mean(
     for _ in range(iterations):
         indices = [rng.randrange(size) for _ in range(size)]
         all_draw = [baseline[index].net_pnl_usd for index in indices]
-        treatment_draw = [
-            baseline[index].net_pnl_usd for index in indices if matches[index]
-        ]
+        treatment_draw = [baseline[index].net_pnl_usd for index in indices if matches[index]]
         if not treatment_draw:
             continue
         all_mean = mean(all_draw)
@@ -443,9 +435,7 @@ def evaluate_context_grid(
                         mean_net_pnl_usd=treatment_mean,
                         baseline_mean_net_pnl_usd=baseline_mean,
                         incremental_mean_net_pnl_usd=incremental,
-                        win_rate=(
-                            sum(value > 0.0 for value in pnls) / len(pnls) if pnls else None
-                        ),
+                        win_rate=(sum(value > 0.0 for value in pnls) / len(pnls) if pnls else None),
                         max_drawdown_usd=_max_drawdown(treatment),
                         sample_bar_met=floor_met,
                         sample_bar_required=floor,
@@ -596,10 +586,7 @@ async def _run(args: argparse.Namespace) -> int:
                 "context_ids": list(CONTEXT_IDS),
                 "context_cells_per_base_grid": TRIALS_PER_BASE_GRID,
                 "grid_cell_count_expected": (
-                    len(HYPOTHESES)
-                    * len(args.copy_delays)
-                    * len(args.cost_bps)
-                    * len(CONTEXT_IDS)
+                    len(HYPOTHESES) * len(args.copy_delays) * len(args.cost_bps) * len(CONTEXT_IDS)
                 ),
                 "split_row_count_expected": (
                     len(HYPOTHESES)
