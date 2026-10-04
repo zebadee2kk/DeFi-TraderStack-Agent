@@ -188,6 +188,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _missing_keys(values: dict[str, str]) -> list[str]:
+    return [key for key in ALL_KEYS if not values.get(key, "").strip()]
+
+
 def _print_status(values: dict[str, str]) -> None:
     for key in ALL_KEYS:
         state = "SET" if values.get(key, "").strip() else "MISSING"
@@ -210,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.status:
         _print_status(current)
-        return 0
+        return 2 if _missing_keys(current) else 0
 
     print(f"Updating {path} (secret values will not be echoed).")
     print("Press Enter at any prompt to leave the existing value unchanged.")
@@ -219,14 +223,14 @@ def main(argv: list[str] | None = None) -> int:
     if not replacements:
         print("No credential values changed.")
         _print_status(current)
-        return 0
+        return 2 if _missing_keys(current) else 0
 
     result = update_env(path, replacements)
     final = read_env_values(path)
     print(f"Updated {len(result.updated)} field(s); {path} permissions set to 0600.")
     _print_status(final)
 
-    missing = [key for key in ALL_KEYS if not final.get(key, "").strip()]
+    missing = _missing_keys(final)
     if missing:
         print("Still missing: " + ", ".join(missing))
         return 2
