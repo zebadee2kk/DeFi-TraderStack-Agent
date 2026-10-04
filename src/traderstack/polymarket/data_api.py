@@ -62,6 +62,13 @@ def _next_cursor(payload: Any) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+@dataclass(frozen=True)
+class DataPricePoint:
+    timestamp: int
+    price: float
+    resolution_seconds: int | None = None
+
+
 def wallet_from_leaderboard_row(row: dict[str, Any]) -> str | None:
     for key in ("proxy_wallet", "proxyWallet", "address"):
         value = row.get(key)
@@ -147,7 +154,7 @@ class PolymarketDataClient:
             max_pages=max_pages,
         )
 
-    async def price_as_of(self, token_id: str, as_of: int) -> tuple[int, float] | None:
+    async def price_as_of(self, token_id: str, as_of: int) -> DataPricePoint | None:
         if not token_id.strip():
             raise ValueError("token_id is required")
         if as_of <= 0:
@@ -163,7 +170,7 @@ class PolymarketDataClient:
             return None
         if not isinstance(rows, list):
             raise TypeError("unexpected prices-history data")
-        points: list[tuple[int, float]] = []
+        points: list[DataPricePoint] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -176,9 +183,23 @@ class PolymarketDataClient:
                 price_f = float(price)
             except (TypeError, ValueError):
                 continue
+            resolution_raw = row.get("resolution_seconds")
+            resolution: int | None = None
+            if resolution_raw is not None and not isinstance(resolution_raw, bool):
+                try:
+                    parsed_resolution = int(resolution_raw)
+                except (TypeError, ValueError):
+                    parsed_resolution = -1
+                resolution = parsed_resolution if parsed_resolution >= 0 else None
             if timestamp_i <= as_of and 0.0 <= price_f <= 1.0:
-                points.append((timestamp_i, price_f))
-        return max(points, key=lambda item: item[0]) if points else None
+                points.append(
+                    DataPricePoint(
+                        timestamp=timestamp_i,
+                        price=price_f,
+                        resolution_seconds=resolution,
+                    )
+                )
+        return max(points, key=lambda item: item.timestamp) if points else None
 
     async def trades(
         self,
