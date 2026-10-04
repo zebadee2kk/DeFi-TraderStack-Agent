@@ -16,6 +16,13 @@ class CoverageBucket(TypedDict):
     last: datetime
 
 
+class IntelligenceCoverageBucket(TypedDict):
+    rows: int
+    first: datetime
+    last: datetime
+    observation_types: set[str]
+
+
 class HealthCoverageBucket(TypedDict):
     rows: int
     first: datetime
@@ -38,6 +45,10 @@ async def _run(args: argparse.Namespace) -> int:
     warehouse = PostgresSignalWarehouse(settings.database_url)
     try:
         rows = await warehouse.load_features(asset=args.asset, limit=args.limit)
+        intelligence_rows = await warehouse.load_intelligence_observations(
+            asset=args.asset,
+            limit=args.limit,
+        )
         health_rows = await warehouse.load_collector_health(limit=args.limit)
     finally:
         await warehouse.close()
@@ -67,6 +78,27 @@ async def _run(args: argparse.Namespace) -> int:
             source = str(source_id)
             sources[source] = sources.get(source, 0) + 1
 
+    intelligence_sources: dict[str, IntelligenceCoverageBucket] = {}
+    for row in intelligence_rows:
+        source_id = str(row["source_id"])
+        observed_at = row["observed_at"]
+        if not isinstance(observed_at, datetime):
+            raise TypeError("intelligence observed_at must be a datetime")
+        observation_type = str(row["observation_type"])
+        bucket = intelligence_sources.setdefault(
+            source_id,
+            {
+                "rows": 0,
+                "first": observed_at,
+                "last": observed_at,
+                "observation_types": set(),
+            },
+        )
+        bucket["rows"] += 1
+        bucket["first"] = min(bucket["first"], observed_at)
+        bucket["last"] = max(bucket["last"], observed_at)
+        bucket["observation_types"].add(observation_type)
+
     provider_health: dict[str, HealthCoverageBucket] = {}
     for row in health_rows:
         provider = str(row["provider"])
@@ -88,6 +120,16 @@ async def _run(args: argparse.Namespace) -> int:
         if observed_at >= bucket["last"]:
             bucket["last"] = observed_at
             bucket["latest_state"] = state
+
+    serializable_intelligence = {
+        source_id: {
+            "rows": bucket["rows"],
+            "first": bucket["first"].isoformat(),
+            "last": bucket["last"].isoformat(),
+            "observation_types": sorted(bucket["observation_types"]),
+        }
+        for source_id, bucket in intelligence_sources.items()
+    }
 
     serializable_health = {
         provider: {
@@ -114,6 +156,7 @@ async def _run(args: argparse.Namespace) -> int:
                 "rows": len(rows),
                 "assets": serializable_assets,
                 "sources": dict(sorted(sources.items())),
+                "intelligence_sources": dict(sorted(serializable_intelligence.items())),
                 "collector_health": dict(sorted(serializable_health.items())),
             },
             sort_keys=True,
