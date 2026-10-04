@@ -117,7 +117,6 @@ def test_require_active_resources_accepts_recent_successes() -> None:
     assert all(check.ok for check in checks)
 
 
-
 def test_host_published_settings_rewrites_compose_dns_only() -> None:
     cfg = settings(
         database_url="postgresql+asyncpg://u:p@postgres:5432/traderstack",
