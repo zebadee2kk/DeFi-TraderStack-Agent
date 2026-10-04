@@ -134,9 +134,7 @@ class PostgresSignalWarehouse:
         if wallet is not None:
             statement = statement.where(wallet_observations.c.wallet == wallet.lower())
         if observation_type is not None:
-            statement = statement.where(
-                wallet_observations.c.observation_type == observation_type
-            )
+            statement = statement.where(wallet_observations.c.observation_type == observation_type)
         statement = statement.order_by(wallet_observations.c.observed_at.asc()).limit(limit)
         async with self._engine().connect() as connection:
             rows = (await connection.execute(statement)).mappings().all()
