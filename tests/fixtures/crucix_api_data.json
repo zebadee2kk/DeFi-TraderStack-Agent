@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "sourcesOk": 27,
+    "sourcesFailed": 2,
+    "sourcesQueried": 29,
+    "timestamp": "2026-10-03T13:03:55.620Z"
+  },
+  "markets": {
+    "timestamp": "2026-10-03T13:03:25.983Z",
+    "crypto": [
+      {
+        "symbol": "BTC-USD",
+        "name": "Bitcoin",
+        "price": 84850.93,
+        "change": 1228.5,
+        "changePct": 1.47
+      },
+      {
+        "symbol": "ETH-USD",
+        "name": "Ethereum",
+        "price": 2682.1,
+        "change": 5.38,
+        "changePct": 0.2
+      }
+    ]
+  },
+  "news": [
+    {
+      "title": "Uruguay ranks third in Latin America for international air passengers per capita",
+      "source": "MercoPress",
+      "date": "Sat, 03 Oct 2026 09:40:00 GMT"
+    },
+    {
+      "title": "Latin American airports will need US$178 billion to nearly double their traffic",
+      "source": "MercoPress",
+      "date": "Tue, 29 Sep 2026 07:30:00 GMT"
+    }
+  ]
+}
