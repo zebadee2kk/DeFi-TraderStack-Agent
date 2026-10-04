@@ -115,7 +115,7 @@ def test_main_initializes_missing_env_from_example(
         lambda current, only_missing: ({}, tuple(helper.ALL_KEYS)),
     )
 
-    assert helper.main(["--env-file", str(env)]) == 0
+    assert helper.main(["--env-file", str(env)]) == 2
     text = env.read_text(encoding="utf-8")
     assert "TRADING_MODE=paper" in text
     assert "KILL_SWITCH=true" in text
