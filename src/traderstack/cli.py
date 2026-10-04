@@ -108,6 +108,7 @@ from traderstack.risk import RiskEngine
 from traderstack.risk_audit import JsonlRiskAuditTrail
 from traderstack.runtime import PaperRuntime, RuntimeResult
 from traderstack.service import ContinuousPaperService
+from traderstack.signal_warehouse import PostgresSignalWarehouse
 from traderstack.strategies import PaperResearchStrategy, StrategyEnsemble
 from traderstack.tracing import configure_tracing  # observability (Epic 9)
 from traderstack.walkforward import WalkForwardEvaluator
@@ -923,14 +924,17 @@ async def _main_async(args: argparse.Namespace) -> None:
 
     sinks: list[ResultHandler] = [JsonlAuditSink(Path(args.audit_path))]
     postgres: PostgresRuntimeEventStore | None = None
+    warehouse: PostgresSignalWarehouse | None = None
     redis: RedisRuntimePublisher | None = None
     candle_store: PostgresCandleStore | None = None  # persistence (Epic 2)
     candle_sink: CandleSink | None = None  # persistence (Epic 2)
     if args.persistent_events:
         postgres = PostgresRuntimeEventStore(settings.database_url)
         await postgres.initialize()
+        warehouse = PostgresSignalWarehouse(settings.database_url)
+        await warehouse.initialize()
         redis = RedisRuntimePublisher(settings.redis_url)
-        sinks.extend((postgres, redis))
+        sinks.extend((postgres, warehouse, redis))
         # --- persistence (Epic 2): also append fetched candle history to Postgres ---
         candle_store = PostgresCandleStore(settings.database_url)
         await candle_store.initialize()
@@ -993,6 +997,8 @@ async def _main_async(args: argparse.Namespace) -> None:
     finally:
         if postgres is not None:
             await postgres.close()
+        if warehouse is not None:
+            await warehouse.close()
         if redis is not None:
             await redis.close()
         if candle_store is not None:  # persistence (Epic 2)
