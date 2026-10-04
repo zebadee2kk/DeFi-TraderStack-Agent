@@ -73,15 +73,17 @@ def test_status_never_prints_values(capsys: pytest.CaptureFixture[str]) -> None:
     output = capsys.readouterr().out
     assert "super-secret-value" not in output
     assert "BTC:123" not in output
-    assert "SET     DUNE_API_KEY" in output
-    assert "SET     DUNE_QUERY_IDS" in output
-    assert "MISSING LUNARCRUSH_API_KEY" in output
+    assert "SET      DUNE_API_KEY" in output
+    assert "SET      DUNE_QUERY_IDS" in output
+    assert "MISSING  LUNARCRUSH_API_KEY" in output
+    assert "OPTIONAL COINGECKO_API_KEY" in output
+    assert "OPTIONAL COINMARKETCAP_API_KEY" in output
 
 
 def test_prompt_values_skips_existing_keys_in_missing_only_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    current = {key: "already-set" for key in helper.ALL_KEYS}
+    current = {key: "already-set" for key in helper.REQUIRED_KEYS}
     monkeypatch.setattr(
         helper.getpass,
         "getpass",
@@ -92,10 +94,14 @@ def test_prompt_values_skips_existing_keys_in_missing_only_mode(
         lambda prompt: pytest.fail(f"unexpected visible prompt: {prompt}"),
     )
 
-    replacements, skipped = helper.prompt_values(current, only_missing=True)
+    replacements, skipped = helper.prompt_values(
+        current,
+        only_missing=True,
+        include_optional=False,
+    )
 
     assert replacements == {}
-    assert set(skipped) == set(helper.ALL_KEYS)
+    assert set(skipped) == set(helper.REQUIRED_KEYS)
 
 
 def test_main_initializes_missing_env_from_example(
@@ -108,7 +114,7 @@ def test_main_initializes_missing_env_from_example(
     monkeypatch.setattr(
         helper,
         "prompt_values",
-        lambda current, only_missing: ({}, tuple(helper.ALL_KEYS)),
+        lambda current, only_missing, include_optional=False: ({}, tuple(helper.ALL_KEYS)),
     )
 
     assert helper.main(["--env-file", str(env)]) == 2
@@ -116,3 +122,58 @@ def test_main_initializes_missing_env_from_example(
     assert "TRADING_MODE=paper" in text
     assert "KILL_SWITCH=true" in text
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
+
+
+def test_optional_reference_keys_do_not_count_as_missing() -> None:
+    values = {key: "set" for key in helper.REQUIRED_KEYS}
+    assert helper._missing_keys(values) == []
+
+
+def test_optional_keys_are_only_prompted_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = {key: "set" for key in helper.REQUIRED_KEYS}
+    prompts: list[str] = []
+
+    def fake_getpass(prompt: str) -> str:
+        prompts.append(prompt)
+        return ""
+
+    monkeypatch.setattr(helper.getpass, "getpass", fake_getpass)
+    monkeypatch.setattr("builtins.input", lambda _: "")
+
+    helper.prompt_values(current, only_missing=True, include_optional=False)
+    assert all("COINGECKO_API_KEY" not in prompt for prompt in prompts)
+    assert all("COINMARKETCAP_API_KEY" not in prompt for prompt in prompts)
+
+    helper.prompt_values(current, only_missing=True, include_optional=True)
+    assert any("COINGECKO_API_KEY" in prompt for prompt in prompts)
+    assert any("COINMARKETCAP_API_KEY" in prompt for prompt in prompts)
+
+
+def test_guide_never_prints_secret_values(capsys: pytest.CaptureFixture[str]) -> None:
+    helper._print_guide()
+    output = capsys.readouterr().out
+    assert "DUNE_API_KEY [required]" in output
+    assert "COINGECKO_API_KEY [optional]" in output
+    assert "DUNE_QUERY_IDS [required]" in output
+
+
+def test_main_guide_does_not_prompt_or_touch_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    env = tmp_path / ".env"
+    env.write_text("TRADING_MODE=paper\nKILL_SWITCH=true\n", encoding="utf-8")
+    before = env.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        helper.getpass,
+        "getpass",
+        lambda prompt: pytest.fail(f"unexpected prompt: {prompt}"),
+    )
+
+    assert helper.main(["--env-file", str(env), "--guide"]) == 0
+    assert env.read_text(encoding="utf-8") == before
+    output = capsys.readouterr().out
+    assert "PERPLEXITY_API_KEY [required]" in output

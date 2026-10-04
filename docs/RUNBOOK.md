@@ -3029,6 +3029,8 @@ Status-only check:
 
 ```bash
 python3 ops/configure-api-credentials.py --status
+
+Use `python3 ops/configure-api-credentials.py --guide` to print provider/key acquisition guidance without prompting for or displaying any secret values. Optional CoinGecko/CoinMarketCap keys are only prompted with `--include-optional` (or `--all`).
 ```
 
 Re-prompt existing keys intentionally:
