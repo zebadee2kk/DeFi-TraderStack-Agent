@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import uuid
 from collections.abc import Awaitable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -96,6 +97,8 @@ async def collect_wallet_snapshot(
         seen.add(wallet)
         wallets.append((wallet, row))
 
+    snapshot_at = datetime.now(UTC)
+    snapshot_id = str(uuid.uuid4())
     written = 0
     errors = 0
     for wallet, leaderboard_row in wallets:
@@ -105,11 +108,14 @@ async def collect_wallet_snapshot(
                 observation_type="leaderboard",
                 source_id="polymarket:data-api:/v1/leaderboard",
                 payload={
+                    "snapshot_id": snapshot_id,
+                    "snapshot_at": snapshot_at.isoformat(),
                     "category": category.upper(),
                     "time_period": time_period.upper(),
                     "order_by": "PNL",
                     "row": leaderboard_row,
                 },
+                observed_at=snapshot_at,
             )
         ]
 

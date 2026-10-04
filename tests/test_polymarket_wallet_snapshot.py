@@ -70,3 +70,9 @@ async def test_snapshot_preserves_historical_cohort_and_endpoint_evidence() -> N
     assert isinstance(leaderboard_payload, dict)
     assert leaderboard_payload["category"] == "CRYPTO"
     assert leaderboard_payload["time_period"] == "MONTH"
+    assert isinstance(leaderboard_payload["snapshot_id"], str)
+    assert isinstance(leaderboard_payload["snapshot_at"], str)
+    second_payload = warehouse.rows[7]["payload"]
+    assert isinstance(second_payload, dict)
+    assert second_payload["snapshot_id"] == leaderboard_payload["snapshot_id"]
+    assert warehouse.rows[0]["observed_at"] == warehouse.rows[7]["observed_at"]

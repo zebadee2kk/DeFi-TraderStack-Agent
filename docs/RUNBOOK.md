@@ -2982,3 +2982,16 @@ traderstack-signal-health-import
 The import is idempotent: each health event receives a deterministic SHA-256 event key and an already-imported event is not duplicated. After import, `traderstack-signal-coverage` includes a `collector_health` section with row counts, first/last observations and latest state by provider.
 
 This matters for research validity: an absent feature can be distinguished from a collector that was open/stale/broken at that time.
+
+
+### Point-in-time wallet cohort persistence (#193)
+
+After accumulating wallet snapshots, inspect repeat leaderboard membership without hindsight selection:
+
+```bash
+traderstack-polymarket-wallet-cohorts --category CRYPTO --time-period MONTH --top 50
+```
+
+New snapshots carry a shared `snapshot_id` and `snapshot_at` across the exact leaderboard cohort. Legacy rows without an explicit snapshot ID are grouped only for backward-compatible analysis using their observation minute and are therefore lower-confidence provenance.
+
+The ranking reports appearances, first/last seen, mean/best/latest rank and latest reported PnL. It is a **research ranking only**: persistence on a leaderboard is not a copy-trading recommendation and does not authorize execution. The next #193 layer must evaluate delayed follow/fade hypotheses with fees, spread, market liquidity and point-in-time cohort membership.
