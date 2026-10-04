@@ -2,6 +2,7 @@ from traderstack.config import Settings
 from traderstack.redeploy_preflight import (
     STRICT_RESOURCE_NAMES,
     build_static_checks,
+    host_published_settings,
     resource_checks,
 )
 from traderstack.resource_audit import (
@@ -114,3 +115,21 @@ def test_require_active_resources_accepts_recent_successes() -> None:
         require_active_resources=True,
     )
     assert all(check.ok for check in checks)
+
+
+
+def test_host_published_settings_rewrites_compose_dns_only() -> None:
+    cfg = settings(
+        database_url="postgresql+asyncpg://u:p@postgres:5432/traderstack",
+        redis_url="redis://redis:6379/0",
+    )
+    host = host_published_settings(cfg)
+    assert host.database_url == "postgresql+asyncpg://u:p@127.0.0.1:5432/traderstack"
+    assert host.redis_url == "redis://127.0.0.1:6379/0"
+
+
+def test_host_published_settings_leaves_existing_host_urls_alone() -> None:
+    cfg = settings()
+    host = host_published_settings(cfg)
+    assert host.database_url == cfg.database_url
+    assert host.redis_url == cfg.redis_url
