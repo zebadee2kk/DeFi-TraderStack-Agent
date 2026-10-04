@@ -5,6 +5,7 @@ import asyncio
 import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+
 from traderstack.config import Settings
 from traderstack.signal_warehouse import PostgresSignalWarehouse
 
