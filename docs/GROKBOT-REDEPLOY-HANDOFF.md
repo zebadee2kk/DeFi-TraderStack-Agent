@@ -66,6 +66,25 @@ Then record the stricter resource-completeness result:
 
 A strict-resource failure caused only by missing optional/keyed intelligence credentials is an **activation/readiness blocker**, not a reason to keep running an obsolete app image. The app may still be rebuilt with `KILL_SWITCH=true` so public/available collectors and health evidence can run. Do not declare the deployment resource-complete and do not disengage the kill switch until the strict gate passes.
 
+Before asking the operator to edit `.env` manually, use the supported WSL helper:
+
+```bash
+bash ops/configure-intelligence-credentials.sh --status
+bash ops/configure-intelligence-credentials.sh
+```
+
+The helper:
+- prompts only for missing values by default;
+- hides secret input and asks for confirmation;
+- never accepts API keys on the command line;
+- preserves unrelated `.env` settings;
+- creates a 0600 backup under gitignored `var/backups/credentials/`;
+- sets the resulting `.env` to owner read/write only;
+- runs config/resource/preflight checks after the update;
+- may be rerun safely as more credentials become available.
+
+Use `--all` only when intentionally rotating/replacing existing credentials. Use `--status` for a redacted SET/MISSING inventory.
+
 The current programme expects explicit operator decisions/configuration for:
 
 - Dune;
