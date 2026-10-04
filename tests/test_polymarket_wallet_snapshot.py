@@ -23,7 +23,9 @@ class FakeClient:
     async def value(self, wallet: str) -> dict[str, Any]:
         return {"proxy_wallet": wallet, "value": 10}
 
-    async def positions(self, wallet: str, *, status: str, max_pages: int) -> tuple[dict[str, Any], ...]:
+    async def positions(
+        self, wallet: str, *, status: str, max_pages: int
+    ) -> tuple[dict[str, Any], ...]:
         return ({"wallet": wallet, "status": status, "max_pages": max_pages},)
 
     async def trades(self, wallet: str, *, max_pages: int) -> tuple[dict[str, Any], ...]:
