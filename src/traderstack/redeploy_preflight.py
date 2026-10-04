@@ -8,11 +8,11 @@ from dataclasses import asdict, dataclass
 from traderstack.config import Settings
 from traderstack.resource_audit import (
     ACTIVE,
-    apply_journal_health,
     BLOCKED_CREDENTIAL,
+    ResourceRow,
+    apply_journal_health,
     build_rows,
     probe_public,
-    ResourceRow,
 )
 from traderstack.signal_warehouse import PostgresSignalWarehouse
 
@@ -125,8 +125,14 @@ def resource_checks(
     for name in STRICT_RESOURCE_NAMES:
         row = by_name.get(name)
         configured = row is not None and row.configured
-        active_or_configured = configured and row.status not in {BLOCKED_CREDENTIAL}
-        ready = row is not None and row.status == ACTIVE if require_active_resources else active_or_configured
+        active_or_configured = (
+            row is not None and row.configured and row.status != BLOCKED_CREDENTIAL
+        )
+        ready = (
+            row is not None and row.status == ACTIVE
+            if require_active_resources
+            else active_or_configured
+        )
         checks.append(
             PreflightCheck(
                 name=f"resource:{name}",
@@ -214,19 +220,23 @@ async def _run(args: argparse.Namespace) -> int:
     checks.append(await database_check(settings))
 
     ready = all(check.ok or not check.blocking for check in checks)
+    operator_actions: list[str] = [
+        row.action
+        for row in rows
+        if strict_resources
+        and row.provider in STRICT_RESOURCE_NAMES
+        and (
+            not row.configured
+            or (args.require_active_resources and row.status != ACTIVE)
+        )
+    ]
     payload = {
         "ready": ready,
         "mode": "bootstrap",
         "strict_resources": strict_resources,
         "require_active_resources": bool(args.require_active_resources),
         "checks": [asdict(check) for check in checks],
-        "operator_actions": [
-            row.action
-            for row in rows
-            if strict_resources
-            and row.provider in STRICT_RESOURCE_NAMES
-            and not row.configured
-        ],
+        "operator_actions": operator_actions,
         "safety": {
             "execution_authority_changed": False,
             "live_capital_enabled": False,
@@ -241,7 +251,7 @@ async def _run(args: argparse.Namespace) -> int:
         for check in checks:
             marker = "PASS" if check.ok else ("WARN" if not check.blocking else "FAIL")
             print(f"{marker:4} {check.name}: {check.detail}")
-        for action in payload["operator_actions"]:
+        for action in operator_actions:
             print(f"ACTION: {action}")
     return 0 if ready else 2
 
