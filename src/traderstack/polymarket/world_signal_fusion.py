@@ -142,9 +142,7 @@ def fuse_signal_context(
             or not isinstance(payload, dict)
         ):
             continue
-        parsed.append(
-            (_as_utc(observed_at), source_id, "legacy_provider", asset.upper(), payload)
-        )
+        parsed.append((_as_utc(observed_at), source_id, "legacy_provider", asset.upper(), payload))
 
     for row in native_rows or []:
         observed_at = row.get("observed_at")
