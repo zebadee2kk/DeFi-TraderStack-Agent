@@ -435,7 +435,11 @@ class PostgresSignalWarehouse:
                 signal_outcomes,
                 signal_outcomes.c.candidate_event_key == signal_candidates.c.event_key,
             )
-            .where(signal_outcomes.c.outcome_at >= signal_candidates.c.candidate_at)
+            .where(
+                signal_outcomes.c.candidate_at == signal_candidates.c.candidate_at,
+                signal_outcomes.c.horizon_seconds == signal_candidates.c.horizon_seconds,
+                signal_outcomes.c.outcome_at >= signal_candidates.c.candidate_at,
+            )
         )
         if asset is not None:
             statement = statement.where(signal_candidates.c.asset == asset.upper())
