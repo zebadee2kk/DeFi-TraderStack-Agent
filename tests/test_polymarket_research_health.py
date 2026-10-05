@@ -6,6 +6,7 @@ from traderstack.config import Settings
 from traderstack.intelligence import NewsSnapshot
 from traderstack.polymarket.research_health import (
     PROVIDER_NAME,
+    ResearchProviderHealth,
     assess_crucix_research_health,
     health_row,
 )
@@ -67,10 +68,6 @@ async def test_failed_crucix_probe_is_unavailable_without_error_text() -> None:
 
 def test_research_health_row_marks_non_active_state_unhealthy() -> None:
     observed_at = datetime(2026, 10, 5, 10, tzinfo=UTC)
-    report = pytest.run(async_fn=None) if False else None
-    # Build the unconfigured shape directly through the public dataclass contract.
-    from traderstack.polymarket.research_health import ResearchProviderHealth
-
     row = health_row(
         ResearchProviderHealth(
             provider=PROVIDER_NAME,
