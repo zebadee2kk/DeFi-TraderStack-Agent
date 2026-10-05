@@ -128,6 +128,18 @@ class WalletObservationQueryResult:
     first_evaluated_at: datetime | None
     last_evaluated_at: datetime | None
 
+    def coverage(self) -> dict[str, object]:
+        return {
+            "complete": self.complete,
+            "available_count": self.available_count,
+            "evaluated_count": len(self.rows),
+            "pages": self.pages,
+            "first_available_at": self.first_available_at,
+            "last_available_at": self.last_available_at,
+            "first_evaluated_at": self.first_evaluated_at,
+            "last_evaluated_at": self.last_evaluated_at,
+        }
+
 
 @dataclass
 class PostgresSignalWarehouse:
