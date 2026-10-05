@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from statistics import NormalDist
-from typing import Mapping, Sequence
 
 
 @dataclass(frozen=True)
