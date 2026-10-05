@@ -26,7 +26,7 @@ class SignalCandidateRecord(BaseModel):
     schema_version: str = Field(default="1.0", min_length=1, max_length=32)
 
     @model_validator(mode="after")
-    def _normalize_and_validate(self) -> "SignalCandidateRecord":
+    def _normalize_and_validate(self) -> SignalCandidateRecord:
         if self.direction == 0:
             raise ValueError("direction must be -1 or 1")
         self.candidate_at = _utc(self.candidate_at)
@@ -56,7 +56,7 @@ class SignalOutcomeRecord(BaseModel):
     schema_version: str = Field(default="1.0", min_length=1, max_length=32)
 
     @model_validator(mode="after")
-    def _enforce_horizon_and_finite_values(self) -> "SignalOutcomeRecord":
+    def _enforce_horizon_and_finite_values(self) -> SignalOutcomeRecord:
         self.candidate_at = _utc(self.candidate_at)
         self.outcome_at = _utc(self.outcome_at)
         required_at = self.candidate_at + timedelta(seconds=self.horizon_seconds)
