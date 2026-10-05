@@ -351,17 +351,19 @@ class PostgresSignalWarehouse:
         keys = list(by_key)
         async with self._engine().begin() as connection:
             candidate_rows = (
-                await connection.execute(
-                    select(
-                        signal_candidates.c.event_key,
-                        signal_candidates.c.candidate_at,
-                        signal_candidates.c.horizon_seconds,
-                    ).where(signal_candidates.c.event_key.in_(candidate_keys))
+                (
+                    await connection.execute(
+                        select(
+                            signal_candidates.c.event_key,
+                            signal_candidates.c.candidate_at,
+                            signal_candidates.c.horizon_seconds,
+                        ).where(signal_candidates.c.event_key.in_(candidate_keys))
+                    )
                 )
-            ).mappings().all()
-            known_candidates = {
-                str(row["event_key"]): row for row in candidate_rows
-            }
+                .mappings()
+                .all()
+            )
+            known_candidates = {str(row["event_key"]): row for row in candidate_rows}
             missing = candidate_keys - set(known_candidates)
             if missing:
                 raise ValueError(
