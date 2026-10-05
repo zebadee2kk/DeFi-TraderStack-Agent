@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, DateTime, Integer, MetaData, String, Table, insert, select
+from sqlalchemy import JSON, Column, DateTime, Integer, MetaData, String, Table, and_, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from traderstack.runtime import RuntimeResult
@@ -113,6 +113,18 @@ def build_intelligence_rows(result: RuntimeResult) -> list[dict[str, object]]:
             }
         )
     return rows
+
+
+@dataclass(frozen=True)
+class WalletObservationQueryResult:
+    rows: list[dict[str, object]]
+    complete: bool
+    available_count: int
+    pages: int
+    first_available_at: datetime | None
+    last_available_at: datetime | None
+    first_evaluated_at: datetime | None
+    last_evaluated_at: datetime | None
 
 
 @dataclass
@@ -283,6 +295,19 @@ class PostgresSignalWarehouse:
         async with self._engine().begin() as connection:
             await connection.execute(insert(wallet_observations).values(rows))
 
+    def _wallet_observation_filters(
+        self,
+        *,
+        wallet: str | None,
+        observation_type: str | None,
+    ) -> list[object]:
+        filters: list[object] = []
+        if wallet is not None:
+            filters.append(wallet_observations.c.wallet == wallet.lower())
+        if observation_type is not None:
+            filters.append(wallet_observations.c.observation_type == observation_type)
+        return filters
+
     async def load_wallet_observations(
         self,
         *,
@@ -293,14 +318,94 @@ class PostgresSignalWarehouse:
         if limit <= 0:
             raise ValueError("limit must be positive")
         statement = select(wallet_observations)
-        if wallet is not None:
-            statement = statement.where(wallet_observations.c.wallet == wallet.lower())
-        if observation_type is not None:
-            statement = statement.where(wallet_observations.c.observation_type == observation_type)
-        statement = statement.order_by(wallet_observations.c.observed_at.asc()).limit(limit)
+        filters = self._wallet_observation_filters(
+            wallet=wallet,
+            observation_type=observation_type,
+        )
+        if filters:
+            statement = statement.where(*filters)
+        statement = statement.order_by(
+            wallet_observations.c.observed_at.asc(),
+            wallet_observations.c.id.asc(),
+        ).limit(limit)
         async with self._engine().connect() as connection:
             rows = (await connection.execute(statement)).mappings().all()
         return [dict(row) for row in rows]
+
+    async def load_wallet_observations_complete(
+        self,
+        *,
+        wallet: str | None = None,
+        observation_type: str | None = None,
+        page_size: int = 5000,
+        max_rows: int = 1_000_000,
+    ) -> WalletObservationQueryResult:
+        if page_size <= 0:
+            raise ValueError("page_size must be positive")
+        if max_rows <= 0:
+            raise ValueError("max_rows must be positive")
+
+        filters = self._wallet_observation_filters(
+            wallet=wallet,
+            observation_type=observation_type,
+        )
+        stats = select(
+            func.count(wallet_observations.c.id),
+            func.min(wallet_observations.c.observed_at),
+            func.max(wallet_observations.c.observed_at),
+        )
+        if filters:
+            stats = stats.where(*filters)
+
+        rows: list[dict[str, object]] = []
+        pages = 0
+        cursor_time: datetime | None = None
+        cursor_id: int | None = None
+
+        async with self._engine().connect() as connection:
+            available_count, first_available_at, last_available_at = (
+                await connection.execute(stats)
+            ).one()
+
+            while len(rows) < min(int(available_count), max_rows):
+                statement = select(wallet_observations)
+                if filters:
+                    statement = statement.where(*filters)
+                if cursor_time is not None and cursor_id is not None:
+                    statement = statement.where(
+                        or_(
+                            wallet_observations.c.observed_at > cursor_time,
+                            and_(
+                                wallet_observations.c.observed_at == cursor_time,
+                                wallet_observations.c.id > cursor_id,
+                            ),
+                        )
+                    )
+                remaining = max_rows - len(rows)
+                statement = statement.order_by(
+                    wallet_observations.c.observed_at.asc(),
+                    wallet_observations.c.id.asc(),
+                ).limit(min(page_size, remaining))
+                page = (await connection.execute(statement)).mappings().all()
+                if not page:
+                    break
+                pages += 1
+                rows.extend(dict(row) for row in page)
+                last = page[-1]
+                cursor_time = last["observed_at"]
+                cursor_id = int(last["id"])
+
+        complete = len(rows) == int(available_count)
+        return WalletObservationQueryResult(
+            rows=rows,
+            complete=complete,
+            available_count=int(available_count),
+            pages=pages,
+            first_available_at=first_available_at,
+            last_available_at=last_available_at,
+            first_evaluated_at=(rows[0]["observed_at"] if rows else None),
+            last_evaluated_at=(rows[-1]["observed_at"] if rows else None),
+        )
 
     async def close(self) -> None:
         if self.engine is not None:
