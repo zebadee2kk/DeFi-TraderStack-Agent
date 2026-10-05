@@ -2922,6 +2922,8 @@ Tables introduced by the first #192 slice:
 - `feature_snapshots` — canonical point-in-time `AssetFeatureVector` payload, schema version and source IDs.
 - `provider_observations` — one provenance row per `source_id` attached to that feature vector.
 - `intelligence_observations` — idempotent provider-native normalized snapshots captured before canonical merge. Payloads are allowlisted typed fields only; arbitrary upstream text/raw JSON is not persisted here.
+- `signal_candidates` — versioned research hypotheses at decision time, including horizon, direction, confidence and the exact feature-query hash.
+- `signal_outcomes` — idempotent future labels linked to a candidate. The warehouse refuses an outcome before the candidate's registered horizon has elapsed, and refuses unknown candidate keys or mismatched candidate timestamps/horizons.
 
 This is a research/evidence store only. It does not authorize trades, change risk limits, or replace the independent JSONL/hash-chained audit trail.
 
