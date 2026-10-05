@@ -573,7 +573,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=100,
         help="pace unique Polymarket price-history calls below the 120/min provider ceiling",
     )
-    parser.add_argument("--warehouse-limit", type=int, default=100000)
+    parser.add_argument("--wallet-page-size", type=int, default=5000)
+    parser.add_argument("--wallet-max-rows", type=int, default=1_000_000)
     return parser
 
 
@@ -581,16 +582,38 @@ async def _run(args: argparse.Namespace) -> int:
     settings = Settings()
     warehouse = PostgresSignalWarehouse(settings.database_url)
     try:
-        leaderboard_rows = await warehouse.load_wallet_observations(
+        leaderboard_query = await warehouse.load_wallet_observations_complete(
             observation_type="leaderboard",
-            limit=args.warehouse_limit,
+            page_size=args.wallet_page_size,
+            max_rows=args.wallet_max_rows,
         )
-        trade_rows = await warehouse.load_wallet_observations(
+        trade_query = await warehouse.load_wallet_observations_complete(
             observation_type="trades",
-            limit=args.warehouse_limit,
+            page_size=args.wallet_page_size,
+            max_rows=args.wallet_max_rows,
         )
     finally:
         await warehouse.close()
+
+    if not leaderboard_query.complete or not trade_query.complete:
+        print(
+            json.dumps(
+                {
+                    "research_only": True,
+                    "execution_authority": False,
+                    "status": "insufficient_data_query",
+                    "leaderboard_history": leaderboard_query.coverage(),
+                    "trade_history": trade_query.coverage(),
+                },
+                default=str,
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 2
+
+    leaderboard_rows = leaderboard_query.rows
+    trade_rows = trade_query.rows
 
     candidates = build_signal_candidates(
         leaderboard_rows=leaderboard_rows,
@@ -662,6 +685,10 @@ async def _run(args: argparse.Namespace) -> int:
                 "max_staleness_seconds": args.max_staleness_seconds,
                 "holdout_fraction": args.holdout_fraction,
                 "price_calls_per_minute": args.price_calls_per_minute,
+                "wallet_history": {
+                    "leaderboard": leaderboard_query.coverage(),
+                    "trades": trade_query.coverage(),
+                },
                 "unique_price_points_fetched": paced_price_lookup.cached_points,
                 "runs": all_runs,
             },

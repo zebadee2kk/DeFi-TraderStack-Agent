@@ -281,6 +281,8 @@ def test_cli_overrides_are_not_mislabeled_as_preregistered() -> None:
     assert not _is_preregistered_contract(parser.parse_args(["--copy-delays", "60"]))
     assert not _is_preregistered_contract(parser.parse_args(["--cost-bps", "25"]))
     assert not _is_preregistered_contract(parser.parse_args(["--warehouse-limit", "1000"]))
+    assert _is_preregistered_contract(parser.parse_args(["--wallet-page-size", "2500"]))
+    assert _is_preregistered_contract(parser.parse_args(["--wallet-max-rows", "2000000"]))
 
 
 def test_non_preregistered_run_cannot_emit_dsr() -> None:

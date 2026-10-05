@@ -30,6 +30,7 @@ dev = [
   "mypy>=1.10",
   "pip-audit>=2.7",
   "bandit>=1.7",
+  "aiosqlite>=0.20",
 ]
 # Optional OpenTelemetry tracing (Epic 9). traderstack.tracing is a no-op
 # whenever this extra is not installed, so it is never required at runtime.
