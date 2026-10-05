@@ -59,10 +59,13 @@ defined per-signal Sharpe. Sparse or degenerate cells cause DSR for that split t
 quietly reduces the trial count after seeing results.
 
 The CLI still permits bounded exploratory overrides for diagnostics, but any change to the frozen
-population/evaluation contract (including delay/cost lists or warehouse limit) sets
-`catalog_frozen_in_issue_193=false` and withholds DSR as
-`non_preregistered_parameters`. An exploratory run cannot relabel a smaller catalog as the
-pre-registered test.
+population/evaluation contract (including delay/cost lists or the context-evidence warehouse limit)
+sets `catalog_frozen_in_issue_193=false` and withholds DSR as
+`non_preregistered_parameters`. Wallet history is no longer sampled by a fixed row limit:
+`--wallet-page-size` only controls keyset-query batch size, while `--wallet-max-rows` is an
+operational memory guard. Neither changes the logical sample; if the guard is reached the evaluator
+fails closed with `insufficient_data_query` instead of publishing a partial/stale result. An
+exploratory run cannot relabel a smaller catalog as the pre-registered test.
 
 PBO is explicitly withheld in this first conditional slice: treatment cells have different
 signal support. Zero-filling the missing observations merely to create a rectangular CSCV matrix
