@@ -383,8 +383,9 @@ class PostgresSignalWarehouse:
                     outcome_candidate_at = outcome_candidate_at.astimezone(UTC)
                 if outcome_candidate_at != stored_candidate_at:
                     raise ValueError("signal outcome candidate_at does not match candidate")
-                stored_horizon = int(candidate["horizon_seconds"])
-                if int(row["horizon_seconds"]) != stored_horizon:
+                stored_horizon = cast(int, candidate["horizon_seconds"])
+                outcome_horizon = cast(int, row["horizon_seconds"])
+                if outcome_horizon != stored_horizon:
                     raise ValueError("signal outcome horizon does not match candidate")
                 outcome_at = cast(datetime, row["outcome_at"])
                 if outcome_at.tzinfo is None:
