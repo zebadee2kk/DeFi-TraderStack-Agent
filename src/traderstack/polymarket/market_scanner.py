@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from math import isfinite
+from typing import Any
+
+from traderstack.polymarket.clob import BookMetrics
+from traderstack.polymarket.parse import _json_list, _parse_datetime
 
 SCORING_CONTRACT_VERSION = "polymarket-market-quality-v1"
 
@@ -209,4 +213,79 @@ def rank_markets(items: list[MarketScanInput]) -> list[MarketScanResult]:
             row.market_id,
             row.token_id,
         ),
+    )
+
+
+def _numeric(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def scan_input_from_gamma(
+    payload: dict[str, Any],
+    *,
+    observed_at: datetime,
+    category: str,
+    book: BookMetrics,
+    wallet_coverage: float | None,
+    external_context_coverage: float | None,
+    evidence_fresh: bool,
+    collector_healthy: bool,
+) -> MarketScanInput | None:
+    """Reduce one untrusted open Gamma market into a scanner input.
+
+    Only the YES token is ranked in this first slice. Missing identifiers,
+    close time, liquidity or token metadata cause the market to be skipped
+    rather than guessed.
+    """
+
+    if payload.get("closed") is True or payload.get("active") is False:
+        return None
+    if payload.get("acceptingOrders") is False or payload.get("enableOrderBook") is False:
+        return None
+
+    token_ids = _json_list(payload.get("clobTokenIds") or payload.get("clob_token_ids"))
+    if len(token_ids) < 2 or not token_ids[0].strip():
+        return None
+
+    condition_raw = payload.get("conditionId") or payload.get("condition_id")
+    market_raw = payload.get("id") or condition_raw
+    close_at = _parse_datetime(payload.get("endDate") or payload.get("end_date_iso"))
+    if not isinstance(condition_raw, str) or not condition_raw.strip():
+        return None
+    if market_raw is None or not str(market_raw).strip() or close_at is None:
+        return None
+
+    liquidity = _numeric(
+        payload.get("liquidityNum")
+        or payload.get("liquidity")
+        or payload.get("liquidity_usd")
+    )
+    if liquidity is None:
+        return None
+
+    return MarketScanInput(
+        market_id=str(market_raw),
+        condition_id=condition_raw,
+        token_id=token_ids[0],
+        category=category,
+        observed_at=observed_at,
+        close_at=close_at,
+        best_bid=book.best_bid,
+        best_ask=book.best_ask,
+        bid_depth_usd=book.bid_depth_usd,
+        ask_depth_usd=book.ask_depth_usd,
+        liquidity_usd=liquidity,
+        wallet_coverage=wallet_coverage,
+        external_context_coverage=external_context_coverage,
+        evidence_fresh=evidence_fresh,
+        collector_healthy=collector_healthy,
     )
