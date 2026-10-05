@@ -29,6 +29,13 @@ class HealthCoverageBucket(TypedDict):
     last: datetime
     latest_state: str
 
+class SignalCoverageBucket(TypedDict):
+    rows: int
+    first_candidate_at: datetime
+    last_candidate_at: datetime
+    first_outcome_at: datetime
+    last_outcome_at: datetime
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Report signal-warehouse feature coverage.")
@@ -154,7 +161,7 @@ async def _run(args: argparse.Namespace) -> int:
         for asset, bucket in assets.items()
     }
 
-    signal_hypotheses: dict[str, dict[str, object]] = {}
+    signal_hypotheses: dict[str, SignalCoverageBucket] = {}
     for row in signal_rows:
         hypothesis_id = str(row["hypothesis_id"])
         candidate_at = row["candidate_at"]
@@ -171,27 +178,19 @@ async def _run(args: argparse.Namespace) -> int:
                 "last_outcome_at": outcome_at,
             },
         )
-        bucket["rows"] = int(bucket["rows"]) + 1
-        bucket["first_candidate_at"] = min(
-            bucket["first_candidate_at"], candidate_at  # type: ignore[arg-type]
-        )
-        bucket["last_candidate_at"] = max(
-            bucket["last_candidate_at"], candidate_at  # type: ignore[arg-type]
-        )
-        bucket["first_outcome_at"] = min(
-            bucket["first_outcome_at"], outcome_at  # type: ignore[arg-type]
-        )
-        bucket["last_outcome_at"] = max(
-            bucket["last_outcome_at"], outcome_at  # type: ignore[arg-type]
-        )
+        bucket["rows"] += 1
+        bucket["first_candidate_at"] = min(bucket["first_candidate_at"], candidate_at)
+        bucket["last_candidate_at"] = max(bucket["last_candidate_at"], candidate_at)
+        bucket["first_outcome_at"] = min(bucket["first_outcome_at"], outcome_at)
+        bucket["last_outcome_at"] = max(bucket["last_outcome_at"], outcome_at)
 
     serializable_signals = {
         hypothesis_id: {
-            "rows": int(bucket["rows"]),
-            "first_candidate_at": bucket["first_candidate_at"].isoformat(),  # type: ignore[union-attr]
-            "last_candidate_at": bucket["last_candidate_at"].isoformat(),  # type: ignore[union-attr]
-            "first_outcome_at": bucket["first_outcome_at"].isoformat(),  # type: ignore[union-attr]
-            "last_outcome_at": bucket["last_outcome_at"].isoformat(),  # type: ignore[union-attr]
+            "rows": bucket["rows"],
+            "first_candidate_at": bucket["first_candidate_at"].isoformat(),
+            "last_candidate_at": bucket["last_candidate_at"].isoformat(),
+            "first_outcome_at": bucket["first_outcome_at"].isoformat(),
+            "last_outcome_at": bucket["last_outcome_at"].isoformat(),
         }
         for hypothesis_id, bucket in signal_hypotheses.items()
     }
