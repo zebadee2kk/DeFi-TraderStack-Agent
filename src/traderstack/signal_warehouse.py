@@ -433,12 +433,8 @@ class PostgresSignalWarehouse:
             pages=pages,
             first_available_at=first_available_at,
             last_available_at=last_available_at,
-            first_evaluated_at=(
-                cast(datetime, rows[0]["observed_at"]) if rows else None
-            ),
-            last_evaluated_at=(
-                cast(datetime, rows[-1]["observed_at"]) if rows else None
-            ),
+            first_evaluated_at=(cast(datetime, rows[0]["observed_at"]) if rows else None),
+            last_evaluated_at=(cast(datetime, rows[-1]["observed_at"]) if rows else None),
         )
 
     async def close(self) -> None:
