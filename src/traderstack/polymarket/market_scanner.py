@@ -319,6 +319,7 @@ async def scan_open_market_page(
 
     payloads = await gamma.list_open_markets(limit=limit, offset=offset)
     inputs: list[MarketScanInput] = []
+    excluded: list[MarketScanResult] = []
 
     for payload in payloads:
         if not isinstance(payload, dict):
@@ -344,6 +345,26 @@ async def scan_open_market_page(
         try:
             book = await clob.book_metrics(token_ids[0])
         except (TypeError, ValueError):
+            scan_observed_at = observed_at
+            if scan_observed_at.tzinfo is None:
+                scan_observed_at = scan_observed_at.replace(tzinfo=UTC)
+            else:
+                scan_observed_at = scan_observed_at.astimezone(UTC)
+            inputs_result = MarketScanResult(
+                market_id=str(payload.get("id") or condition_raw),
+                condition_id=condition_raw,
+                token_id=token_ids[0],
+                category=coverage.category.upper(),
+                observed_at=scan_observed_at,
+                eligible=False,
+                quality_score=None,
+                scoring_contract_version=SCORING_CONTRACT_VERSION,
+                components={},
+                reasons=("book_unavailable",),
+            )
+            # Preserve explicit exclusions alongside ranked eligible markets.
+            # They are appended below after deterministic ranking.
+            excluded.append(inputs_result)
             continue
 
         item = scan_input_from_gamma(
@@ -359,4 +380,5 @@ async def scan_open_market_page(
         if item is not None:
             inputs.append(item)
 
-    return rank_markets(inputs)
+    ranked = rank_markets(inputs)
+    return ranked + sorted(excluded, key=lambda row: (row.market_id, row.token_id))
