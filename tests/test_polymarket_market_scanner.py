@@ -207,7 +207,9 @@ def test_scan_input_from_gamma_skips_closed_or_unidentified_markets() -> None:
 @pytest.mark.asyncio
 async def test_scan_open_market_page_joins_public_book_and_governed_coverage() -> None:
     class FakeGamma:
-        async def list_open_markets(self, *, limit: int, offset: int) -> tuple[dict[str, object], ...]:
+        async def list_open_markets(
+            self, *, limit: int, offset: int
+        ) -> tuple[dict[str, object], ...]:
             assert limit == 10
             assert offset == 0
             return (
@@ -262,7 +264,9 @@ async def test_scan_open_market_page_joins_public_book_and_governed_coverage() -
 @pytest.mark.asyncio
 async def test_scan_open_market_page_surfaces_book_unavailable() -> None:
     class FakeGamma:
-        async def list_open_markets(self, *, limit: int, offset: int) -> tuple[dict[str, object], ...]:
+        async def list_open_markets(
+            self, *, limit: int, offset: int
+        ) -> tuple[dict[str, object], ...]:
             return (
                 {
                     "id": "m2",
