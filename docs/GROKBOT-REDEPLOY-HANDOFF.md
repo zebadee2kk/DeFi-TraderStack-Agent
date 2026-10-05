@@ -168,6 +168,8 @@ If this fails, leave the kill switch engaged and resolve the named provider/netw
 
 Run `ops/polymarket-intelligence-collect.sh` every **30–60 minutes**.
 
+That collector now records `polymarket_research:crucix` health each cycle. `not_configured` is an explicit unhealthy research-provider state rather than silent missing evidence; a configured Crucix instance is probed read-only and reports `active` or `unavailable`.
+
 Run `bash ops/polymarket-daily-research-eval.sh` **daily** after snapshots begin accumulating. It executes the wallet evaluator and then the world-context evaluator sequentially so their paced Polymarket price-history calls do not overlap.
 
 Use the host's existing scheduler (systemd timer/cron/orchestrator). Do not put credentials in timer unit files or command lines. Do not schedule the two underlying evaluator scripts separately as well as the combined daily job.
