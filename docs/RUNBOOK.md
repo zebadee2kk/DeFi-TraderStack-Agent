@@ -2957,6 +2957,20 @@ traderstack-signal-export \
 
 The intelligence dataset has its own query-hash namespace. The default feature export keeps the original query-hash contract.
 
+Export only **matured, joined candidate/outcome labels** for governed discovery with:
+
+```bash
+traderstack-signal-export \
+  --dataset signals \
+  --asset BTC \
+  --hypothesis-id wallet_top3_follow \
+  --start 2026-10-01T00:00:00Z \
+  --end 2026-10-31T23:59:59Z \
+  --output var/research/btc-wallet-top3-labelled-october.jsonl
+```
+
+The signal export has its own deterministic query-hash namespace and contains only candidates with persisted outcomes. `--start`/`--end` bound the **candidate** timestamp; the outcome must occur at or after its registered horizon. This is the supported labeled-data handoff into #57. It does not create a strategy, promotion pin, order, or execution path.
+
 For Polymarket world-context research, source-specific news, social, on-chain, altFINS and on-chain-regime evidence is read from `intelligence_observations`. The older `provider_observations` rows contain duplicated merged feature vectors and are not used as source-specific context once native evidence is available. Canonical `feature_snapshots` remain the source for runtime-only `edge.*` fields such as liquidation stress, and those fields are attached once as `canonical:feature` rather than once per provider.
 
 Use `traderstack-signal-coverage` for a machine-readable summary of stored rows by asset and source ID, including first/last observation timestamps. Its `intelligence_sources` section reports provider-native row counts, first/last timestamps and observation types separately from canonical feature-vector source IDs.
