@@ -13,7 +13,6 @@ from traderstack.polymarket.market_scanner import (
     score_market,
 )
 
-
 NOW = datetime(2026, 10, 5, 12, tzinfo=UTC)
 
 
