@@ -29,6 +29,8 @@ run_ts "$VENV/bin/traderstack-polymarket-wallet-snapshot"   --category CRYPTO --
 
 run_ts "$VENV/bin/traderstack-polymarket-wallet-snapshot"   --category OVERALL --time-period MONTH --limit "$LIMIT" --max-pages "$MAX_PAGES"
 
+run_ts "$VENV/bin/traderstack-polymarket-research-health"
+
 run_ts "$VENV/bin/traderstack-signal-health-import"
 
 tmp="$(mktemp var/research/polymarket-wallet-cohorts.XXXXXX)"
