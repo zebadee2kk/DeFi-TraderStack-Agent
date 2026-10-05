@@ -2955,6 +2955,8 @@ traderstack-signal-export \
 
 The intelligence dataset has its own query-hash namespace. The default feature export keeps the original query-hash contract.
 
+For Polymarket world-context research, source-specific news, social, on-chain, altFINS and on-chain-regime evidence is read from `intelligence_observations`. The older `provider_observations` rows contain duplicated merged feature vectors and are not used as source-specific context once native evidence is available. Canonical `feature_snapshots` remain the source for runtime-only `edge.*` fields such as liquidation stress, and those fields are attached once as `canonical:feature` rather than once per provider.
+
 Use `traderstack-signal-coverage` for a machine-readable summary of stored rows by asset and source ID, including first/last observation timestamps. Its `intelligence_sources` section reports provider-native row counts, first/last timestamps and observation types separately from canonical feature-vector source IDs.
 
 

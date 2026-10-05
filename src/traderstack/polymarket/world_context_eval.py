@@ -575,12 +575,20 @@ async def _run(args: argparse.Namespace) -> int:
             time_period=args.time_period,
             cohort_ttl_hours=args.cohort_ttl_hours,
         )
-        provider_rows: list[dict[str, object]] = []
+        native_rows: list[dict[str, object]] = []
+        canonical_rows: list[dict[str, object]] = []
         if candidates:
             signal_times = [candidate.trade.trade_at for candidate in candidates]
-            provider_rows = await warehouse.load_provider_observations(
-                start=min(signal_times) - timedelta(hours=args.max_context_age_hours),
-                end=max(signal_times),
+            start = min(signal_times) - timedelta(hours=args.max_context_age_hours)
+            end = max(signal_times)
+            native_rows = await warehouse.load_intelligence_observations(
+                start=start,
+                end=end,
+                limit=args.warehouse_limit,
+            )
+            canonical_rows = await warehouse.load_features(
+                start=start,
+                end=end,
                 limit=args.warehouse_limit,
             )
     finally:
@@ -588,7 +596,8 @@ async def _run(args: argparse.Namespace) -> int:
 
     contexts = fuse_signal_context(
         candidates,
-        provider_rows,
+        native_rows=native_rows,
+        canonical_rows=canonical_rows,
         max_age_hours=args.max_context_age_hours,
     )
 
@@ -694,6 +703,8 @@ async def _run(args: argparse.Namespace) -> int:
                 "discovery_min_signals": DISCOVERY_MIN_SIGNALS,
                 "holdout_min_signals": HOLDOUT_MIN_SIGNALS,
                 "holdout_fraction": args.holdout_fraction,
+                "native_intelligence_observation_count": len(native_rows),
+                "canonical_feature_snapshot_count": len(canonical_rows),
                 "unique_price_points_fetched": lookup.cached_points,
                 "runs": runs,
             },

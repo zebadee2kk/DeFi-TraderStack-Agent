@@ -26,6 +26,7 @@ class ProviderContext:
     observed_at: datetime
     age_seconds: int
     payload: dict[str, object]
+    observation_type: str = "legacy_provider"
 
 
 @dataclass(frozen=True)
@@ -63,18 +64,71 @@ def _eligible_asset(asset: str, market_assets: set[str]) -> bool:
     return normalized in _GLOBAL_ASSETS or normalized in market_assets
 
 
+def _native_payload(observation_type: str, payload: dict[str, object]) -> dict[str, object] | None:
+    if observation_type == "news":
+        return {
+            "news": {
+                "event_score": payload.get("event_score"),
+                "adverse_event": payload.get("adverse_event"),
+                "item_count": payload.get("item_count"),
+            }
+        }
+    if observation_type == "social":
+        return {
+            "narrative": {
+                "sentiment": payload.get("sentiment"),
+                "mention_velocity_z": payload.get("mention_velocity_z"),
+            }
+        }
+    if observation_type == "onchain":
+        return {
+            "onchain": {
+                "exchange_netflow_z": payload.get("exchange_netflow_z"),
+                "large_wallet_accumulation": payload.get("large_wallet_accumulation"),
+            }
+        }
+    if observation_type == "altfins":
+        return {"market": {"external_signal_score": payload.get("score")}}
+    if observation_type == "onchain_regime":
+        return {
+            "onchain": {
+                key: payload.get(key)
+                for key in (
+                    "mvrv_z",
+                    "mvrv_z_percentile",
+                    "nupl",
+                    "as_of",
+                    "feature_version",
+                )
+            }
+        }
+    return None
+
+
+def _canonical_edge_payload(payload: dict[str, object]) -> dict[str, object] | None:
+    edge = payload.get("edge")
+    if not isinstance(edge, dict):
+        return None
+    return {"edge": dict(edge)}
+
+
 def fuse_signal_context(
     candidates: list[SignalCandidate],
-    provider_rows: list[dict[str, object]],
+    provider_rows: list[dict[str, object]] | None = None,
     *,
+    native_rows: list[dict[str, object]] | None = None,
+    canonical_rows: list[dict[str, object]] | None = None,
     max_age_hours: float = 24.0,
 ) -> list[FusedSignalContext]:
     if max_age_hours <= 0:
         raise ValueError("max_age_hours must be positive")
 
     max_age = timedelta(hours=max_age_hours)
-    parsed: list[tuple[datetime, str, str, dict[str, object]]] = []
-    for row in provider_rows:
+    parsed: list[tuple[datetime, str, str, str, dict[str, object]]] = []
+
+    # Backward-compatible legacy rows remain accepted for tests/tools, but the
+    # production evaluator no longer loads duplicated provider_observations.
+    for row in provider_rows or []:
         observed_at = row.get("observed_at")
         source_id = row.get("source_id")
         asset = row.get("asset")
@@ -88,7 +142,54 @@ def fuse_signal_context(
             or not isinstance(payload, dict)
         ):
             continue
-        parsed.append((_as_utc(observed_at), source_id, asset.upper(), payload))
+        parsed.append((_as_utc(observed_at), source_id, "legacy_provider", asset.upper(), payload))
+
+    for row in native_rows or []:
+        observed_at = row.get("observed_at")
+        source_id = row.get("source_id")
+        observation_type = row.get("observation_type")
+        asset = row.get("asset")
+        payload = row.get("payload")
+        if (
+            not isinstance(observed_at, datetime)
+            or not isinstance(source_id, str)
+            or not source_id
+            or not isinstance(observation_type, str)
+            or not isinstance(asset, str)
+            or not asset
+            or not isinstance(payload, dict)
+        ):
+            continue
+        normalized = _native_payload(observation_type, payload)
+        if normalized is None:
+            continue
+        parsed.append(
+            (_as_utc(observed_at), source_id, observation_type, asset.upper(), normalized)
+        )
+
+    for row in canonical_rows or []:
+        observed_at = row.get("observed_at")
+        asset = row.get("asset")
+        payload = row.get("payload")
+        if (
+            not isinstance(observed_at, datetime)
+            or not isinstance(asset, str)
+            or not asset
+            or not isinstance(payload, dict)
+        ):
+            continue
+        normalized = _canonical_edge_payload(payload)
+        if normalized is None:
+            continue
+        parsed.append(
+            (
+                _as_utc(observed_at),
+                "canonical:feature",
+                "canonical_feature",
+                asset.upper(),
+                normalized,
+            )
+        )
 
     fused: list[FusedSignalContext] = []
     for candidate in sorted(
@@ -102,16 +203,16 @@ def fuse_signal_context(
     ):
         signal_at = _as_utc(candidate.trade.trade_at)
         market_assets = _market_assets(candidate)
-        latest: dict[tuple[str, str], tuple[datetime, dict[str, object]]] = {}
+        latest: dict[tuple[str, str, str], tuple[datetime, dict[str, object]]] = {}
 
-        for observed_at, source_id, asset, payload in parsed:
+        for observed_at, source_id, observation_type, asset, payload in parsed:
             if observed_at > signal_at:
                 continue
             if signal_at - observed_at > max_age:
                 continue
             if not _eligible_asset(asset, market_assets):
                 continue
-            key = (source_id, asset)
+            key = (source_id, observation_type, asset)
             current = latest.get(key)
             if current is None or observed_at > current[0]:
                 latest[key] = (observed_at, payload)
@@ -123,8 +224,11 @@ def fuse_signal_context(
                 observed_at=observed_at,
                 age_seconds=max(0, int((signal_at - observed_at).total_seconds())),
                 payload=payload,
+                observation_type=observation_type,
             )
-            for (source_id, asset), (observed_at, payload) in sorted(latest.items())
+            for (source_id, observation_type, asset), (observed_at, payload) in sorted(
+                latest.items()
+            )
         )
         fused.append(
             FusedSignalContext(
@@ -176,12 +280,20 @@ async def _run(args: argparse.Namespace) -> int:
             cohort_ttl_hours=args.cohort_ttl_hours,
         )
 
-        provider_rows: list[dict[str, object]] = []
+        native_rows: list[dict[str, object]] = []
+        canonical_rows: list[dict[str, object]] = []
         if candidates:
             signal_times = [_as_utc(item.trade.trade_at) for item in candidates]
-            provider_rows = await warehouse.load_provider_observations(
-                start=min(signal_times) - timedelta(hours=args.max_context_age_hours),
-                end=max(signal_times),
+            start = min(signal_times) - timedelta(hours=args.max_context_age_hours)
+            end = max(signal_times)
+            native_rows = await warehouse.load_intelligence_observations(
+                start=start,
+                end=end,
+                limit=args.warehouse_limit,
+            )
+            canonical_rows = await warehouse.load_features(
+                start=start,
+                end=end,
                 limit=args.warehouse_limit,
             )
     finally:
@@ -189,7 +301,8 @@ async def _run(args: argparse.Namespace) -> int:
 
     fused = fuse_signal_context(
         candidates,
-        provider_rows,
+        native_rows=native_rows,
+        canonical_rows=canonical_rows,
         max_age_hours=args.max_context_age_hours,
     )
     print(
@@ -202,7 +315,8 @@ async def _run(args: argparse.Namespace) -> int:
                 "time_period": args.time_period.upper(),
                 "max_context_age_hours": args.max_context_age_hours,
                 "candidate_count": len(candidates),
-                "provider_observation_count": len(provider_rows),
+                "native_intelligence_observation_count": len(native_rows),
+                "canonical_feature_snapshot_count": len(canonical_rows),
                 "contexts_with_provider_data": sum(bool(item.provider_context) for item in fused),
                 "contexts": [asdict(item) for item in fused],
             },
