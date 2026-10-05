@@ -553,6 +553,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-signals", type=int, default=500)
     parser.add_argument("--price-calls-per-minute", type=int, default=100)
     parser.add_argument("--warehouse-limit", type=int, default=100000)
+    parser.add_argument("--wallet-page-size", type=int, default=5000)
+    parser.add_argument("--wallet-max-rows", type=int, default=1_000_000)
     return parser
 
 
@@ -560,17 +562,35 @@ async def _run(args: argparse.Namespace) -> int:
     settings = Settings()
     warehouse = PostgresSignalWarehouse(settings.database_url)
     try:
-        leaderboard_rows = await warehouse.load_wallet_observations(
+        leaderboard_query = await warehouse.load_wallet_observations_complete(
             observation_type="leaderboard",
-            limit=args.warehouse_limit,
+            page_size=args.wallet_page_size,
+            max_rows=args.wallet_max_rows,
         )
-        trade_rows = await warehouse.load_wallet_observations(
+        trade_query = await warehouse.load_wallet_observations_complete(
             observation_type="trades",
-            limit=args.warehouse_limit,
+            page_size=args.wallet_page_size,
+            max_rows=args.wallet_max_rows,
         )
+        if not leaderboard_query.complete or not trade_query.complete:
+            print(
+                json.dumps(
+                    {
+                        "research_only": True,
+                        "execution_authority": False,
+                        "status": "insufficient_data_query",
+                        "leaderboard_history": asdict(leaderboard_query),
+                        "trade_history": asdict(trade_query),
+                    },
+                    default=str,
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 2
         candidates = build_signal_candidates(
-            leaderboard_rows=leaderboard_rows,
-            trade_rows=trade_rows,
+            leaderboard_rows=leaderboard_query.rows,
+            trade_rows=trade_query.rows,
             category=args.category,
             time_period=args.time_period,
             cohort_ttl_hours=args.cohort_ttl_hours,
@@ -703,6 +723,10 @@ async def _run(args: argparse.Namespace) -> int:
                 "discovery_min_signals": DISCOVERY_MIN_SIGNALS,
                 "holdout_min_signals": HOLDOUT_MIN_SIGNALS,
                 "holdout_fraction": args.holdout_fraction,
+                "wallet_history": {
+                    "leaderboard": asdict(leaderboard_query),
+                    "trades": asdict(trade_query),
+                },
                 "native_intelligence_observation_count": len(native_rows),
                 "canonical_feature_snapshot_count": len(canonical_rows),
                 "unique_price_points_fetched": lookup.cached_points,
