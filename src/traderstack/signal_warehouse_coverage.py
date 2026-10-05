@@ -168,7 +168,7 @@ async def _run(args: argparse.Namespace) -> int:
         outcome_at = row["outcome_at"]
         if not isinstance(candidate_at, datetime) or not isinstance(outcome_at, datetime):
             raise TypeError("signal dataset timestamps must be datetimes")
-        bucket = signal_hypotheses.setdefault(
+        signal_bucket = signal_hypotheses.setdefault(
             hypothesis_id,
             {
                 "rows": 0,
@@ -178,11 +178,19 @@ async def _run(args: argparse.Namespace) -> int:
                 "last_outcome_at": outcome_at,
             },
         )
-        bucket["rows"] += 1
-        bucket["first_candidate_at"] = min(bucket["first_candidate_at"], candidate_at)
-        bucket["last_candidate_at"] = max(bucket["last_candidate_at"], candidate_at)
-        bucket["first_outcome_at"] = min(bucket["first_outcome_at"], outcome_at)
-        bucket["last_outcome_at"] = max(bucket["last_outcome_at"], outcome_at)
+        signal_bucket["rows"] += 1
+        signal_bucket["first_candidate_at"] = min(
+            signal_bucket["first_candidate_at"], candidate_at
+        )
+        signal_bucket["last_candidate_at"] = max(
+            signal_bucket["last_candidate_at"], candidate_at
+        )
+        signal_bucket["first_outcome_at"] = min(
+            signal_bucket["first_outcome_at"], outcome_at
+        )
+        signal_bucket["last_outcome_at"] = max(
+            signal_bucket["last_outcome_at"], outcome_at
+        )
 
     serializable_signals = {
         hypothesis_id: {
