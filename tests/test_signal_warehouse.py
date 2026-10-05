@@ -9,11 +9,11 @@ from traderstack.market.models import MarketSource, MarketTick
 from traderstack.pipeline import PipelineResult
 from traderstack.runtime import RuntimeResult
 from traderstack.signal_warehouse import (
+    PostgresSignalWarehouse,
     build_feature_rows,
     build_intelligence_rows,
     collector_health,
     intelligence_observations,
-    PostgresSignalWarehouse,
     metadata,
     wallet_observations,
 )
