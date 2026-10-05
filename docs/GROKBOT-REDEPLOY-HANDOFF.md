@@ -123,6 +123,8 @@ Expected logical stores now include:
 - `intelligence_observations` (typed provider-native evidence, idempotent);
 - `collector_health`;
 - `wallet_observations`;
+- `signal_candidates` (versioned research hypotheses);
+- `signal_outcomes` (matured future labels only);
 - existing runtime-event/candle/audit stores.
 
 The append-only provider-health journal remains first-write operational evidence and is not replaced by PostgreSQL.
