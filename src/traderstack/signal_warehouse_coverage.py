@@ -50,6 +50,10 @@ async def _run(args: argparse.Namespace) -> int:
             limit=args.limit,
         )
         health_rows = await warehouse.load_collector_health(limit=args.limit)
+        signal_rows = await warehouse.load_signal_dataset(
+            asset=args.asset,
+            limit=args.limit,
+        )
     finally:
         await warehouse.close()
 
@@ -150,6 +154,48 @@ async def _run(args: argparse.Namespace) -> int:
         for asset, bucket in assets.items()
     }
 
+    signal_hypotheses: dict[str, dict[str, object]] = {}
+    for row in signal_rows:
+        hypothesis_id = str(row["hypothesis_id"])
+        candidate_at = row["candidate_at"]
+        outcome_at = row["outcome_at"]
+        if not isinstance(candidate_at, datetime) or not isinstance(outcome_at, datetime):
+            raise TypeError("signal dataset timestamps must be datetimes")
+        bucket = signal_hypotheses.setdefault(
+            hypothesis_id,
+            {
+                "rows": 0,
+                "first_candidate_at": candidate_at,
+                "last_candidate_at": candidate_at,
+                "first_outcome_at": outcome_at,
+                "last_outcome_at": outcome_at,
+            },
+        )
+        bucket["rows"] = int(bucket["rows"]) + 1
+        bucket["first_candidate_at"] = min(
+            bucket["first_candidate_at"], candidate_at  # type: ignore[arg-type]
+        )
+        bucket["last_candidate_at"] = max(
+            bucket["last_candidate_at"], candidate_at  # type: ignore[arg-type]
+        )
+        bucket["first_outcome_at"] = min(
+            bucket["first_outcome_at"], outcome_at  # type: ignore[arg-type]
+        )
+        bucket["last_outcome_at"] = max(
+            bucket["last_outcome_at"], outcome_at  # type: ignore[arg-type]
+        )
+
+    serializable_signals = {
+        hypothesis_id: {
+            "rows": int(bucket["rows"]),
+            "first_candidate_at": bucket["first_candidate_at"].isoformat(),  # type: ignore[union-attr]
+            "last_candidate_at": bucket["last_candidate_at"].isoformat(),  # type: ignore[union-attr]
+            "first_outcome_at": bucket["first_outcome_at"].isoformat(),  # type: ignore[union-attr]
+            "last_outcome_at": bucket["last_outcome_at"].isoformat(),  # type: ignore[union-attr]
+        }
+        for hypothesis_id, bucket in signal_hypotheses.items()
+    }
+
     print(
         json.dumps(
             {
@@ -158,6 +204,7 @@ async def _run(args: argparse.Namespace) -> int:
                 "sources": dict(sorted(sources.items())),
                 "intelligence_sources": dict(sorted(serializable_intelligence.items())),
                 "collector_health": dict(sorted(serializable_health.items())),
+                "signal_outcomes": dict(sorted(serializable_signals.items())),
             },
             sort_keys=True,
         )
