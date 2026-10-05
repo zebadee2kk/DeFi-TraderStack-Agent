@@ -139,26 +139,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--category")
     parser.add_argument("--time-period")
-    parser.add_argument("--limit", type=int, default=100000)
+    parser.add_argument("--wallet-page-size", type=int, default=5000)
+    parser.add_argument("--wallet-max-rows", type=int, default=1_000_000)
     parser.add_argument("--top", type=int, default=50)
     return parser
 
 
 async def _run(args: argparse.Namespace) -> int:
-    if args.limit <= 0 or args.limit > 1_000_000:
-        raise ValueError("limit must be between 1 and 1000000")
+    if args.wallet_page_size <= 0:
+        raise ValueError("wallet-page-size must be positive")
+    if args.wallet_max_rows <= 0:
+        raise ValueError("wallet-max-rows must be positive")
     if args.top <= 0 or args.top > 1000:
         raise ValueError("top must be between 1 and 1000")
 
     warehouse = PostgresSignalWarehouse(Settings().database_url)
     try:
-        rows = await warehouse.load_wallet_observations(
+        query = await warehouse.load_wallet_observations_complete(
             observation_type="leaderboard",
-            limit=args.limit,
+            page_size=args.wallet_page_size,
+            max_rows=args.wallet_max_rows,
         )
     finally:
         await warehouse.close()
 
+    if not query.complete:
+        print(
+            json.dumps(
+                {
+                    "status": "insufficient_data_query",
+                    "wallet_history": query.coverage(),
+                },
+                default=str,
+                sort_keys=True,
+            )
+        )
+        return 2
+
+    rows = query.rows
     if args.category or args.time_period:
         filtered: list[dict[str, object]] = []
         for row in rows:
