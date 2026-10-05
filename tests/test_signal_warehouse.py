@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from traderstack.features import AssetFeatureVector, MarketFeatures
@@ -141,18 +142,32 @@ async def test_complete_wallet_history_reads_beyond_old_100k_boundary() -> None:
     warehouse = PostgresSignalWarehouse("sqlite+aiosqlite:///:memory:", engine=engine)
     async with engine.begin() as connection:
         await connection.run_sync(metadata.create_all)
-        start = datetime(2026, 1, 1, tzinfo=UTC)
-        rows = [
-            {
-                "observed_at": start + timedelta(seconds=index // 100),
-                "wallet": "0x" + f"{index % 1000:040x}",
-                "observation_type": "trades",
-                "source_id": "polymarket:data-api-v2",
-                "payload": {"sequence": index},
-            }
-            for index in range(100_005)
-        ]
-        await connection.execute(wallet_observations.insert(), rows)
+        await connection.execute(
+            text(
+                """
+                WITH RECURSIVE
+                a(x) AS (
+                    VALUES(0)
+                    UNION ALL SELECT x + 1 FROM a WHERE x < 999
+                ),
+                b(y) AS (
+                    VALUES(0)
+                    UNION ALL SELECT y + 1 FROM b WHERE y < 100
+                )
+                INSERT INTO wallet_observations
+                    (observed_at, wallet, observation_type, source_id, payload)
+                SELECT
+                    datetime('2026-01-01 00:00:00', printf('+%d seconds', (y * 1000 + x) / 100)),
+                    '0x' || printf('%040x', (y * 1000 + x) % 1000),
+                    'trades',
+                    'polymarket:data-api-v2',
+                    json_object('sequence', y * 1000 + x)
+                FROM a CROSS JOIN b
+                WHERE y * 1000 + x < 100005
+                ORDER BY y, x
+                """
+            )
+        )
 
     result = await warehouse.load_wallet_observations_complete(
         observation_type="trades",
