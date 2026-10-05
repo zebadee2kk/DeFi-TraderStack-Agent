@@ -19,7 +19,8 @@ class WarehouseExportSpec:
     start: datetime | None
     end: datetime | None
     limit: int
-    dataset: Literal["features", "intelligence"] = "features"
+    dataset: Literal["features", "intelligence", "signals"] = "features"
+    hypothesis_id: str | None = None
 
     def canonical_json(self) -> str:
         query: dict[str, object] = {
@@ -31,6 +32,8 @@ class WarehouseExportSpec:
         # Preserve the original feature-export query hash contract.
         if self.dataset != "features":
             query["dataset"] = self.dataset
+        if self.dataset == "signals":
+            query["hypothesis_id"] = self.hypothesis_id
         return json.dumps(query, sort_keys=True, separators=(",", ":"))
 
     def query_hash(self) -> str:
@@ -54,10 +57,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=10000)
     parser.add_argument(
         "--dataset",
-        choices=("features", "intelligence"),
+        choices=("features", "intelligence", "signals"),
         default="features",
-        help="export canonical feature rows or provider-native normalized intelligence rows",
+        help=(
+            "export canonical features, provider-native intelligence, or "
+            "matured signal candidate/outcome rows"
+        ),
     )
+    parser.add_argument("--hypothesis-id", help="optional signal hypothesis filter")
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -65,6 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
 async def _run(args: argparse.Namespace) -> int:
     if args.limit <= 0 or args.limit > 100000:
         raise ValueError("limit must be between 1 and 100000")
+    if args.hypothesis_id and args.dataset != "signals":
+        raise ValueError("--hypothesis-id is only valid with --dataset signals")
 
     spec = WarehouseExportSpec(
         asset=args.asset,
@@ -72,6 +81,7 @@ async def _run(args: argparse.Namespace) -> int:
         end=_parse_dt(args.end),
         limit=args.limit,
         dataset=args.dataset,
+        hypothesis_id=args.hypothesis_id,
     )
     if spec.start is not None and spec.end is not None and spec.start > spec.end:
         raise ValueError("start must be <= end")
@@ -86,11 +96,19 @@ async def _run(args: argparse.Namespace) -> int:
                 end=spec.end,
                 limit=spec.limit,
             )
-        else:
+        elif spec.dataset == "intelligence":
             rows = await warehouse.load_intelligence_observations(
                 asset=spec.asset,
                 start=spec.start,
                 end=spec.end,
+                limit=spec.limit,
+            )
+        else:
+            rows = await warehouse.load_signal_dataset(
+                asset=spec.asset,
+                hypothesis_id=spec.hypothesis_id,
+                candidate_start=spec.start,
+                candidate_end=spec.end,
                 limit=spec.limit,
             )
     finally:
@@ -107,9 +125,10 @@ async def _run(args: argparse.Namespace) -> int:
         handle.write(json.dumps(header, sort_keys=True, separators=(",", ":")) + "\n")
         for row in rows:
             serializable = dict(row)
-            observed_at = serializable.get("observed_at")
-            if isinstance(observed_at, datetime):
-                serializable["observed_at"] = observed_at.astimezone(UTC).isoformat()
+            for field in ("observed_at", "candidate_at", "outcome_at"):
+                value = serializable.get(field)
+                if isinstance(value, datetime):
+                    serializable[field] = value.astimezone(UTC).isoformat()
             handle.write(json.dumps(serializable, sort_keys=True, separators=(",", ":")) + "\n")
 
     print(
