@@ -264,11 +264,12 @@ def scan_input_from_gamma(
     if market_raw is None or not str(market_raw).strip() or close_at is None:
         return None
 
-    liquidity = _numeric(
-        payload.get("liquidityNum")
-        or payload.get("liquidity")
-        or payload.get("liquidity_usd")
-    )
+    liquidity_raw = payload.get("liquidityNum")
+    if liquidity_raw is None:
+        liquidity_raw = payload.get("liquidity")
+    if liquidity_raw is None:
+        liquidity_raw = payload.get("liquidity_usd")
+    liquidity = _numeric(liquidity_raw)
     if liquidity is None:
         return None
 
