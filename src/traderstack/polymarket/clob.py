@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any
 
 import httpx
@@ -122,6 +123,8 @@ def _priced_levels(payload: Any, key: str) -> list[tuple[float, float]]:
             price = float(row.get("price"))
             size = float(row.get("size"))
         except (TypeError, ValueError):
+            continue
+        if not isfinite(price) or not isfinite(size):
             continue
         if not (0.0 <= price <= 1.0) or size < 0.0:
             continue
