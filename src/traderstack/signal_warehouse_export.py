@@ -72,6 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
 async def _run(args: argparse.Namespace) -> int:
     if args.limit <= 0 or args.limit > 100000:
         raise ValueError("limit must be between 1 and 100000")
+    if args.hypothesis_id and args.dataset != "signals":
+        raise ValueError("--hypothesis-id is only valid with --dataset signals")
 
     spec = WarehouseExportSpec(
         asset=args.asset,
