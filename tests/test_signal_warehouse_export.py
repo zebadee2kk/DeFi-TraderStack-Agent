@@ -59,3 +59,26 @@ def test_intelligence_export_has_distinct_reproducible_query_hash() -> None:
     assert feature.query_hash() != intelligence.query_hash()
     assert '"dataset":"intelligence"' in intelligence.canonical_json()
     assert '"dataset"' not in feature.canonical_json()
+
+
+def test_signal_export_has_distinct_hash_and_hypothesis_scope() -> None:
+    first = WarehouseExportSpec(
+        asset="BTC",
+        start=datetime(2026, 10, 1, tzinfo=UTC),
+        end=datetime(2026, 10, 2, tzinfo=UTC),
+        limit=100,
+        dataset="signals",
+        hypothesis_id="wallet_top3_follow",
+    )
+    second = WarehouseExportSpec(
+        asset="BTC",
+        start=datetime(2026, 10, 1, tzinfo=UTC),
+        end=datetime(2026, 10, 2, tzinfo=UTC),
+        limit=100,
+        dataset="signals",
+        hypothesis_id="wallet_top10_follow",
+    )
+
+    assert first.query_hash() != second.query_hash()
+    assert '"dataset":"signals"' in first.canonical_json()
+    assert '"hypothesis_id":"wallet_top3_follow"' in first.canonical_json()
