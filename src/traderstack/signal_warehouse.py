@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from sqlalchemy import (
@@ -350,21 +350,50 @@ class PostgresSignalWarehouse:
         by_key = {str(row["event_key"]): row for row in rows}
         keys = list(by_key)
         async with self._engine().begin() as connection:
-            known_candidates = set(
-                (
-                    await connection.execute(
-                        select(signal_candidates.c.event_key).where(
-                            signal_candidates.c.event_key.in_(candidate_keys)
-                        )
-                    )
-                ).scalars()
-            )
-            missing = candidate_keys - known_candidates
+            candidate_rows = (
+                await connection.execute(
+                    select(
+                        signal_candidates.c.event_key,
+                        signal_candidates.c.candidate_at,
+                        signal_candidates.c.horizon_seconds,
+                    ).where(signal_candidates.c.event_key.in_(candidate_keys))
+                )
+            ).mappings().all()
+            known_candidates = {
+                str(row["event_key"]): row for row in candidate_rows
+            }
+            missing = candidate_keys - set(known_candidates)
             if missing:
                 raise ValueError(
                     "signal outcome references unknown candidate event key(s): "
                     + ", ".join(sorted(missing))
                 )
+
+            for row in rows:
+                candidate = known_candidates[str(row["candidate_event_key"])]
+                stored_candidate_at = cast(datetime, candidate["candidate_at"])
+                if stored_candidate_at.tzinfo is None:
+                    stored_candidate_at = stored_candidate_at.replace(tzinfo=UTC)
+                else:
+                    stored_candidate_at = stored_candidate_at.astimezone(UTC)
+                outcome_candidate_at = cast(datetime, row["candidate_at"])
+                if outcome_candidate_at.tzinfo is None:
+                    outcome_candidate_at = outcome_candidate_at.replace(tzinfo=UTC)
+                else:
+                    outcome_candidate_at = outcome_candidate_at.astimezone(UTC)
+                if outcome_candidate_at != stored_candidate_at:
+                    raise ValueError("signal outcome candidate_at does not match candidate")
+                stored_horizon = int(candidate["horizon_seconds"])
+                if int(row["horizon_seconds"]) != stored_horizon:
+                    raise ValueError("signal outcome horizon does not match candidate")
+                outcome_at = cast(datetime, row["outcome_at"])
+                if outcome_at.tzinfo is None:
+                    outcome_at = outcome_at.replace(tzinfo=UTC)
+                else:
+                    outcome_at = outcome_at.astimezone(UTC)
+                if outcome_at < stored_candidate_at + timedelta(seconds=stored_horizon):
+                    raise ValueError("signal outcome precedes registered candidate horizon")
+
             existing = set(
                 (
                     await connection.execute(
