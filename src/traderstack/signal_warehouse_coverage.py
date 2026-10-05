@@ -29,6 +29,7 @@ class HealthCoverageBucket(TypedDict):
     last: datetime
     latest_state: str
 
+
 class SignalCoverageBucket(TypedDict):
     rows: int
     first_candidate_at: datetime
@@ -179,18 +180,10 @@ async def _run(args: argparse.Namespace) -> int:
             },
         )
         signal_bucket["rows"] += 1
-        signal_bucket["first_candidate_at"] = min(
-            signal_bucket["first_candidate_at"], candidate_at
-        )
-        signal_bucket["last_candidate_at"] = max(
-            signal_bucket["last_candidate_at"], candidate_at
-        )
-        signal_bucket["first_outcome_at"] = min(
-            signal_bucket["first_outcome_at"], outcome_at
-        )
-        signal_bucket["last_outcome_at"] = max(
-            signal_bucket["last_outcome_at"], outcome_at
-        )
+        signal_bucket["first_candidate_at"] = min(signal_bucket["first_candidate_at"], candidate_at)
+        signal_bucket["last_candidate_at"] = max(signal_bucket["last_candidate_at"], candidate_at)
+        signal_bucket["first_outcome_at"] = min(signal_bucket["first_outcome_at"], outcome_at)
+        signal_bucket["last_outcome_at"] = max(signal_bucket["last_outcome_at"], outcome_at)
 
     serializable_signals = {
         hypothesis_id: {
