@@ -49,8 +49,20 @@ The treatment comparison is the context subset versus `baseline_all` for the sam
 hypothesis, delay and cost print.
 
 The command uses the repository's fixed-seed bootstrap machinery for the cell mean and a
-fixed-seed baseline-resampling bootstrap for incremental mean. DSR is reported on normalized
-per-signal returns where the sample bar is met.
+fixed-seed baseline-resampling bootstrap for incremental mean.
+
+DSR is corrected against the **entire frozen logical catalog** for the relevant split:
+3 wallet hypotheses × 3 copy delays × 3 cost prints × 10 context cells = **270 trials**.
+It is computed only when every one of those 270 cells has the required sample support and a
+defined per-signal Sharpe. Sparse or degenerate cells cause DSR for that split to be withheld as
+`global_catalog_sample_support_incomplete`; the evaluator never drops unavailable cells and
+quietly reduces the trial count after seeing results.
+
+The CLI still permits bounded exploratory overrides for diagnostics, but any change to the frozen
+population/evaluation contract (including delay/cost lists or warehouse limit) sets
+`catalog_frozen_in_issue_193=false` and withholds DSR as
+`non_preregistered_parameters`. An exploratory run cannot relabel a smaller catalog as the
+pre-registered test.
 
 PBO is explicitly withheld in this first conditional slice: treatment cells have different
 signal support. Zero-filling the missing observations merely to create a rectangular CSCV matrix
