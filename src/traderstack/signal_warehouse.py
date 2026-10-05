@@ -10,6 +10,8 @@ from sqlalchemy import (
     JSON,
     Column,
     DateTime,
+    Float,
+    ForeignKey,
     Integer,
     MetaData,
     String,
@@ -81,6 +83,46 @@ wallet_observations = Table(
     Column("observation_type", String(64), nullable=False, index=True),
     Column("source_id", String(128), nullable=False, index=True),
     Column("payload", JSON, nullable=False),
+)
+
+signal_candidates = Table(
+    "signal_candidates",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("event_key", String(64), nullable=False, unique=True, index=True),
+    Column("candidate_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("asset", String(32), nullable=False, index=True),
+    Column("hypothesis_id", String(128), nullable=False, index=True),
+    Column("hypothesis_version", String(64), nullable=False),
+    Column("horizon_seconds", Integer, nullable=False),
+    Column("direction", Integer, nullable=False),
+    Column("confidence", Float, nullable=True),
+    Column("feature_query_hash", String(128), nullable=False, index=True),
+    Column("schema_version", String(32), nullable=False),
+)
+
+signal_outcomes = Table(
+    "signal_outcomes",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("event_key", String(64), nullable=False, unique=True, index=True),
+    Column(
+        "candidate_event_key",
+        String(64),
+        ForeignKey("signal_candidates.event_key"),
+        nullable=False,
+        index=True,
+    ),
+    Column("candidate_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("outcome_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("horizon_seconds", Integer, nullable=False),
+    Column("gross_return", Float, nullable=False),
+    Column("net_return", Float, nullable=False),
+    Column("gross_pnl_usd", Float, nullable=True),
+    Column("net_pnl_usd", Float, nullable=True),
+    Column("fee_bps", Float, nullable=False),
+    Column("slippage_bps", Float, nullable=False),
+    Column("schema_version", String(32), nullable=False),
 )
 
 
@@ -276,6 +318,107 @@ class PostgresSignalWarehouse:
             intelligence_observations.c.source_id.asc(),
             intelligence_observations.c.observation_type.asc(),
             intelligence_observations.c.event_key.asc(),
+        ).limit(limit)
+        async with self._engine().connect() as connection:
+            rows = (await connection.execute(statement)).mappings().all()
+        return [dict(row) for row in rows]
+
+    async def append_signal_candidates(self, rows: list[dict[str, object]]) -> int:
+        if not rows:
+            return 0
+        by_key = {str(row["event_key"]): row for row in rows}
+        keys = list(by_key)
+        async with self._engine().begin() as connection:
+            existing = set(
+                (
+                    await connection.execute(
+                        select(signal_candidates.c.event_key).where(
+                            signal_candidates.c.event_key.in_(keys)
+                        )
+                    )
+                ).scalars()
+            )
+            fresh = [row for key, row in by_key.items() if key not in existing]
+            if fresh:
+                await connection.execute(insert(signal_candidates).values(fresh))
+        return len(fresh)
+
+    async def append_signal_outcomes(self, rows: list[dict[str, object]]) -> int:
+        if not rows:
+            return 0
+        candidate_keys = {str(row["candidate_event_key"]) for row in rows}
+        by_key = {str(row["event_key"]): row for row in rows}
+        keys = list(by_key)
+        async with self._engine().begin() as connection:
+            known_candidates = set(
+                (
+                    await connection.execute(
+                        select(signal_candidates.c.event_key).where(
+                            signal_candidates.c.event_key.in_(candidate_keys)
+                        )
+                    )
+                ).scalars()
+            )
+            missing = candidate_keys - known_candidates
+            if missing:
+                raise ValueError(
+                    "signal outcome references unknown candidate event key(s): "
+                    + ", ".join(sorted(missing))
+                )
+            existing = set(
+                (
+                    await connection.execute(
+                        select(signal_outcomes.c.event_key).where(
+                            signal_outcomes.c.event_key.in_(keys)
+                        )
+                    )
+                ).scalars()
+            )
+            fresh = [row for key, row in by_key.items() if key not in existing]
+            if fresh:
+                await connection.execute(insert(signal_outcomes).values(fresh))
+        return len(fresh)
+
+    async def load_signal_dataset(
+        self,
+        *,
+        asset: str | None = None,
+        hypothesis_id: str | None = None,
+        candidate_start: datetime | None = None,
+        candidate_end: datetime | None = None,
+        limit: int = 10000,
+    ) -> list[dict[str, object]]:
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        statement = (
+            select(
+                signal_candidates,
+                signal_outcomes.c.outcome_at,
+                signal_outcomes.c.gross_return,
+                signal_outcomes.c.net_return,
+                signal_outcomes.c.gross_pnl_usd,
+                signal_outcomes.c.net_pnl_usd,
+                signal_outcomes.c.fee_bps,
+                signal_outcomes.c.slippage_bps,
+                signal_outcomes.c.schema_version.label("outcome_schema_version"),
+            )
+            .join(
+                signal_outcomes,
+                signal_outcomes.c.candidate_event_key == signal_candidates.c.event_key,
+            )
+            .where(signal_outcomes.c.outcome_at >= signal_candidates.c.candidate_at)
+        )
+        if asset is not None:
+            statement = statement.where(signal_candidates.c.asset == asset.upper())
+        if hypothesis_id is not None:
+            statement = statement.where(signal_candidates.c.hypothesis_id == hypothesis_id)
+        if candidate_start is not None:
+            statement = statement.where(signal_candidates.c.candidate_at >= candidate_start)
+        if candidate_end is not None:
+            statement = statement.where(signal_candidates.c.candidate_at <= candidate_end)
+        statement = statement.order_by(
+            signal_candidates.c.candidate_at.asc(),
+            signal_candidates.c.id.asc(),
         ).limit(limit)
         async with self._engine().connect() as connection:
             rows = (await connection.execute(statement)).mappings().all()
