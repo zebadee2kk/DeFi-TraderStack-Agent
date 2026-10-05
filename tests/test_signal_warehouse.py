@@ -1,4 +1,7 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from traderstack.features import AssetFeatureVector, MarketFeatures
 from traderstack.intelligence import IntelligenceObservation
@@ -10,6 +13,8 @@ from traderstack.signal_warehouse import (
     build_intelligence_rows,
     collector_health,
     intelligence_observations,
+    PostgresSignalWarehouse,
+    metadata,
     wallet_observations,
 )
 
@@ -128,3 +133,76 @@ def test_intelligence_observation_table_has_idempotency_and_provenance_columns()
         "schema_version",
         "payload",
     }
+
+
+@pytest.mark.asyncio
+async def test_complete_wallet_history_reads_beyond_old_100k_boundary() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    warehouse = PostgresSignalWarehouse("sqlite+aiosqlite:///:memory:", engine=engine)
+    async with engine.begin() as connection:
+        await connection.run_sync(metadata.create_all)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        rows = [
+            {
+                "observed_at": start + timedelta(seconds=index // 100),
+                "wallet": "0x" + f"{index % 1000:040x}",
+                "observation_type": "trades",
+                "source_id": "polymarket:data-api-v2",
+                "payload": {"sequence": index},
+            }
+            for index in range(100_005)
+        ]
+        await connection.execute(wallet_observations.insert(), rows)
+
+    result = await warehouse.load_wallet_observations_complete(
+        observation_type="trades",
+        page_size=4096,
+        max_rows=150_000,
+    )
+
+    assert result.complete
+    assert result.available_count == 100_005
+    assert len(result.rows) == 100_005
+    assert result.pages > 1
+    assert result.rows[99_999]["payload"]["sequence"] == 99_999
+    assert result.rows[100_004]["payload"]["sequence"] == 100_004
+    assert [row["id"] for row in result.rows] == list(range(1, 100_006))
+    assert result.first_evaluated_at == result.first_available_at
+    assert result.last_evaluated_at == result.last_available_at
+    await warehouse.close()
+
+
+@pytest.mark.asyncio
+async def test_complete_wallet_history_surfaces_incomplete_safety_ceiling() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    warehouse = PostgresSignalWarehouse("sqlite+aiosqlite:///:memory:", engine=engine)
+    async with engine.begin() as connection:
+        await connection.run_sync(metadata.create_all)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        await connection.execute(
+            wallet_observations.insert(),
+            [
+                {
+                    "observed_at": start + timedelta(seconds=index),
+                    "wallet": "0x" + f"{index:040x}",
+                    "observation_type": "leaderboard",
+                    "source_id": "polymarket:data-api-v2",
+                    "payload": {"sequence": index},
+                }
+                for index in range(11)
+            ],
+        )
+
+    result = await warehouse.load_wallet_observations_complete(
+        observation_type="leaderboard",
+        page_size=3,
+        max_rows=10,
+    )
+
+    assert not result.complete
+    assert result.available_count == 11
+    assert len(result.rows) == 10
+    assert result.last_evaluated_at is not None
+    assert result.last_available_at is not None
+    assert result.last_evaluated_at < result.last_available_at
+    await warehouse.close()
