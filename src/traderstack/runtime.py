@@ -3,7 +3,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from traderstack.agents.review import MetaAgentReview, MetaAgentReviewer
 from traderstack.candles import Candle
@@ -11,6 +11,7 @@ from traderstack.execution.hummingbot import HummingbotOrderReceipt, HummingbotP
 from traderstack.execution.shadow import ShadowIntent, ShadowRecorder
 from traderstack.execution.submitter import IdempotentSubmitter
 from traderstack.features import ResearchEdgeFeatures
+from traderstack.intelligence import IntelligenceObservation
 from traderstack.intelligence_orchestrator import ExternalIntelligence, IntelligenceOrchestrator
 from traderstack.market.book_ticker import (
     cross_venue_divergence_bps,
@@ -45,6 +46,7 @@ class RuntimeResult(BaseModel):
     candles_loaded: int = 0
     candle_error: str | None = None
     intelligence_sources: list[str] = []
+    intelligence_observations: list[IntelligenceObservation] = Field(default_factory=list)
     intelligence_error: str | None = None
     # --- meta-agent (Epic 6) ---
     meta_review: MetaAgentReview | None = None
@@ -330,6 +332,9 @@ class PaperRuntime:
                 candles_loaded=len(history) if history else 0,
                 candle_error=candle_error,
                 intelligence_sources=external.source_ids if external is not None else [],
+                intelligence_observations=(
+                    list(external.observations) if external is not None else []
+                ),
                 intelligence_error=intelligence_error,
                 meta_review=meta_review,
                 execution_receipt=receipt,

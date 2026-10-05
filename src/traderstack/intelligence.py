@@ -1,6 +1,8 @@
+import math
 from datetime import UTC, date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from traderstack.features import (
     AssetFeatureVector,
@@ -77,6 +79,114 @@ class OnChainRegimeSnapshot(BaseModel):
     window_days: int = Field(gt=0)
     feature_version: str
     source_id: str
+
+
+ObservationType = Literal["onchain", "social", "news", "altfins", "onchain_regime"]
+ObservationScalar = str | int | float | bool | None
+
+_ALLOWED_OBSERVATION_PAYLOAD_FIELDS: dict[ObservationType, frozenset[str]] = {
+    "onchain": frozenset({"exchange_netflow_z", "large_wallet_accumulation"}),
+    "social": frozenset({"sentiment", "mention_velocity_z"}),
+    "news": frozenset({"event_score", "adverse_event", "item_count"}),
+    "altfins": frozenset({"score"}),
+    "onchain_regime": frozenset(
+        {
+            "source_asset",
+            "as_of",
+            "mvrv_z",
+            "mvrv_z_percentile",
+            "nupl",
+            "points",
+            "window_days",
+            "feature_version",
+        }
+    ),
+}
+
+
+class IntelligenceObservation(BaseModel):
+    """Bounded provider-native evidence preserved before canonical feature merge."""
+
+    asset: str = Field(min_length=1, max_length=32)
+    observed_at: datetime
+    source_id: str = Field(min_length=1, max_length=128)
+    observation_type: ObservationType
+    schema_version: str = Field(default="1.0", min_length=1, max_length=32)
+    payload: dict[str, ObservationScalar]
+
+    @model_validator(mode="after")
+    def _validate_payload_boundary(self) -> "IntelligenceObservation":
+        allowed = _ALLOWED_OBSERVATION_PAYLOAD_FIELDS[self.observation_type]
+        unexpected = set(self.payload) - allowed
+        if unexpected:
+            raise ValueError(
+                "unsupported intelligence observation payload fields: "
+                + ", ".join(sorted(unexpected))
+            )
+        for key, value in self.payload.items():
+            if isinstance(value, str) and (len(value) > 64 or "\n" in value or "\r" in value):
+                raise ValueError(f"unsafe string value for intelligence field {key}")
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError(f"non-finite value for intelligence field {key}")
+        return self
+
+
+def normalize_intelligence_snapshot(
+    snapshot: OnChainSnapshot
+    | SocialSnapshot
+    | NewsSnapshot
+    | AltFinsSignalSnapshot
+    | OnChainRegimeSnapshot,
+) -> IntelligenceObservation:
+    """Convert a typed provider snapshot to an allowlisted research payload.
+
+    This deliberately does not accept arbitrary provider JSON or free-form text.
+    Provider adapters must first map external data into one of the bounded snapshot
+    models above.
+    """
+
+    if isinstance(snapshot, OnChainSnapshot):
+        observation_type: ObservationType = "onchain"
+        payload: dict[str, ObservationScalar] = {
+            "exchange_netflow_z": snapshot.exchange_netflow_z,
+            "large_wallet_accumulation": snapshot.large_wallet_accumulation,
+        }
+    elif isinstance(snapshot, SocialSnapshot):
+        observation_type = "social"
+        payload = {
+            "sentiment": snapshot.sentiment,
+            "mention_velocity_z": snapshot.mention_velocity_z,
+        }
+    elif isinstance(snapshot, NewsSnapshot):
+        observation_type = "news"
+        payload = {
+            "event_score": snapshot.event_score,
+            "adverse_event": snapshot.adverse_event,
+            "item_count": snapshot.item_count,
+        }
+    elif isinstance(snapshot, AltFinsSignalSnapshot):
+        observation_type = "altfins"
+        payload = {"score": snapshot.score}
+    else:
+        observation_type = "onchain_regime"
+        payload = {
+            "source_asset": snapshot.source_asset,
+            "as_of": snapshot.as_of.isoformat(),
+            "mvrv_z": snapshot.mvrv_z,
+            "mvrv_z_percentile": snapshot.mvrv_z_percentile,
+            "nupl": snapshot.nupl,
+            "points": snapshot.points,
+            "window_days": snapshot.window_days,
+            "feature_version": snapshot.feature_version,
+        }
+
+    return IntelligenceObservation(
+        asset=snapshot.asset.upper(),
+        observed_at=snapshot.observed_at,
+        source_id=snapshot.source_id,
+        observation_type=observation_type,
+        payload=payload,
+    )
 
 
 def merge_external_intelligence(

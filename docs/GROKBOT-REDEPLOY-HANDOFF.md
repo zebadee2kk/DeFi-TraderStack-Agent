@@ -120,6 +120,7 @@ Expected logical stores now include:
 
 - `feature_snapshots`;
 - `provider_observations`;
+- `intelligence_observations` (typed provider-native evidence, idempotent);
 - `collector_health`;
 - `wallet_observations`;
 - existing runtime-event/candle/audit stores.

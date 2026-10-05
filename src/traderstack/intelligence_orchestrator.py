@@ -7,11 +7,13 @@ from typing import TypeVar, cast
 from traderstack.features import AssetFeatureVector, MarketFeatures
 from traderstack.intelligence import (
     AltFinsSignalSnapshot,
+    IntelligenceObservation,
     NewsSnapshot,
     OnChainRegimeSnapshot,
     OnChainSnapshot,
     SocialSnapshot,
     merge_external_intelligence,
+    normalize_intelligence_snapshot,
 )
 
 T = TypeVar("T")
@@ -50,6 +52,16 @@ PROVIDER_UNAVAILABLE_REASON = "intelligence_provider_unavailable"
 
 
 @dataclass(frozen=True)
+class NewsBundle:
+    combined: NewsSnapshot
+    snapshots: tuple[NewsSnapshot, ...]
+
+    @property
+    def observed_at(self) -> datetime:
+        return self.combined.observed_at
+
+
+@dataclass(frozen=True)
 class ExternalIntelligence:
     """The external snapshots gathered for one asset in one cycle (any may be missing)."""
 
@@ -70,6 +82,8 @@ class ExternalIntelligence:
     # not asset intelligence: it does not count toward `is_empty`, so it
     # cannot by itself satisfy INTELLIGENCE_REQUIRED.
     onchain_regime: OnChainRegimeSnapshot | None = None
+    # Typed provider-native evidence retained before feature-vector merge.
+    observations: tuple[IntelligenceObservation, ...] = ()
 
     @property
     def source_ids(self) -> list[str]:
@@ -118,7 +132,17 @@ class IntelligenceOrchestrator:
             # --- on-chain regime gate (#139) ---
             self._fetch_one("onchain_regime", symbol, self.onchain_regime, OnChainRegimeSnapshot),
         )
-        news, provider_unavailable = await news_task
+        news, provider_unavailable, news_snapshots = await news_task
+        observations: list[IntelligenceObservation] = []
+        if onchain is not None:
+            observations.append(normalize_intelligence_snapshot(onchain))
+        if social is not None:
+            observations.append(normalize_intelligence_snapshot(social))
+        observations.extend(normalize_intelligence_snapshot(item) for item in news_snapshots)
+        if altfins is not None:
+            observations.append(normalize_intelligence_snapshot(altfins))
+        if onchain_regime is not None:
+            observations.append(normalize_intelligence_snapshot(onchain_regime))
         bundle = ExternalIntelligence(
             asset=symbol,
             onchain=onchain,
@@ -127,6 +151,7 @@ class IntelligenceOrchestrator:
             altfins=altfins,
             provider_unavailable=provider_unavailable,
             onchain_regime=onchain_regime,
+            observations=tuple(observations),
         )
         if self.require_any_external and bundle.is_empty and not provider_unavailable:
             raise RuntimeError("all external intelligence providers unavailable")
@@ -166,12 +191,14 @@ class IntelligenceOrchestrator:
         self.cache.put(key, value)
         return value
 
-    async def _fetch_news(self, asset: str) -> tuple[NewsSnapshot | None, bool]:
-        cached = self.cache.get(f"news:{asset}", NewsSnapshot)
+    async def _fetch_news(
+        self, asset: str
+    ) -> tuple[NewsSnapshot | None, bool, tuple[NewsSnapshot, ...]]:
+        cached = self.cache.get(f"news_bundle:{asset}", NewsBundle)
         if cached is not None:
-            return cached, False
+            return cached.combined, False, cached.snapshots
         if not self.news and not self.fail_closed_news:
-            return None, False
+            return None, False, ()
         optional_results, fail_closed_results = await asyncio.gather(
             asyncio.gather(*(fetcher(asset) for fetcher in self.news), return_exceptions=True),
             asyncio.gather(
@@ -187,7 +214,7 @@ class IntelligenceOrchestrator:
             else:
                 provider_unavailable = True
         if not snapshots:
-            return None, provider_unavailable
+            return None, provider_unavailable, ()
         combined = NewsSnapshot(
             asset=asset,
             observed_at=max(snapshot.observed_at for snapshot in snapshots),
@@ -196,7 +223,11 @@ class IntelligenceOrchestrator:
             item_count=sum(snapshot.item_count for snapshot in snapshots),
             source_id="+".join(snapshot.source_id for snapshot in snapshots),
         )
+        individual = tuple(snapshots)
         # A fail-closed outage must not be cached as "no news" / partial news.
         if not provider_unavailable:
-            self.cache.put(f"news:{asset}", combined)
-        return combined, provider_unavailable
+            self.cache.put(
+                f"news_bundle:{asset}",
+                NewsBundle(combined=combined, snapshots=individual),
+            )
+        return combined, provider_unavailable, individual

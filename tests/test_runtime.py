@@ -6,6 +6,8 @@ import pytest
 
 from traderstack.config import Settings
 from traderstack.execution.hummingbot import HummingbotPaperExecutor
+from traderstack.intelligence import NewsSnapshot
+from traderstack.intelligence_orchestrator import IntelligenceOrchestrator
 from traderstack.market.models import MarketSource, MarketTick, ReferencePrice
 from traderstack.models import PortfolioSnapshot
 from traderstack.pipeline import VerticalSlicePipeline
@@ -116,3 +118,36 @@ async def test_runtime_only_submits_when_explicitly_requested() -> None:
     assert preview.execution_receipt is None
     assert submitted.execution_receipt is not None
     assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_runtime_retains_normalized_provider_native_intelligence() -> None:
+    observed_at = datetime.now(UTC)
+
+    async def news(asset: str) -> NewsSnapshot:
+        return NewsSnapshot(
+            asset=asset,
+            observed_at=observed_at,
+            event_score=0.7,
+            adverse_event=True,
+            item_count=2,
+            source_id="crucix:alerts",
+        )
+
+    runtime = PaperRuntime(
+        venue=FakeVenue(),
+        references=(GoodReference(MarketSource.COINGECKO),),
+        pipeline=pipeline(),
+        intelligence=IntelligenceOrchestrator(news=(news,)),
+    )
+    result = await runtime.run_once("BTC/USD", portfolio())
+
+    assert len(result.intelligence_observations) == 1
+    observation = result.intelligence_observations[0]
+    assert observation.source_id == "crucix:alerts"
+    assert observation.observed_at == observed_at
+    assert observation.payload == {
+        "event_score": 0.7,
+        "adverse_event": True,
+        "item_count": 2,
+    }

@@ -206,3 +206,53 @@ async def test_require_any_external_returns_unavailable_instead_of_raising() -> 
     ).gather("SOL")
     assert bundle.provider_unavailable is True
     assert bundle.is_empty
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_retains_individual_news_observations_across_cache() -> None:
+    calls = {"a": 0, "b": 0}
+    observed_a = datetime(2026, 10, 4, 10, 0, tzinfo=UTC)
+    observed_b = datetime(2026, 10, 4, 10, 1, tzinfo=UTC)
+
+    async def first_provider(asset: str) -> NewsSnapshot:
+        calls["a"] += 1
+        return NewsSnapshot(
+            asset=asset,
+            observed_at=observed_a,
+            event_score=0.2,
+            adverse_event=False,
+            item_count=1,
+            source_id="cryptopanic:test",
+        )
+
+    async def second_provider(asset: str) -> NewsSnapshot:
+        calls["b"] += 1
+        return NewsSnapshot(
+            asset=asset,
+            observed_at=observed_b,
+            event_score=0.7,
+            adverse_event=True,
+            item_count=2,
+            source_id="crucix:alerts",
+        )
+
+    orchestrator = IntelligenceOrchestrator(
+        news=(first_provider, second_provider),
+        cache=IntelligenceCache(max_age_seconds=10**9),
+    )
+    first = await orchestrator.gather("BTC")
+    second = await orchestrator.gather("BTC")
+
+    assert first.news is not None
+    assert first.news.source_id == "cryptopanic:test+crucix:alerts"
+    assert [item.source_id for item in first.observations] == [
+        "cryptopanic:test",
+        "crucix:alerts",
+    ]
+    assert [item.observed_at for item in first.observations] == [observed_a, observed_b]
+    assert [item.payload for item in first.observations] == [
+        {"event_score": 0.2, "adverse_event": False, "item_count": 1},
+        {"event_score": 0.7, "adverse_event": True, "item_count": 2},
+    ]
+    assert second.observations == first.observations
+    assert calls == {"a": 1, "b": 1}

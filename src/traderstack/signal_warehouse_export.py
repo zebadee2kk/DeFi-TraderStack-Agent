@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from traderstack.config import Settings
 from traderstack.signal_warehouse import PostgresSignalWarehouse
@@ -18,18 +19,19 @@ class WarehouseExportSpec:
     start: datetime | None
     end: datetime | None
     limit: int
+    dataset: Literal["features", "intelligence"] = "features"
 
     def canonical_json(self) -> str:
-        return json.dumps(
-            {
-                "asset": self.asset.upper() if self.asset else None,
-                "start": self.start.astimezone(UTC).isoformat() if self.start else None,
-                "end": self.end.astimezone(UTC).isoformat() if self.end else None,
-                "limit": self.limit,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        query: dict[str, object] = {
+            "asset": self.asset.upper() if self.asset else None,
+            "start": self.start.astimezone(UTC).isoformat() if self.start else None,
+            "end": self.end.astimezone(UTC).isoformat() if self.end else None,
+            "limit": self.limit,
+        }
+        # Preserve the original feature-export query hash contract.
+        if self.dataset != "features":
+            query["dataset"] = self.dataset
+        return json.dumps(query, sort_keys=True, separators=(",", ":"))
 
     def query_hash(self) -> str:
         return "sha256:" + hashlib.sha256(self.canonical_json().encode("utf-8")).hexdigest()
@@ -50,6 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--start", help="ISO-8601 inclusive lower bound")
     parser.add_argument("--end", help="ISO-8601 inclusive upper bound")
     parser.add_argument("--limit", type=int, default=10000)
+    parser.add_argument(
+        "--dataset",
+        choices=("features", "intelligence"),
+        default="features",
+        help="export canonical feature rows or provider-native normalized intelligence rows",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -63,6 +71,7 @@ async def _run(args: argparse.Namespace) -> int:
         start=_parse_dt(args.start),
         end=_parse_dt(args.end),
         limit=args.limit,
+        dataset=args.dataset,
     )
     if spec.start is not None and spec.end is not None and spec.start > spec.end:
         raise ValueError("start must be <= end")
@@ -70,12 +79,20 @@ async def _run(args: argparse.Namespace) -> int:
     settings = Settings()
     warehouse = PostgresSignalWarehouse(settings.database_url)
     try:
-        rows = await warehouse.load_features(
-            asset=spec.asset,
-            start=spec.start,
-            end=spec.end,
-            limit=spec.limit,
-        )
+        if spec.dataset == "features":
+            rows = await warehouse.load_features(
+                asset=spec.asset,
+                start=spec.start,
+                end=spec.end,
+                limit=spec.limit,
+            )
+        else:
+            rows = await warehouse.load_intelligence_observations(
+                asset=spec.asset,
+                start=spec.start,
+                end=spec.end,
+                limit=spec.limit,
+            )
     finally:
         await warehouse.close()
 
