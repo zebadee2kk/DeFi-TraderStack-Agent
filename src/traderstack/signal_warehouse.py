@@ -6,7 +6,20 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
 
-from sqlalchemy import JSON, Column, DateTime, Integer, MetaData, String, Table, and_, func, insert, or_, select
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    and_,
+    func,
+    insert,
+    or_,
+    select,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.sql.elements import ColumnElement
 
