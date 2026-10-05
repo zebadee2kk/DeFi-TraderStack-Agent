@@ -1,11 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from traderstack.polymarket.clob import BookMetrics
 from traderstack.polymarket.market_scanner import (
     SCORING_CONTRACT_VERSION,
+    MarketEvidenceCoverage,
     MarketScanInput,
     rank_markets,
     scan_input_from_gamma,
+    scan_open_market_page,
     score_market,
 )
 
@@ -199,3 +203,58 @@ def test_scan_input_from_gamma_skips_closed_or_unidentified_markets() -> None:
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_scan_open_market_page_joins_public_book_and_governed_coverage() -> None:
+    class FakeGamma:
+        async def list_open_markets(self, *, limit: int, offset: int) -> tuple[dict[str, object], ...]:
+            assert limit == 10
+            assert offset == 0
+            return (
+                {
+                    "id": "m1",
+                    "conditionId": "c1",
+                    "clobTokenIds": '["yes-1", "no-1"]',
+                    "endDate": "2026-10-08T12:00:00+00:00",
+                    "active": True,
+                    "closed": False,
+                    "acceptingOrders": True,
+                    "enableOrderBook": True,
+                    "liquidityNum": 20000,
+                },
+            )
+
+    class FakeClob:
+        async def book_metrics(self, token_id: str) -> BookMetrics:
+            assert token_id == "yes-1"
+            return BookMetrics(
+                best_bid=0.48,
+                best_ask=0.50,
+                mid=0.49,
+                bid_depth_usd=1500.0,
+                ask_depth_usd=1200.0,
+            )
+
+    ranked = await scan_open_market_page(
+        gamma=FakeGamma(),
+        clob=FakeClob(),
+        observed_at=NOW,
+        evidence_by_condition={
+            "c1": MarketEvidenceCoverage(
+                wallet_coverage=0.75,
+                external_context_coverage=0.8,
+                evidence_fresh=True,
+                collector_healthy=True,
+                category="crypto",
+            )
+        },
+        limit=10,
+        offset=0,
+    )
+
+    assert len(ranked) == 1
+    assert ranked[0].eligible
+    assert ranked[0].market_id == "m1"
+    assert ranked[0].category == "CRYPTO"
+    assert ranked[0].components["wallet_coverage"] == 0.75
