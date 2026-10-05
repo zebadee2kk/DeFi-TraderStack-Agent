@@ -2959,6 +2959,12 @@ For Polymarket world-context research, source-specific news, social, on-chain, a
 
 Use `traderstack-signal-coverage` for a machine-readable summary of stored rows by asset and source ID, including first/last observation timestamps. Its `intelligence_sources` section reports provider-native row counts, first/last timestamps and observation types separately from canonical feature-vector source IDs.
 
+### Long-running Polymarket wallet-history reads
+
+Wallet research evaluators do not use the old ascending `LIMIT 100000` history query. They keyset-page `wallet_observations` by `(observed_at, id)`, preserving deterministic chronological reconstruction even when many rows share the same timestamp. `--wallet-page-size` controls only query batch size. `--wallet-max-rows` is a bounded memory/resource guard, not a research sampling parameter.
+
+Each evaluator report includes the available row count, page count, first/last available timestamps and first/last evaluated timestamps for leaderboard and trade history. If the complete filtered history cannot be consumed within the configured safety ceiling, the command exits non-zero with `status=insufficient_data_query`; the scheduled wrapper therefore does not replace the previous atomic `*-latest.json` report with partial evidence.
+
 
 ## Polymarket wallet intelligence snapshot (#193)
 
