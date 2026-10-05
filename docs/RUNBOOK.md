@@ -3003,6 +3003,8 @@ traderstack-signal-health-import
 
 The import is idempotent: each health event receives a deterministic SHA-256 event key and an already-imported event is not duplicated. After import, `traderstack-signal-coverage` includes a `collector_health` section with row counts, first/last observations and latest state by provider.
 
+For the Polymarket wallet/world-signal research program, `traderstack-polymarket-research-health` records an explicit `polymarket_research:crucix` collector-health row on every scheduled collection cycle. If Crucix is not opted in the state is `not_configured` and `healthy=false`; if configured, the check performs a read-only BTC snapshot probe and records `active` or `unavailable`. It records only an exception type on failure, never upstream error text or secrets. This health signal is observational and cannot create, size, sign or promote a trade.
+
 This matters for research validity: an absent feature can be distinguished from a collector that was open/stale/broken at that time.
 
 
