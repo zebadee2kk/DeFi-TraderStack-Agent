@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
+from traderstack.polymarket.clob import BookMetrics
 from traderstack.polymarket.market_scanner import (
     SCORING_CONTRACT_VERSION,
     MarketScanInput,
     rank_markets,
+    scan_input_from_gamma,
     score_market,
 )
 
@@ -109,3 +111,91 @@ def test_ineligible_markets_sort_after_eligible_markets() -> None:
     assert ranked[0].market_id == "eligible"
     assert ranked[1].market_id == "stale"
     assert ranked[1].quality_score is None
+
+
+def test_scan_input_from_gamma_requires_real_identifiers_and_liquidity() -> None:
+    book = BookMetrics(
+        best_bid=0.49,
+        best_ask=0.51,
+        mid=0.50,
+        bid_depth_usd=900.0,
+        ask_depth_usd=850.0,
+    )
+    payload = {
+        "id": "market-9",
+        "conditionId": "condition-9",
+        "clobTokenIds": '["yes-9", "no-9"]',
+        "endDate": "2026-10-08T12:00:00+00:00",
+        "active": True,
+        "closed": False,
+        "acceptingOrders": True,
+        "enableOrderBook": True,
+        "liquidityNum": 12000,
+    }
+
+    item = scan_input_from_gamma(
+        payload,
+        observed_at=NOW,
+        category="politics",
+        book=book,
+        wallet_coverage=0.7,
+        external_context_coverage=0.9,
+        evidence_fresh=True,
+        collector_healthy=True,
+    )
+
+    assert item is not None
+    assert item.market_id == "market-9"
+    assert item.condition_id == "condition-9"
+    assert item.token_id == "yes-9"
+    assert item.liquidity_usd == 12000.0
+    assert item.bid_depth_usd == 900.0
+    assert item.external_context_coverage == 0.9
+
+
+def test_scan_input_from_gamma_skips_closed_or_unidentified_markets() -> None:
+    book = BookMetrics(
+        best_bid=0.49,
+        best_ask=0.51,
+        mid=0.50,
+        bid_depth_usd=900.0,
+        ask_depth_usd=850.0,
+    )
+    base = {
+        "id": "market-9",
+        "conditionId": "condition-9",
+        "clobTokenIds": '["yes-9", "no-9"]',
+        "endDate": "2026-10-08T12:00:00+00:00",
+        "active": True,
+        "closed": False,
+        "acceptingOrders": True,
+        "enableOrderBook": True,
+        "liquidityNum": 12000,
+    }
+
+    assert (
+        scan_input_from_gamma(
+            {**base, "closed": True},
+            observed_at=NOW,
+            category="politics",
+            book=book,
+            wallet_coverage=0.7,
+            external_context_coverage=0.9,
+            evidence_fresh=True,
+            collector_healthy=True,
+        )
+        is None
+    )
+    assert (
+        scan_input_from_gamma(
+            {**base, "conditionId": ""},
+            observed_at=NOW,
+            category="politics",
+            book=book,
+            wallet_coverage=0.7,
+            external_context_coverage=0.9,
+            evidence_fresh=True,
+            collector_healthy=True,
+        )
+        is None
+    )
