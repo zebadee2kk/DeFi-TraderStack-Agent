@@ -4,6 +4,7 @@ import math
 import random
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from statistics import NormalDist
 from typing import Mapping, Sequence
 
 
@@ -58,14 +59,7 @@ def _fisher_ci(correlation: float | None, n: int, alpha: float) -> tuple[float |
         return None, None
     r = max(-0.999999, min(0.999999, correlation))
     z = math.atanh(r)
-    # Standard-normal critical values for the only supported fixed alpha family.
-    # This keeps the gate deterministic and out of model/LLM control.
-    if alpha <= 0.01:
-        zcrit = 2.5758293035489004
-    elif alpha <= 0.05:
-        zcrit = 1.959963984540054
-    else:
-        zcrit = 1.6448536269514722
+    zcrit = NormalDist().inv_cdf(1.0 - alpha / 2.0)
     se = 1.0 / math.sqrt(n - 3)
     return math.tanh(z - zcrit * se), math.tanh(z + zcrit * se)
 
