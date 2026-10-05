@@ -157,7 +157,13 @@ async def test_complete_wallet_history_reads_beyond_old_100k_boundary() -> None:
                 INSERT INTO wallet_observations
                     (observed_at, wallet, observation_type, source_id, payload)
                 SELECT
-                    datetime('2026-01-01 00:00:00', printf('+%d seconds', (y * 1000 + x) / 100)),
+                    printf(
+                        '%s.000000',
+                        datetime(
+                            '2026-01-01 00:00:00',
+                            printf('+%d seconds', (y * 1000 + x) / 100)
+                        )
+                    ),
                     '0x' || printf('%040x', (y * 1000 + x) % 1000),
                     'trades',
                     'polymarket:data-api-v2',
