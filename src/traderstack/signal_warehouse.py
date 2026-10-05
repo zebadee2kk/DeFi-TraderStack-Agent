@@ -4,9 +4,11 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 
 from sqlalchemy import JSON, Column, DateTime, Integer, MetaData, String, Table, and_, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.sql.elements import ColumnElement
 
 from traderstack.runtime import RuntimeResult
 
@@ -300,8 +302,8 @@ class PostgresSignalWarehouse:
         *,
         wallet: str | None,
         observation_type: str | None,
-    ) -> list[object]:
-        filters: list[object] = []
+    ) -> list[ColumnElement[bool]]:
+        filters: list[ColumnElement[bool]] = []
         if wallet is not None:
             filters.append(wallet_observations.c.wallet == wallet.lower())
         if observation_type is not None:
@@ -363,11 +365,14 @@ class PostgresSignalWarehouse:
         cursor_id: int | None = None
 
         async with self._engine().connect() as connection:
-            available_count, first_available_at, last_available_at = (
+            available_count_raw, first_available_raw, last_available_raw = (
                 await connection.execute(stats)
             ).one()
+            available_count = int(available_count_raw)
+            first_available_at = cast(datetime | None, first_available_raw)
+            last_available_at = cast(datetime | None, last_available_raw)
 
-            while len(rows) < min(int(available_count), max_rows):
+            while len(rows) < min(available_count, max_rows):
                 statement = select(wallet_observations)
                 if filters:
                     statement = statement.where(*filters)
@@ -395,16 +400,20 @@ class PostgresSignalWarehouse:
                 cursor_time = last["observed_at"]
                 cursor_id = int(last["id"])
 
-        complete = len(rows) == int(available_count)
+        complete = len(rows) == available_count
         return WalletObservationQueryResult(
             rows=rows,
             complete=complete,
-            available_count=int(available_count),
+            available_count=available_count,
             pages=pages,
             first_available_at=first_available_at,
             last_available_at=last_available_at,
-            first_evaluated_at=(rows[0]["observed_at"] if rows else None),
-            last_evaluated_at=(rows[-1]["observed_at"] if rows else None),
+            first_evaluated_at=(
+                cast(datetime, rows[0]["observed_at"]) if rows else None
+            ),
+            last_evaluated_at=(
+                cast(datetime, rows[-1]["observed_at"]) if rows else None
+            ),
         )
 
     async def close(self) -> None:
