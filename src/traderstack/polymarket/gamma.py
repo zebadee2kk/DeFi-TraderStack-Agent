@@ -33,6 +33,16 @@ def _events_from_payload(payload: Any) -> tuple[dict[str, Any], ...]:
     raise TypeError("unexpected Gamma events payload")
 
 
+def _markets_from_payload(payload: Any) -> tuple[dict[str, Any], ...]:
+    if isinstance(payload, list):
+        return tuple(row for row in payload if isinstance(row, dict))
+    if isinstance(payload, dict):
+        for key in ("markets", "data", "results"):
+            if key in payload and isinstance(payload[key], list):
+                return tuple(row for row in payload[key] if isinstance(row, dict))
+    raise TypeError("unexpected Gamma markets payload")
+
+
 @dataclass
 class GammaClient:
     base_url: str = "https://gamma-api.polymarket.com"
@@ -62,6 +72,40 @@ class GammaClient:
             },
         )
         return _events_from_payload(payload)
+
+    async def list_open_markets(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[dict[str, Any], ...]:
+        """List one public page of open markets for research scanning."""
+
+        if self.registry is not None:
+            return await self.registry.call(
+                self._list_open_markets,
+                limit=limit,
+                offset=offset,
+                cache_key=("gamma", "open_markets", limit, offset),
+            )
+        return await self._list_open_markets(limit=limit, offset=offset)
+
+    async def _list_open_markets(
+        self,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[dict[str, Any], ...]:
+        payload = await self._get(
+            "/markets",
+            params={
+                "closed": "false",
+                "active": "true",
+                "limit": str(max(1, min(limit, 100))),
+                "offset": str(max(0, offset)),
+            },
+        )
+        return _markets_from_payload(payload)
 
     # --- polymarket weather PIT tape (#141) ---
     async def list_weather_events_page(

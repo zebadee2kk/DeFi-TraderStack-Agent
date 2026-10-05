@@ -286,3 +286,54 @@ async def test_one_sided_books_do_not_trip_the_provider_breaker() -> None:
 
     assert top.mid == pytest.approx(0.31)
     assert len(calls) == 5
+
+
+@pytest.mark.asyncio
+async def test_gamma_lists_open_markets_get_only() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/markets"
+        assert request.url.params["closed"] == "false"
+        assert request.url.params["active"] == "true"
+        assert request.url.params["limit"] == "25"
+        assert request.url.params["offset"] == "50"
+        return httpx.Response(200, json={"markets": [{"id": "m1"}, "skip"]})
+
+    async with httpx.AsyncClient(
+        base_url="https://gamma-api.polymarket.com", transport=httpx.MockTransport(handler)
+    ) as client:
+        rows = await GammaClient(client=client).list_open_markets(limit=25, offset=50)
+
+    assert rows == ({"id": "m1"},)
+
+
+@pytest.mark.asyncio
+async def test_clob_book_metrics_reduce_visible_notional_depth() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/book"
+        assert request.url.params["token_id"] == "tok"
+        return httpx.Response(
+            200,
+            json={
+                "bids": [
+                    {"price": "0.40", "size": "100"},
+                    {"price": "0.35", "size": "200"},
+                ],
+                "asks": [
+                    {"price": "0.45", "size": "120"},
+                    {"price": "0.50", "size": "80"},
+                ],
+            },
+        )
+
+    async with httpx.AsyncClient(
+        base_url="https://clob.polymarket.com", transport=httpx.MockTransport(handler)
+    ) as client:
+        metrics = await ClobPublicClient(client=client).book_metrics("tok")
+
+    assert metrics.best_bid == 0.40
+    assert metrics.best_ask == 0.45
+    assert metrics.mid == pytest.approx(0.425)
+    assert metrics.bid_depth_usd == pytest.approx(110.0)
+    assert metrics.ask_depth_usd == pytest.approx(94.0)

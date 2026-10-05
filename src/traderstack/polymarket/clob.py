@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any
 
 import httpx
@@ -96,6 +97,66 @@ def book_top_from_payload(payload: Any) -> BookTop:
         best_ask=best_ask,
         mid=(best_bid + best_ask) / 2.0,
         half_spread=(best_ask - best_bid) / 2.0,
+    )
+
+
+@dataclass(frozen=True)
+class BookMetrics:
+    best_bid: float
+    best_ask: float
+    mid: float
+    bid_depth_usd: float
+    ask_depth_usd: float
+
+
+def _priced_levels(payload: Any, key: str) -> list[tuple[float, float]]:
+    if not isinstance(payload, dict):
+        raise TypeError("unexpected CLOB book payload")
+    rows = payload.get(key)
+    if not isinstance(rows, list):
+        raise TypeError(f"CLOB book payload missing {key}")
+    levels: list[tuple[float, float]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        raw_price = row.get("price")
+        raw_size = row.get("size")
+        if isinstance(raw_price, bool) or isinstance(raw_size, bool):
+            continue
+        if not isinstance(raw_price, int | float | str):
+            continue
+        if not isinstance(raw_size, int | float | str):
+            continue
+        try:
+            price = float(raw_price)
+            size = float(raw_size)
+        except ValueError:
+            continue
+        if not isfinite(price) or not isfinite(size):
+            continue
+        if not (0.0 <= price <= 1.0) or size < 0.0:
+            continue
+        levels.append((price, size))
+    return levels
+
+
+def book_metrics_from_payload(payload: Any) -> BookMetrics:
+    """Reduce a public book into bounded top-of-book and notional depth."""
+
+    bids = _priced_levels(payload, "bids")
+    asks = _priced_levels(payload, "asks")
+    if not bids or not asks:
+        raise ValueError("CLOB book is one-sided; no complete depth metrics")
+    best_bid = max(price for price, _ in bids)
+    best_ask = min(price for price, _ in asks)
+    if best_ask < best_bid:
+        raise ValueError("CLOB book is crossed")
+    return BookMetrics(
+        best_bid=best_bid,
+        best_ask=best_ask,
+        mid=(best_bid + best_ask) / 2.0,
+        bid_depth_usd=sum(price * size for price, size in bids),
+        ask_depth_usd=sum(price * size for price, size in asks),
     )
 
 
@@ -229,6 +290,21 @@ class ClobPublicClient:
 
     async def _book_payload(self, token_id: str) -> Any:
         return await self._get("/book", {"token_id": token_id})
+
+    async def book_metrics(self, token_id: str) -> BookMetrics:
+        """Public GET-only top-of-book plus visible notional depth."""
+
+        if not token_id or not token_id.strip():
+            raise ValueError("token_id is required")
+        if self.registry is not None:
+            payload = await self.registry.call(
+                self._book_payload,
+                token_id,
+                cache_key=("clob", "book_metrics", token_id),
+            )
+        else:
+            payload = await self._book_payload(token_id)
+        return book_metrics_from_payload(payload)
 
     # --- crypto-threshold wedge tape (#142) ---
     async def book(self, token_id: str) -> ClobBook:

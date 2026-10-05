@@ -2982,6 +2982,14 @@ Wallet research evaluators do not use the old ascending `LIMIT 100000` history q
 Each evaluator report includes the available row count, page count, first/last available timestamps and first/last evaluated timestamps for leaderboard and trade history. If the complete filtered history cannot be consumed within the configured safety ceiling, the command exits non-zero with `status=insufficient_data_query`; the scheduled wrapper therefore does not replace the previous atomic `*-latest.json` report with partial evidence.
 
 
+## Polymarket market quality scanner (#228)
+
+The market scanner ranks **researchability and execution quality**, not expected return. Its scoring contract is versioned as `polymarket-market-quality-v1` and uses transparent component attribution for liquidity, spread, two-sided depth, time to resolution, wallet-evidence coverage, and external-context coverage.
+
+A market is ineligible rather than assigned a zero when required evidence is missing or stale, a collector is unhealthy, identifiers are missing, the book is one-sided/crossed, or the market is already closed. This prevents missing evidence from silently improving a rank.
+
+The scanner is research-only. Its quality score cannot create, size, sign, submit, or promote a trade. Predictive/calibration inputs must remain separately validated and governed through #57/#48 before they can affect a hypothesis.
+
 ## Polymarket wallet intelligence snapshot (#193)
 
 `traderstack-polymarket-wallet-snapshot` performs a bounded, read-only public Data API collection into the #192 PostgreSQL warehouse.
