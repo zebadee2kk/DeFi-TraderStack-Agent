@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from math import isfinite
+from collections.abc import Mapping
 from typing import Any
 
 from traderstack.polymarket.clob import BookMetrics
@@ -39,6 +40,15 @@ class MarketScanInput:
     external_context_coverage: float | None
     evidence_fresh: bool
     collector_healthy: bool
+
+
+@dataclass(frozen=True)
+class MarketEvidenceCoverage:
+    wallet_coverage: float | None
+    external_context_coverage: float | None
+    evidence_fresh: bool
+    collector_healthy: bool
+    category: str = "UNKNOWN"
 
 
 @dataclass(frozen=True)
@@ -290,3 +300,63 @@ def scan_input_from_gamma(
         evidence_fresh=evidence_fresh,
         collector_healthy=collector_healthy,
     )
+
+
+async def scan_open_market_page(
+    *,
+    gamma: Any,
+    clob: Any,
+    observed_at: datetime,
+    evidence_by_condition: Mapping[str, MarketEvidenceCoverage],
+    limit: int = 100,
+    offset: int = 0,
+) -> list[MarketScanResult]:
+    """Enumerate and rank one public Gamma page using public CLOB books only.
+
+    Coverage is supplied by the caller from already-governed point-in-time
+    stores. Missing coverage fails closed via the normal scanner contract.
+    """
+
+    payloads = await gamma.list_open_markets(limit=limit, offset=offset)
+    inputs: list[MarketScanInput] = []
+
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        condition_raw = payload.get("conditionId") or payload.get("condition_id")
+        if not isinstance(condition_raw, str) or not condition_raw.strip():
+            continue
+        token_ids = _json_list(payload.get("clobTokenIds") or payload.get("clob_token_ids"))
+        if len(token_ids) < 2 or not token_ids[0].strip():
+            continue
+
+        coverage = evidence_by_condition.get(
+            condition_raw,
+            MarketEvidenceCoverage(
+                wallet_coverage=None,
+                external_context_coverage=None,
+                evidence_fresh=False,
+                collector_healthy=False,
+                category=str(payload.get("category") or "UNKNOWN"),
+            ),
+        )
+
+        try:
+            book = await clob.book_metrics(token_ids[0])
+        except (TypeError, ValueError):
+            continue
+
+        item = scan_input_from_gamma(
+            payload,
+            observed_at=observed_at,
+            category=coverage.category,
+            book=book,
+            wallet_coverage=coverage.wallet_coverage,
+            external_context_coverage=coverage.external_context_coverage,
+            evidence_fresh=coverage.evidence_fresh,
+            collector_healthy=coverage.collector_healthy,
+        )
+        if item is not None:
+            inputs.append(item)
+
+    return rank_markets(inputs)
