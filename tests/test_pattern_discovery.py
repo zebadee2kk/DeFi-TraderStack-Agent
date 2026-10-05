@@ -61,39 +61,33 @@ def test_insufficient_samples_fail_closed() -> None:
     assert result.status == "insufficient_evidence"
 
 
-def test_future_rows_cannot_change_discovery_partition() -> None:
+def test_holdout_label_changes_cannot_change_discovery_score() -> None:
     base = _rows(100)
+    altered = list(base)
+    for index in range(70, 100):
+        row = altered[index]
+        altered[index] = DiscoveryRow(
+            candidate_at=row.candidate_at,
+            label=-999.0,
+            features=row.features,
+        )
+
     baseline = evaluate_feature_family(
         base,
         features=("signal",),
         holdout_fraction=0.30,
         min_samples=20,
     )[0]
-
-    future = list(base)
-    for index in range(20):
-        future.append(
-            DiscoveryRow(
-                candidate_at=datetime(2027, 1, 1, tzinfo=UTC) + timedelta(hours=index),
-                label=-999.0,
-                features={"signal": 999.0},
-            )
-        )
-
     changed = evaluate_feature_family(
-        future,
+        altered,
         features=("signal",),
         holdout_fraction=0.30,
         min_samples=20,
     )[0]
 
-    # The explicit chronological split means future rows cannot leak backward
-    # into timestamps earlier than the split boundary. They may change which
-    # rows are holdout when the dataset definition itself changes, so callers
-    # must freeze the export query hash before a confirmation run.
     assert baseline.discovery_correlation == pytest.approx(1.0)
-    assert changed.discovery_correlation == pytest.approx(1.0)
-
+    assert changed.discovery_correlation == baseline.discovery_correlation
+    assert changed.holdout_correlation != baseline.holdout_correlation
 
 def test_invalid_family_controls_are_rejected() -> None:
     with pytest.raises(ValueError, match="at least one feature"):
