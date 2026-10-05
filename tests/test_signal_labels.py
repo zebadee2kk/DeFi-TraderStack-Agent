@@ -10,7 +10,12 @@ from traderstack.research.signal_labels import (
     build_candidate_row,
     build_outcome_row,
 )
-from traderstack.signal_warehouse import PostgresSignalWarehouse, metadata
+from traderstack.signal_warehouse import (
+    PostgresSignalWarehouse,
+    metadata,
+    signal_candidates,
+    signal_outcomes,
+)
 
 
 def _candidate() -> SignalCandidateRecord:
@@ -115,3 +120,34 @@ async def test_warehouse_rejects_unknown_or_early_outcome_rows() -> None:
         await warehouse.append_signal_outcomes([early])
 
     await warehouse.close()
+
+
+def test_signal_label_tables_have_versioned_point_in_time_columns() -> None:
+    assert set(signal_candidates.c.keys()) == {
+        "id",
+        "event_key",
+        "candidate_at",
+        "asset",
+        "hypothesis_id",
+        "hypothesis_version",
+        "horizon_seconds",
+        "direction",
+        "confidence",
+        "feature_query_hash",
+        "schema_version",
+    }
+    assert set(signal_outcomes.c.keys()) == {
+        "id",
+        "event_key",
+        "candidate_event_key",
+        "candidate_at",
+        "outcome_at",
+        "horizon_seconds",
+        "gross_return",
+        "net_return",
+        "gross_pnl_usd",
+        "net_pnl_usd",
+        "fee_bps",
+        "slippage_bps",
+        "schema_version",
+    }
