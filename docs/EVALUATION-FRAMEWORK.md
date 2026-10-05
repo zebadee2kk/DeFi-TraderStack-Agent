@@ -77,6 +77,12 @@ Performance must be decomposed by:
 - long/short direction where applicable
 - gross return versus fees/slippage
 
+## Governed pattern discovery (#57 / #48)
+
+Pattern discovery operates only on frozen, point-in-time research datasets with matured labels. The first discovery core records the size of the tested feature family, applies a deterministic Bonferroni family alpha, splits rows chronologically into discovery and untouched holdout partitions, reports Pearson effect size plus Fisher-z confidence intervals on holdout, and runs a deterministic shuffled-label placebo.
+
+A discovery result is always labeled research evidence. It cannot create or mutate a production strategy, alter promotion thresholds, enable a paper/live voter, or bypass the normal research/shadow/risk/human gates. Callers must freeze the warehouse export/query hash before confirmation so later-arriving rows cannot redefine the holdout.
+
 ## Promotion Gate
 
 No strategy advances to live capital solely on aggregate returns. Promotion requires acceptable out-of-sample behavior, bounded drawdown, stable attribution, operational reliability and no evidence of data leakage.
