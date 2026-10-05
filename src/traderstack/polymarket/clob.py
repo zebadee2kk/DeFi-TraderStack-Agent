@@ -119,10 +119,18 @@ def _priced_levels(payload: Any, key: str) -> list[tuple[float, float]]:
     for row in rows:
         if not isinstance(row, dict):
             continue
+        raw_price = row.get("price")
+        raw_size = row.get("size")
+        if isinstance(raw_price, bool) or isinstance(raw_size, bool):
+            continue
+        if not isinstance(raw_price, int | float | str):
+            continue
+        if not isinstance(raw_size, int | float | str):
+            continue
         try:
-            price = float(row.get("price"))
-            size = float(row.get("size"))
-        except (TypeError, ValueError):
+            price = float(raw_price)
+            size = float(raw_size)
+        except ValueError:
             continue
         if not isfinite(price) or not isfinite(size):
             continue
