@@ -1,8 +1,8 @@
 from datetime import UTC, datetime, timedelta
 
 from traderstack.polymarket.market_scanner import (
-    SCORING_CONTRACT_VERSION,
     MarketScanInput,
+    SCORING_CONTRACT_VERSION,
     rank_markets,
     score_market,
 )
