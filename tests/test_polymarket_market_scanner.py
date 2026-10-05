@@ -257,3 +257,48 @@ async def test_scan_open_market_page_joins_public_book_and_governed_coverage() -
     assert ranked[0].market_id == "m1"
     assert ranked[0].category == "CRYPTO"
     assert ranked[0].components["wallet_coverage"] == 0.75
+
+
+@pytest.mark.asyncio
+async def test_scan_open_market_page_surfaces_book_unavailable() -> None:
+    class FakeGamma:
+        async def list_open_markets(self, *, limit: int, offset: int) -> tuple[dict[str, object], ...]:
+            return (
+                {
+                    "id": "m2",
+                    "conditionId": "c2",
+                    "clobTokenIds": '["yes-2", "no-2"]',
+                    "endDate": "2026-10-08T12:00:00+00:00",
+                    "active": True,
+                    "closed": False,
+                    "acceptingOrders": True,
+                    "enableOrderBook": True,
+                    "liquidityNum": 5000,
+                },
+            )
+
+    class FakeClob:
+        async def book_metrics(self, token_id: str) -> BookMetrics:
+            raise ValueError("one-sided")
+
+    ranked = await scan_open_market_page(
+        gamma=FakeGamma(),
+        clob=FakeClob(),
+        observed_at=NOW,
+        evidence_by_condition={
+            "c2": MarketEvidenceCoverage(
+                wallet_coverage=0.5,
+                external_context_coverage=0.5,
+                evidence_fresh=True,
+                collector_healthy=True,
+                category="crypto",
+            )
+        },
+        limit=10,
+        offset=0,
+    )
+
+    assert len(ranked) == 1
+    assert not ranked[0].eligible
+    assert ranked[0].quality_score is None
+    assert ranked[0].reasons == ("book_unavailable",)
