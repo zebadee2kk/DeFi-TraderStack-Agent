@@ -166,6 +166,7 @@ async def database_check(settings: Settings) -> PreflightCheck:
         await warehouse.load_wallet_observations(limit=1)
         await warehouse.load_intelligence_observations(limit=1)
         await warehouse.load_collector_health(limit=1)
+        await warehouse.load_signal_dataset(limit=1)
     except Exception as exc:  # noqa: BLE001 - preflight must report the boundary.
         return PreflightCheck(
             name="signal_warehouse",
